@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eShool Agent | محاكي محادثة مستر مازن</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --wa-bg: #0b141a;
+      --wa-panel: #111b21;
+      --wa-header: #202c33;
+      --wa-incoming: #202c33;
+      --wa-outgoing: #005c4b;
+      --wa-accent: #00a884;
+      --wa-accent-hover: #06cf9c;
+      --wa-text-primary: #e9edef;
+      --wa-text-secondary: #8696a0;
+      --wa-border: #222d34;
+      --wa-chat-pattern: #080d10;
+      --wa-tag-bg: rgba(0, 168, 132, 0.15);
+      --wa-tag-text: #00a884;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      background-color: var(--wa-bg);
+      color: var(--wa-text-primary);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 1100px;
+      height: 94vh;
+      background: var(--wa-panel);
+      display: flex;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--wa-border);
+    }
+
+    /* Sidebar / Scenarios Panel */
+    .sidebar {
+      width: 340px;
+      background: var(--wa-panel);
+      border-left: 1px solid var(--wa-border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-header {
+      padding: 16px 20px;
+      background: var(--wa-header);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--wa-border);
+    }
+
+    .sidebar-header h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--wa-text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sidebar-content {
+      padding: 18px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: #182229;
+      border: 1px solid var(--wa-border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .card-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--wa-accent);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--wa-tag-bg);
+      color: var(--wa-tag-text);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--wa-accent);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.4; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+      100% { opacity: 0.4; transform: scale(0.9); }
+    }
+
+    .scenario-btn {
+      width: 100%;
+      background: #202c33;
+      color: var(--wa-text-primary);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 10px 12px;
+      text-align: right;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .scenario-btn:hover {
+      background: #2a3942;
+      border-color: var(--wa-accent);
+      transform: translateY(-1px);
+    }
+
+    .reset-btn {
+      width: 100%;
+      background: rgba(234, 67, 53, 0.15);
+      color: #ff6b6b;
+      border: 1px solid rgba(234, 67, 53, 0.3);
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .reset-btn:hover {
+      background: rgba(234, 67, 53, 0.25);
+    }
+
+    /* Main Chat Area */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--wa-bg);
+      position: relative;
+    }
+
+    .chat-header {
+      padding: 12px 20px;
+      background: var(--wa-header);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--wa-border);
+      z-index: 10;
+    }
+
+    .teacher-profile {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .avatar {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00a884, #005c4b);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.2rem;
+      color: #fff;
+      box-shadow: 0 4px 10px rgba(0, 168, 132, 0.3);
+    }
+
+    .teacher-info h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--wa-text-primary);
+    }
+
+    .teacher-info p {
+      font-size: 0.8rem;
+      color: var(--wa-accent);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Messages Stream */
+    .messages-container {
+      flex: 1;
+      padding: 24px 28px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background-color: #0b141a;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    .msg-row {
+      display: flex;
+      width: 100%;
+    }
+
+    .msg-row.client {
+      justify-content: flex-start;
+    }
+
+    .msg-row.agent {
+      justify-content: flex-end;
+    }
+
+    .bubble {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      position: relative;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    }
+
+    .msg-row.client .bubble {
+      background: var(--wa-outgoing);
+      color: #e9edef;
+      border-top-left-radius: 4px;
+    }
+
+    .msg-row.agent .bubble {
+      background: var(--wa-incoming);
+      color: #e9edef;
+      border-top-right-radius: 4px;
+    }
+
+    .bubble .sender-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--wa-accent);
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .bubble .time {
+      display: block;
+      font-size: 0.7rem;
+      color: var(--wa-text-secondary);
+      margin-top: 6px;
+      text-align: left;
+    }
+
+    /* Special Lesson Card */
+    .lesson-card {
+      background: #182229;
+      border: 1px solid #2a3942;
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 8px;
+    }
+
+    .lesson-badge {
+      display: inline-block;
+      background: rgba(0, 168, 132, 0.2);
+      color: var(--wa-accent);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+    }
+
+    .video-mock {
+      background: #000;
+      height: 140px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 10px 0;
+      color: #8696a0;
+      font-size: 0.85rem;
+      border: 1px solid #222d34;
+    }
+
+    .play-icon {
+      width: 44px;
+      height: 44px;
+      background: var(--wa-accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 1.2rem;
+    }
+
+    /* Typing indicator */
+    .typing-row {
+      display: none;
+      justify-content: flex-end;
+    }
+
+    .typing-bubble {
+      background: var(--wa-incoming);
+      padding: 12px 18px;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .typing-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--wa-accent);
+      border-radius: 50%;
+      animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typing {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+
+    /* Input Footer */
+    .chat-footer {
+      padding: 14px 20px;
+      background: var(--wa-header);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-top: 1px solid var(--wa-border);
+    }
+
+    .input-wrapper {
+      flex: 1;
+      position: relative;
+    }
+
+    .chat-input {
+      width: 100%;
+      background: #2a3942;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 12px 16px;
+      color: var(--wa-text-primary);
+      font-size: 0.95rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .chat-input:focus {
+      border-color: var(--wa-accent);
+      background: #32424c;
+    }
+
+    .send-btn {
+      background: var(--wa-accent);
+      color: #fff;
+      border: none;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      transition: transform 0.15s ease, background 0.2s ease;
+      box-shadow: 0 4px 10px rgba(0, 168, 132, 0.4);
+    }
+
+    .send-btn:hover {
+      background: var(--wa-accent-hover);
+      transform: scale(1.05);
+    }
+
+    .send-btn:active {
+      transform: scale(0.95);
+    }
+
+    @media (max-width: 850px) {
+      .app-container {
+        height: 100vh;
+        border-radius: 0;
+      }
+      .sidebar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Sidebar: Controls & Instant Testing Scenarios -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>⚡ سيناريوهات تجريبية</h2>
+      </div>
+
+      <div class="sidebar-content">
+        <div class="card">
+          <div class="card-title">حالة الطالب والذاكرة</div>
+          <div class="status-badge">
+            <span class="status-dot"></span>
+            <span>طالب Es معتمد (ذاكرة دائمة مفعّلة ⭐)</span>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--wa-text-secondary); margin-top: 8px;">
+            جميع الرسائل مع هذا الطالب تُحفظ بشكل دائم ولا يتم اقتطاعها.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title">اضغط لتجربة ردود سريعة:</div>
+          <button class="scenario-btn" onclick="sendQuick('السلام عليكم ورحمة الله وبركاته، أنا طالب جديد')">
+            👋 1. ترحيب وسؤال عام
+          </button>
+          <button class="scenario-btn" onclick="sendQuick('أنا في سنة تالتة ثانوي وخايف شديد من الإنجليزي وبجيب 50 بس')">
+            🎓 2. إرسال الصف والحصة الأولى
+          </button>
+          <button class="scenario-btn" onclick="sendQuick('رسوم الاشتراك كم وطريقة الدفع في بنكك شنو؟')">
+            💳 3. الاستفسار عن الرسوم وبنكك
+          </button>
+          <button class="scenario-btn" onclick="sendQuick('الحصص بتكون كيف؟ وطريقة استلام الفيديوهات شنو؟')">
+            📲 4. شرح نظام الحصص في الواتساب
+          </button>
+          <button class="scenario-btn" onclick="sendQuick('حل التمرين:\n1. has lived\n2. will finish\n3. arrived\n4. will get')">
+            📝 5. تسليم إجابات الواجب كاملة (صحيحة 100%)
+          </button>
+          <button class="scenario-btn" onclick="sendQuick('حل الواجب:\n1. lives\n2. will finish\n3. arrived\n4. get')">
+            ⚠️ 6. تسليم إجابات فيها أخطاء (اختبار التلميحات)
+          </button>
+        </div>
+
+        <button class="reset-btn" onclick="resetChat()">
+          🔄 مسح وإعادة تعيين المحادثة
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main WhatsApp Chat View -->
+    <main class="chat-area">
+      <!-- Chat Header -->
+      <header class="chat-header">
+        <div class="teacher-profile">
+          <div class="avatar">M</div>
+          <div class="teacher-info">
+            <h3>مستر مازن (eShool)</h3>
+            <p>
+              <span class="status-dot"></span>
+              متصل الآن | اللهجة السودانية الدارجة
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <!-- Message History Stream -->
+      <section class="messages-container" id="messagesContainer">
+        <!-- Messages will be rendered dynamically -->
+      </section>
+
+      <!-- Animated Typing Presence -->
+      <div class="typing-row" id="typingRow">
+        <div class="typing-bubble">
+          <span style="font-size: 0.8rem; color: var(--wa-accent); margin-left: 6px;">مستر مازن يكتب...</span>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+      </div>
+
+      <!-- Chat Input Bar -->
+      <footer class="chat-footer">
+        <div class="input-wrapper">
+          <input 
+            type="text" 
+            id="chatInput" 
+            class="chat-input" 
+            placeholder="اكتب رسالتك باللهجة السودانية أو الإنجليزية واضغط Enter..."
+            autocomplete="off"
+          />
+        </div>
+        <button class="send-btn" id="sendBtn" onclick="handleSend()">
+          ➤
+        </button>
+      </footer>
+    </main>
+
+  </div>
+
+  <script>
+    const messagesContainer = document.getElementById('messagesContainer');
+    const chatInput = document.getElementById('chatInput');
+    const typingRow = document.getElementById('typingRow');
+
+    function getTimeString() {
+      const now = new Date();
+      return now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addMessage(role, text, lesson = null) {
+      const row = document.createElement('div');
+      row.className = `msg-row ${role}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+
+      const senderTitle = document.createElement('span');
+      senderTitle.className = 'sender-title';
+      senderTitle.textContent = role === 'client' ? 'أنت (الطالب)' : 'مستر مازن';
+      bubble.appendChild(senderTitle);
+
+      const textNode = document.createElement('div');
+      textNode.textContent = text;
+      bubble.appendChild(textNode);
+
+      if (lesson) {
+        const lessonCard = document.createElement('div');
+        lessonCard.className = 'lesson-card';
+        lessonCard.innerHTML = `
+          <span class="lesson-badge">درس جديد 🎬</span>
+          <div style="font-weight: 700; color: #fff; margin-bottom: 4px;">${lesson.title}</div>
+          <div class="video-mock">
+            <div class="play-icon">▶</div>
+            <span>${lesson.caption || 'فيديو شرح الدرس'}</span>
+          </div>
+        `;
+        bubble.appendChild(lessonCard);
+      }
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'time';
+      timeSpan.textContent = getTimeString();
+      bubble.appendChild(timeSpan);
+
+      row.appendChild(bubble);
+      messagesContainer.appendChild(row);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    async function handleSend() {
+      const text = chatInput.value.trim();
+      if (!text) return;
+
+      addMessage('client', text);
+      chatInput.value = '';
+      typingRow.style.display = 'flex';
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+        });
+        const data = await response.json();
+
+        typingRow.style.display = 'none';
+
+        if (data.lessonDelivered) {
+          addMessage('agent', data.introMessage || 'يا هلا بيك يا بطل! ده فيديو الحصة:', data.lessonDelivered);
+          if (data.taskMessage) {
+            setTimeout(() => {
+              addMessage('agent', data.taskMessage);
+            }, 600);
+          }
+        } else if (data.reply) {
+          addMessage('agent', data.reply);
+        }
+      } catch (err) {
+        typingRow.style.display = 'none';
+        addMessage('agent', 'عذراً يا بطل، حصل خطأ في الاتصال بالخادم. اتأكد من تشغيل web_chat.js');
+      }
+    }
+
+    function sendQuick(text) {
+      chatInput.value = text;
+      handleSend();
+    }
+
+    async function resetChat() {
+      const defaultGreeting = `و عليكم السلام ورحمة الله وبركاته\n\nأهلين بيك و يوم سعيد عليك يا رب، \n\nمستر مازن معاك،\n\nطيب الحصص يومي\nما عدا أيام الجمعة\nبعملها فيديوهات مفصلة\nو برسلها ليك هنا\nو معاها تمارين طوالي \nكل إسبوع عندنا إختبار \nفي ٣ شهور بنكمل المنهج إن شاء الله`;
+      if (!confirm('هل تريد مسح المحادثة وبدء محادثة جديدة كطالب جديد؟')) return;
+      await fetch('/api/reset', { method: 'POST' });
+      messagesContainer.innerHTML = '';
+      addMessage('agent', defaultGreeting);
+    }
+
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        handleSend();
+      }
+    });
+
+    // Initial greeting
+    window.onload = async () => {
+      const defaultGreeting = `و عليكم السلام ورحمة الله وبركاته\n\nأهلين بيك و يوم سعيد عليك يا رب، \n\nمستر مازن معاك،\n\nطيب الحصص يومي\nما عدا أيام الجمعة\nبعملها فيديوهات مفصلة\nو برسلها ليك هنا\nو معاها تمارين طوالي \nكل إسبوع عندنا إختبار \nفي ٣ شهور بنكمل المنهج إن شاء الله`;
+      try {
+        const res = await fetch('/api/history');
+        const data = await res.json();
+        if (data.history && data.history.length > 0) {
+          data.history.forEach(m => addMessage(m.role, m.text));
+        } else {
+          addMessage('agent', defaultGreeting);
+        }
+      } catch(e) {
+        addMessage('agent', defaultGreeting);
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,130 @@
+# Complete Setup Guide: Running WhatsApp Agent on Honor X6b (MagicOS / Android)
+
+This guide takes you step-by-step through setting up and running your autonomous WhatsApp agent directly on your **Honor X6b**.
+
+---
+
+## Part 1: Honor X6b (MagicOS) Battery Configuration (Crucial)
+
+Honor's **MagicOS** aggressively kills background processes when the screen turns off. You must configure these settings so your agent can run 24/7 in the background:
+
+### Step 1.1: Disable MagicOS App Killing for Termux
+1. Open your phone's **Settings**.
+2. Tap **Apps** > **App Launch** (or **Apps > Apps > Termux > Power details**).
+3. Find **Termux** in the list.
+4. Toggle it from **Manage automatically** to **Manage manually**.
+5. Enable all 3 switches:
+   - ✅ **Auto-launch** (Enabled)
+   - ✅ **Secondary launch** (Enabled)
+   - ✅ **Run in background** (Enabled)
+
+### Step 1.2: Disable Battery Optimization
+1. Go to **Settings** > **Battery** > **More battery settings** (or search "Battery Optimization").
+2. Find **Termux** and set it to **Don't optimize** (or **Unrestricted**).
+
+---
+
+## Part 2: Installing Termux on Your Phone
+
+> [!WARNING]
+> **Do NOT install Termux from Google Play Store.** The Play Store version is obsolete and broken.
+
+1. On your Honor X6b browser, go to **[F-Droid Termux Page](https://f-droid.org/en/packages/com.termux/)**.
+2. Download the latest APK (scroll down to "Download APK") and install it.
+3. Open the **Termux** app.
+
+---
+
+## Part 3: Installing Node.js & Setting Up the Agent in Termux
+
+Inside the Termux terminal, run the following commands one by one:
+
+### 3.1: Acquire Wake Lock (Keeps CPU alive when screen is off)
+```bash
+termux-wake-lock
+```
+*(You will see a persistent notification from Termux in your status bar indicating wake lock is active).*
+
+### 3.2: Update Termux and Install Node.js & Git
+```bash
+pkg update -y && pkg install -y nodejs-lts git
+```
+
+### 3.3: Set Up the Project Folder
+You can transfer the files from your PC or clone/create the directory in Termux:
+```bash
+mkdir -p ~/whatsapp-agent
+cd ~/whatsapp-agent
+```
+
+If you copy the files created on your PC directly to your phone:
+- Connect phone to PC via USB, copy the `whatsapp-phone-agent` folder into your phone's `Download` folder.
+- In Termux, run:
+```bash
+termux-setup-storage
+cp -r /sdcard/Download/whatsapp-phone-agent/* ~/whatsapp-agent/
+cd ~/whatsapp-agent
+```
+
+### 3.4: Install Dependencies
+```bash
+npm install
+```
+
+### 3.5: Configure Your `.env` File
+Create or edit your `.env` file:
+```bash
+nano .env
+```
+Fill in your details:
+```env
+GEMINI_API_KEY=AIzaSy...your_actual_key_from_google_ai_studio
+OWNER_NAME=Your Name
+BUSINESS_NAME=Your Business Name
+BOT_ROLE=Executive Assistant
+DEBOUNCE_SECONDS=6
+TYPING_DELAY_MS=3000
+ALLOWED_NUMBERS=all
+BLOCKED_NUMBERS=
+IGNORE_GROUPS=true
+```
+*(Press `CTRL + O`, then `ENTER` to save, and `CTRL + X` to exit `nano`).*
+
+---
+
+## Part 4: Linking to Your WhatsApp Account
+
+> [!TIP]
+> **How to scan the QR code when it is on the same phone:**
+> 1. In Termux, start the agent:
+>    ```bash
+>    npm start
+>    ```
+> 2. When the QR code appears in the Termux screen, take a **Screenshot** of your phone screen.
+> 3. Send that screenshot to a laptop/second screen or friend's phone.
+> 4. Open **WhatsApp** on your Honor X6b > **Three dots (top right)** > **Linked Devices** > **Link a device** and scan the QR code from the second screen!
+> 
+> *Alternatively:* You can run `npm start` on your PC first, scan the QR code with your phone to log in, and then copy the generated `auth_info_baileys` folder into your phone's Termux. Once authenticated, it does not need to be scanned again!
+
+---
+
+## Part 5: Running 24/7 in the Background
+
+To keep the agent running even if you accidentally close the Termux app:
+
+1. Install `pm2` (lightweight process manager):
+   ```bash
+   npm install -g pm2
+   ```
+2. Start the agent with pm2:
+   ```bash
+   pm2 start index.js --name "wa-agent"
+   ```
+3. To view live logs:
+   ```bash
+   pm2 logs wa-agent
+   ```
+4. To stop the agent:
+   ```bash
+   pm2 stop wa-agent
+   ```

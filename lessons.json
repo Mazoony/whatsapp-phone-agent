@@ -1,0 +1,49 @@
+{
+  "grade_3_secondary": {
+    "name": "الصف الثالث ثانوي",
+    "keywords": [
+      "تالتة ثانوي",
+      "ثالث ثانوي",
+      "ثالثة ثانوي",
+      "3 ثانوي",
+      "تالتة",
+      "ثالثة",
+      "شهادة ثانوية",
+      "الشهادة السودانية",
+      "الشهادة",
+      "ادبي",
+      "أدبي",
+      "علمي",
+      "grade 3",
+      "grade 3 secondary"
+    ],
+    "lessons": [
+      {
+        "id": "lesson_1",
+        "title": "الحصة الأولى: مراجعة القواعد والأزمنة (Grammar & Tenses)",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_1.mp4",
+        "caption": "🎬 فيديو الحصة الأولى - الصف الثالث ثانوي | مستر مازن (eShool)",
+        "introMessage": "يا هلا بيك يا بطل! ما دام إنت في تالتة ثانوي، دي الحصة الأولى الأساسية مخصصة ليك لمراجعة القواعد والأزمنة. برسل ليك الفيديو مع التمرين التابع ليه هسي 👇",
+        "taskMessage": "📝 *تمرين الحصة الأولى (Task 1):*\n\nبعد ما تحضر الفيديو بتركيز شديد، حل التمارين دي ورسل لي إجاباتك هنا عشان أراجعها وأصححها ليك طوالي:\n\n1️⃣ *Choose the correct answer:*\n• She (live / lives / has lived) in Sudan since 2020.\n• By next month, we (finish / will finish) the first unit.\n\n2️⃣ *Correct the verb in brackets:*\n• While I was studying, my friend (arrive).\n• If you study hard, you (get) 90+ in English insha'Allah.\n\n✍️ *رسل لي إجاباتك هنا في الواتساب، وموفق يا رب!*",
+        "answerKey": [
+          "1.1: has lived (وجود since 2020 يدل على المضارع التام Present Perfect)",
+          "1.2: will finish (وجود By next month يدل على المستقبل Simple Future)",
+          "2.1: arrived (حدث قاطع أثناء الماضي المستمر: While was studying -> arrived)",
+          "2.2: will get (الحالة الشرطية الأولى: If + present simple -> will + inf)"
+        ]
+      },
+      {
+        "id": "lesson_2",
+        "title": "الحصة الثانية: قاعدة أدوات الربط والشرط المتقدم (Conditionals & Connectors)",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_2.mp4",
+        "caption": "🎬 فيديو الحصة الثانية - الصف الثالث ثانوي | مستر مازن (eShool)",
+        "introMessage": "ما شاء الله تبارك الله عليك يا بطل! 🔥 بما إنك أتقنت الحصة الأولى وحليت تمرينها بنجاح، دي الحصة الثانية ليك لمتابعة التميز في الشهادة الثانوية هسي 👇",
+        "taskMessage": "📝 *تمرين الحصة الثانية (Task 2):*\n\n1️⃣ *Join the sentences using (Although):*\n• He was tired. He completed his homework.\n\n2️⃣ *Complete the third conditional sentence:*\n• If she had woken up early, she (not miss) the bus.\n\n✍️ *رسل لي إجاباتك هنا عشان أصححها ليك يا بطل!*",
+        "answerKey": [
+          "1: Although he was tired, he completed his homework.",
+          "2: would not have missed / wouldn't have missed"
+        ]
+      }
+    ]
+  }
+}
