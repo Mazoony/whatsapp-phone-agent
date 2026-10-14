@@ -115,6 +115,57 @@ Draft a clear, friendly, and concise response to the client.
 }
 
 /**
+ * Draft a personal, history-aware check-in for a student who has opted in.
+ * @param {string} jid Contact ID
+ * @param {string} contactName Contact display name
+ * @param {boolean} includeOptOutNote Whether this is the first campaign message
+ * @returns {Promise<string>} The generated follow-up message
+ */
+export async function generateStudentFollowUp(jid, contactName, includeOptOutNote = false) {
+  const client = getGenAI();
+  const pastDialogue = historyManager.getDialogueForAgent(jid, contactName);
+  const optOutInstruction = includeOptOutNote
+    ? '- End with a brief, clear note that they can reply "إيقاف" if they do not want future follow-ups.'
+    : '';
+  const prompt = `
+=== STUDENT CHAT HISTORY ===
+${pastDialogue}
+
+=== YOUR TASK ===
+Write one short, warm WhatsApp check-in in natural Sudanese Arabic from Mr. Mazen to this student.
+- Use the history of THIS chat only. If it contains a past English-learning difficulty, exam result, goal, lesson, or question, refer to that detail naturally.
+- If there is no useful personal detail, write a simple friendly check-in about how the student's English study is going; do not invent facts.
+- Ask one thoughtful question that continues the conversation. Do not repeat a question already asked in the recent chat.
+- Keep it personal and supportive, not a generic advertisement or payment reminder.
+- Output only the message to send, with no labels or explanation.
+${optOutInstruction}
+`;
+
+  let lastError = null;
+  for (const modelName of MODELS) {
+    try {
+      const model = client.getGenerativeModel({
+        model: modelName,
+        systemInstruction: config.getSystemPrompt(),
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 250
+        }
+      });
+
+      const result = await model.generateContent(prompt);
+      const replyText = result.response.text()?.trim();
+      if (replyText) return replyText;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Follow-up AI Warning] Model ${modelName} failed (${err.message.substring(0, 80)}). Trying fallback...`);
+    }
+  }
+
+  throw lastError || new Error('Failed to generate a student follow-up.');
+}
+
+/**
  * Automatically learns from answers given by the teacher (Mr. Mazen) on WhatsApp.
  * Saves new knowledge to knowledge/learned_from_chats.txt.
  */
@@ -154,4 +205,3 @@ Do not output anything else.
     console.warn('[Auto-Learn] Background learning error:', err.message);
   }
 }
-

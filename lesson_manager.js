@@ -92,6 +92,19 @@ class LessonManager {
     return this.progress[jid] || null;
   }
 
+  setStudentGrade(jid, gradeKey) {
+    if (!this.progress[jid]) {
+      this.progress[jid] = {
+        grade: gradeKey,
+        currentLessonIndex: 0,
+        status: 'consulting'
+      };
+    } else {
+      this.progress[jid].grade = gradeKey;
+    }
+    this.saveProgress();
+  }
+
   /**
    * Check if student has an active lesson they need to submit homework for
    */

@@ -87,8 +87,15 @@ TYPING_DELAY_MS=3000
 ALLOWED_NUMBERS=all
 BLOCKED_NUMBERS=
 IGNORE_GROUPS=true
+FOLLOWUPS_ENABLED=true
+FOLLOWUP_MAX_CONTACTS=700
+FOLLOWUP_INTERVAL_HOURS=72
+FOLLOWUP_SEND_DELAY_SECONDS=30
+FOLLOWUP_START_DELAY_SECONDS=60
 ```
 *(Press `CTRL + O`, then `ENTER` to save, and `CTRL + X` to exit `nano`).*
+
+When WhatsApp connects and its saved chat history is available, the agent starts a personalized follow-up campaign for up to 700 eligible one-to-one chats whose contact names contain "Es". It uses each chat's own history, waits 30 seconds between sends, and repeats the same cohort 72 hours after a campaign completes. Students can opt out by replying `إيقاف`, `stop`, or `unsubscribe`. To disable campaigns, set `FOLLOWUPS_ENABLED=false` in `.env` and restart the agent.
 
 ---
 

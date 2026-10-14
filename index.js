@@ -10,6 +10,7 @@ import { config } from './config.js';
 import { historyManager } from './history.js';
 import { generateClientResponse, learnFromTeacherReply } from './ai.js';
 import { lessonManager } from './lesson_manager.js';
+import { followUpManager, isFollowUpOptOutRequest } from './followup_manager.js';
 
 // Debounce queue for client messages: Map<jid, { timer: NodeJS.Timeout, texts: string[], pushName: string }>
 const debounceMap = new Map();
@@ -70,6 +71,7 @@ async function startAgent() {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
+      followUpManager.stop(sock);
       console.log(`\n[Connection] Disconnected. Reason: ${lastDisconnect?.error?.message || 'Unknown'}`);
       if (shouldReconnect) {
         console.log('[Connection] Reconnecting in 5 seconds...');
@@ -84,6 +86,7 @@ async function startAgent() {
       console.log(`  Permanent History: Active for ${esList.length} contacts containing "Es"`);
       console.log('  Listening for incoming client messages...');
       console.log('==================================================\n');
+      followUpManager.start(sock);
     }
   });
 
@@ -96,24 +99,26 @@ async function startAgent() {
       }
     }
 
-    if (!messages || !Array.isArray(messages)) return;
-    for (const msg of messages) {
-      const jid = msg.key?.remoteJid;
-      if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
+    if (messages && Array.isArray(messages)) {
+      for (const msg of messages) {
+        const jid = msg.key?.remoteJid;
+        if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
 
-      const text = msg.message?.conversation ||
-                   msg.message?.extendedTextMessage?.text ||
-                   msg.message?.imageMessage?.caption ||
-                   '';
-      if (text) {
-        const role = msg.key.fromMe ? 'agent' : 'client';
-        const timestamp = typeof msg.messageTimestamp === 'number'
-          ? msg.messageTimestamp * 1000
-          : Date.now();
-        const contactName = msg.pushName || '';
-        historyManager.addMessage(jid, role, text, timestamp, contactName);
+        const text = msg.message?.conversation ||
+                     msg.message?.extendedTextMessage?.text ||
+                     msg.message?.imageMessage?.caption ||
+                     '';
+        if (text) {
+          const role = msg.key.fromMe ? 'agent' : 'client';
+          const timestamp = typeof msg.messageTimestamp === 'number'
+            ? msg.messageTimestamp * 1000
+            : Date.now();
+          const contactName = msg.pushName || '';
+          historyManager.addMessage(jid, role, text, timestamp, contactName);
+        }
       }
     }
+    followUpManager.start(sock, 5000);
   });
 
   // Process incoming messages
@@ -163,12 +168,25 @@ async function startAgent() {
 
       const pushName = msg.pushName || senderNumber;
       historyManager.saveContact(jid, pushName);
+      historyManager.addMessage(jid, 'client', text.trim(), undefined, pushName);
+
+      if (isFollowUpOptOutRequest(text)) {
+        const newlyOptedOut = followUpManager.optOut(jid);
+        if (newlyOptedOut) {
+          const acknowledgement = 'تمام، وقفت رسائل المتابعة ليك. لو احتجت أي مساعدة في الإنجليزي، رسل لي في أي وقت.';
+          try {
+            await sock.sendMessage(jid, { text: acknowledgement });
+            historyManager.addMessage(jid, 'agent', acknowledgement);
+          } catch (err) {
+            console.error(`[Follow-up] Could not send opt-out confirmation to ${jid}:`, err.message);
+          }
+        }
+        continue;
+      }
+
       const isEs = historyManager.isEsContact(jid, pushName);
       const esTag = isEs ? ' [⭐ Es Contact - Permanent History]' : '';
       console.log(`[Incoming] ${pushName} (${senderNumber})${esTag}: "${text.trim()}"`);
-
-      // Store in conversation history
-      historyManager.addMessage(jid, 'client', text.trim(), undefined, pushName);
 
       // 6. Handle Debouncing (aggregate rapid bursts into a single reply)
       if (debounceMap.has(jid)) {
@@ -199,13 +217,19 @@ async function startAgent() {
             }
           }
 
-          // 2. Check if student mentioned their grade and should receive their first video lesson & task!
+          // 2. Track student educational grade
           const detectedGrade = lessonManager.detectGrade(aggregatedText);
+          if (detectedGrade) {
+            lessonManager.setStudentGrade(jid, detectedGrade);
+          }
+
+          // Check if student is explicitly asking to start/receive their first lesson
+          const wantsToStart = /(ابدأ|ابدا|رسل.*الحصة|عايز.*درس|جاهز|يلا|الحصة الاولى|الحصة الأولى|نبدأ|ابدأ معاي)/i.test(aggregatedText);
           const student = lessonManager.getStudent(jid);
-          if (detectedGrade && !student) {
-            console.log(`[Grade Detected 🎓] ${pushName} is in ${detectedGrade}. Delivering Lesson 1...`);
+          if (wantsToStart && student?.grade && student.status === 'consulting') {
+            console.log(`[Lesson Requested 🎓] ${pushName} is ready for ${student.grade}. Delivering Lesson 1...`);
             await sock.sendPresenceUpdate('composing', jid);
-            await lessonManager.deliverLesson(sock, jid, detectedGrade, 0);
+            await lessonManager.deliverLesson(sock, jid, student.grade, 0);
             await sock.sendPresenceUpdate('paused', jid);
             return;
           }
