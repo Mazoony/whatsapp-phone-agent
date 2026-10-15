@@ -20,7 +20,7 @@ const MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flas
  * @param {string} studentName The student's name
  * @returns {Promise<{ isTaskSubmission: boolean, allCorrect: boolean, feedback: string }>}
  */
-export async function evaluateStudentTask(lesson, studentSubmission, studentName = 'يا بطل') {
+export async function evaluateStudentTask(lesson, studentSubmission, studentName = 'الطالب') {
   if (!studentSubmission || studentSubmission.trim().length < 2) {
     return { isTaskSubmission: false, allCorrect: false, feedback: '' };
   }
@@ -58,7 +58,7 @@ ${JSON.stringify(lesson.answerKey, null, 2)}
      * Praise the parts they got right enthusiastically (ما شاء الله عليك، شغلك ممتاز).
      * For the incorrect questions, do NOT give away the final answer! Instead, point out which question was wrong and give a gentle hint in Sudanese Arabic (e.g. "ركز في زمن الجملة", "شوف الكلمة الدالة"), and kindly ask them to reattempt and send their answer again so they can move to the next lesson.
    - If allCorrect is true:
-     * Celebrate their full success enthusiastically (الله أكبر عليك يا بطل! إجاباتك كلها صحيحة 100% وكفيت ووفيت).
+     * Celebrate their full success warmly without childish nicknames (ما شاء الله، إجاباتك كلها صحيحة 100% وكفيت ووفيت).
      * Tell them they are ready for the next lesson and it is being sent to them right now!
 
 === OUTPUT FORMAT ===

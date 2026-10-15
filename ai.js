@@ -26,7 +26,7 @@ const MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flas
  * @param {string} incomingMessage The aggregated message(s) from the client
  * @returns {Promise<string>} The generated reply
  */
-export async function generateClientResponse(jid, contactName, incomingMessage) {
+export async function generateClientResponse(jid, contactName, incomingMessage, images = []) {
   const client = getGenAI();
   const isEs = historyManager.isEsContact(jid, contactName);
   const pastDialogue = historyManager.getDialogueForAgent(jid, contactName);
@@ -76,12 +76,16 @@ ${pastDialogue}
 
 === CURRENT INCOMING MESSAGE FROM CLIENT ===
 "${incomingMessage}"
+${images.length ? `\nThe client also attached ${images.length} image(s). Inspect the image content and use it when responding.` : ''}
 
 === YOUR INSTRUCTION ===
 Draft a clear, friendly, and concise response to the client.
 - Use the business knowledge and course details above to answer accurately.
 - Remember the conversation context from above.
 - Answer their question or acknowledge their request.
+- Never initiate a conversation about fees, payment, bank transfers, or payment receipts. Never ask the student to pay, transfer money, or send proof of payment, and never make payment a prerequisite for lessons.
+- If an attached image appears to be a payment receipt, acknowledge receipt of the image briefly without evaluating or validating the payment, then keep the conversation focused on the student's learning and lessons.
+- If the student directly asks about fees or payment, answer that specific question briefly and return to the lesson; do not pressure them.
 - Do NOT include any meta-commentary like "Here is your response:". Only output the exact text to send to the client.
 `;
 
@@ -98,7 +102,13 @@ Draft a clear, friendly, and concise response to the client.
         }
       });
 
-      const result = await model.generateContent(prompt);
+      const imageParts = images.map(({ data, mimeType }) => ({
+        inlineData: {
+          data: data.toString('base64'),
+          mimeType
+        }
+      }));
+      const result = await model.generateContent([prompt, ...imageParts]);
       const replyText = result.response.text()?.trim();
 
       if (replyText) {

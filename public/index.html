@@ -606,7 +606,7 @@
         typingRow.style.display = 'none';
 
         if (data.lessonDelivered) {
-          addMessage('agent', data.introMessage || 'يا هلا بيك يا بطل! ده فيديو الحصة:', data.lessonDelivered);
+          addMessage('agent', data.introMessage || 'يا هلا بيك! ده فيديو الحصة:', data.lessonDelivered);
           if (data.taskMessage) {
             setTimeout(() => {
               addMessage('agent', data.taskMessage);
@@ -617,7 +617,7 @@
         }
       } catch (err) {
         typingRow.style.display = 'none';
-        addMessage('agent', 'عذراً يا بطل، حصل خطأ في الاتصال بالخادم. اتأكد من تشغيل web_chat.js');
+        addMessage('agent', 'حصل خطأ في الاتصال بالخادم. اتأكد من تشغيل web_chat.js');
       }
     }
 

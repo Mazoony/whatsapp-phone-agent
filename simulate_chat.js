@@ -59,12 +59,18 @@ function promptUser() {
         }
       }
 
-      // 3. Check if grade was mentioned for first lesson delivery
+      // 3. If the student explains their English issue, start the first lesson immediately
       const detectedGrade = lessonManager.detectGrade(text);
       const student = lessonManager.getStudent(simJid);
-      if (detectedGrade && !student) {
-        console.log(`\n🎓 [تم اكتشاف المرحلة: ${detectedGrade}]`);
-        await lessonManager.deliverLesson(mockSock, simJid, detectedGrade, 0);
+      const studentStruggleSignals = /(ضعيف|خايف|مشكل|صعبة|قواعد|أزمنة|grammar|vocabulary|words|reading|writing|speaking|listening|سجل|درجة|درجه|max|grade|المرحلة|إنجليزي|انجليزي)/i.test(text);
+      const shouldStartImmediately = (!student && (detectedGrade || studentStruggleSignals)) ||
+        (student?.status === 'consulting' && (detectedGrade || studentStruggleSignals));
+
+      if (shouldStartImmediately) {
+        const gradeKey = detectedGrade || Object.keys(lessonManager.lessonsConfig)[0] || 'grade_3_secondary';
+        lessonManager.setStudentGrade(simJid, gradeKey);
+        console.log(`\n🎓 [تم بدء الحصة الأولى تلقائياً: ${gradeKey}]`);
+        await lessonManager.deliverLesson(mockSock, simJid, gradeKey, 0);
         return promptUser();
       }
 

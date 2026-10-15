@@ -1,7 +1,9 @@
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  downloadMediaMessage,
+  normalizeMessageContent
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
@@ -9,11 +11,12 @@ import path from 'path';
 import { config } from './config.js';
 import { historyManager } from './history.js';
 import { generateClientResponse, learnFromTeacherReply } from './ai.js';
-import { lessonManager } from './lesson_manager.js';
+import { lessonManager, reportVideoUploadProgress } from './lesson_manager.js';
 import { followUpManager, isFollowUpOptOutRequest } from './followup_manager.js';
 
-// Debounce queue for client messages: Map<jid, { timer: NodeJS.Timeout, texts: string[], pushName: string }>
+// Debounce queue for client messages: Map<jid, { timer: NodeJS.Timeout, texts: string[], images: Array<{ data: Buffer, mimeType: string }>, pushName: string }>
 const debounceMap = new Map();
+const MAX_INCOMING_IMAGE_BYTES = 10 * 1024 * 1024;
 
 async function startAgent() {
   console.log('--------------------------------------------------');
@@ -28,13 +31,17 @@ async function startAgent() {
 
   console.log(`Using WhatsApp Web v${version.join('.')}, isLatest: ${isLatest}`);
 
+  const logger = pino({ level: 'silent' });
   const sock = makeWASocket({
     version,
-    logger: pino({ level: 'silent' }), // Suppress internal verbose logs for a clean terminal on mobile
+    logger, // Suppress internal verbose logs for a clean terminal on mobile
     printQRInTerminal: false,
     auth: state,
     generateHighQualityLinkPreview: true,
-    syncFullHistory: true // Enable full history sync from phone
+    syncFullHistory: true, // Enable full history sync from phone
+    options: {
+      onUploadProgress: reportVideoUploadProgress
+    }
   });
 
   // Save auth state when credentials change
@@ -158,17 +165,44 @@ async function startAgent() {
         continue;
       }
 
-      // 5. Extract text content
-      const text = msg.message.conversation ||
-                   msg.message.extendedTextMessage?.text ||
-                   msg.message.imageMessage?.caption ||
-                   '';
+      // 5. Extract text and photo content, including images without captions.
+      const messageContent = normalizeMessageContent(msg.message);
+      const imageMessage = messageContent?.imageMessage;
+      const text = messageContent?.conversation ||
+                   messageContent?.extendedTextMessage?.text ||
+                   imageMessage?.caption ||
+                   (imageMessage ? 'أرسل صورة' : '');
 
       if (!text.trim()) continue;
 
       const pushName = msg.pushName || senderNumber;
       historyManager.saveContact(jid, pushName);
       historyManager.addMessage(jid, 'client', text.trim(), undefined, pushName);
+
+      let incomingImage = null;
+      if (imageMessage) {
+        try {
+          const imageBuffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger, reuploadRequest: sock.updateMediaMessage }
+          );
+          if (imageBuffer.length > MAX_INCOMING_IMAGE_BYTES) {
+            throw new Error('Incoming image exceeds the 10 MB limit');
+          }
+          incomingImage = {
+            data: imageBuffer,
+            mimeType: imageMessage.mimetype || 'image/jpeg'
+          };
+        } catch (err) {
+          console.error(`[Image] Could not download image from ${pushName}:`, err.message);
+          const reply = 'وصلتني الصورة، لكن ما قدرت أفتحها هسي. ممكن ترسلها مرة تانية كصورة واضحة؟';
+          await sock.sendMessage(jid, { text: reply });
+          historyManager.addMessage(jid, 'agent', reply);
+          continue;
+        }
+      }
 
       if (isFollowUpOptOutRequest(text)) {
         const newlyOptedOut = followUpManager.optOut(jid);
@@ -193,10 +227,12 @@ async function startAgent() {
         const entry = debounceMap.get(jid);
         clearTimeout(entry.timer);
         entry.texts.push(text.trim());
+        if (incomingImage) entry.images.push(incomingImage);
       } else {
         debounceMap.set(jid, {
           pushName,
           texts: [text.trim()],
+          images: incomingImage ? [incomingImage] : [],
           timer: null
         });
       }
@@ -208,7 +244,7 @@ async function startAgent() {
 
         try {
           // 1. Check if student has an active lesson and is submitting their homework/task!
-          if (lessonManager.hasActiveLesson(jid)) {
+          if (lessonManager.hasActiveLesson(jid) && currentEntry.images.length === 0) {
             await sock.sendPresenceUpdate('composing', jid);
             const isHandled = await lessonManager.handleTaskSubmission(sock, jid, aggregatedText, pushName);
             await sock.sendPresenceUpdate('paused', jid);
@@ -217,19 +253,19 @@ async function startAgent() {
             }
           }
 
-          // 2. Track student educational grade
+          // 2. If the student has described their level/problem, start lesson 1 immediately
           const detectedGrade = lessonManager.detectGrade(aggregatedText);
-          if (detectedGrade) {
-            lessonManager.setStudentGrade(jid, detectedGrade);
-          }
-
-          // Check if student is explicitly asking to start/receive their first lesson
-          const wantsToStart = /(ابدأ|ابدا|رسل.*الحصة|عايز.*درس|جاهز|يلا|الحصة الاولى|الحصة الأولى|نبدأ|ابدأ معاي)/i.test(aggregatedText);
           const student = lessonManager.getStudent(jid);
-          if (wantsToStart && student?.grade && student.status === 'consulting') {
-            console.log(`[Lesson Requested 🎓] ${pushName} is ready for ${student.grade}. Delivering Lesson 1...`);
+          const studentStruggleSignals = /(ضعيف|خايف|مشكل|صعبة|قواعد|أزمنة|grammar|vocabulary|words|reading|writing|speaking|listening|سجل|درجة|درجه|max|grade|المرحلة|إنجليزي|انجليزي)/i.test(aggregatedText);
+          const shouldStartImmediately = (!student && (detectedGrade || studentStruggleSignals)) ||
+            (student?.status === 'consulting' && (detectedGrade || studentStruggleSignals));
+
+          if (currentEntry.images.length === 0 && shouldStartImmediately) {
+            const gradeKey = detectedGrade || Object.keys(lessonManager.lessonsConfig)[0] || 'grade_3_secondary';
+            lessonManager.setStudentGrade(jid, gradeKey);
+            console.log(`[Lesson Auto-Start 🎓] ${pushName} is ready for ${gradeKey}. Delivering Lesson 1 immediately...`);
             await sock.sendPresenceUpdate('composing', jid);
-            await lessonManager.deliverLesson(sock, jid, student.grade, 0);
+            await lessonManager.deliverLesson(sock, jid, gradeKey, 0);
             await sock.sendPresenceUpdate('paused', jid);
             return;
           }
@@ -239,7 +275,7 @@ async function startAgent() {
           await sock.sendPresenceUpdate('composing', jid);
 
           // Generate response with Gemini
-          const reply = await generateClientResponse(jid, pushName, aggregatedText);
+          const reply = await generateClientResponse(jid, pushName, aggregatedText, currentEntry.images);
 
           // Wait typing delay to simulate realistic human speed
           if (config.typingDelayMs > 0) {

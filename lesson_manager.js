@@ -5,6 +5,49 @@ import { evaluateStudentTask } from './task_evaluator.js';
 const DATA_DIR = path.resolve('data');
 const PROGRESS_FILE = path.join(DATA_DIR, 'student_progress.json');
 const LESSONS_FILE = path.resolve('lessons.json');
+let activeVideoUpload = null;
+let videoUploadQueue = Promise.resolve();
+
+function formatBytes(bytes) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderVideoUploadProgress(loaded, total) {
+  if (!activeVideoUpload || !process.stdout.isTTY) return;
+
+  const ratio = total > 0 ? Math.min(loaded / total, 1) : 0;
+  const percent = Math.floor(ratio * 100);
+  const width = 24;
+  const filled = Math.floor(ratio * width);
+  const bar = `${'='.repeat(filled)}${' '.repeat(width - filled)}`;
+  const totalText = total > 0 ? formatBytes(total) : formatBytes(activeVideoUpload.fileSize);
+
+  process.stdout.write(
+    `\r[Video upload] ${percent.toString().padStart(3)}% [${bar}] ${formatBytes(loaded)} / ${totalText}`
+  );
+}
+
+export function reportVideoUploadProgress(event) {
+  if (!activeVideoUpload) return;
+
+  const loaded = Math.min(event.loaded || 0, activeVideoUpload.fileSize);
+  const total = event.total || activeVideoUpload.fileSize;
+  renderVideoUploadProgress(loaded, total);
+}
+
+function finishVideoUpload(success) {
+  if (!activeVideoUpload) return;
+
+  const { fileSize } = activeVideoUpload;
+  if (process.stdout.isTTY) {
+    if (success) renderVideoUploadProgress(fileSize, fileSize);
+    process.stdout.write(`\r[Video upload] ${success ? 'Complete' : 'Failed'}: ${formatBytes(fileSize)}${' '.repeat(48)}\n`);
+  } else {
+    console.log(`[LessonManager] Video upload ${success ? 'complete' : 'failed'} (${formatBytes(fileSize)}).`);
+  }
+
+  activeVideoUpload = null;
+}
 
 class LessonManager {
   constructor() {
@@ -147,11 +190,29 @@ class LessonManager {
     // 2. Send the Video itself if the file exists
     if (fs.existsSync(videoAbsolutePath)) {
       console.log(`[LessonManager] Uploading video file: ${videoAbsolutePath}`);
-      await sock.sendMessage(jid, {
-        video: fs.readFileSync(videoAbsolutePath),
-        caption: lesson.caption || lesson.title,
-        mimetype: 'video/mp4'
+      const video = fs.readFileSync(videoAbsolutePath);
+      const previousUpload = videoUploadQueue;
+      let releaseUpload;
+      videoUploadQueue = new Promise(resolve => {
+        releaseUpload = resolve;
       });
+      await previousUpload;
+
+      activeVideoUpload = { fileSize: video.length };
+      renderVideoUploadProgress(0, video.length);
+      try {
+        await sock.sendMessage(jid, {
+          video,
+          caption: lesson.caption || lesson.title,
+          mimetype: 'video/mp4'
+        });
+        finishVideoUpload(true);
+      } catch (err) {
+        finishVideoUpload(false);
+        throw err;
+      } finally {
+        releaseUpload();
+      }
       await new Promise(r => setTimeout(r, 2500));
     } else {
       console.warn(`[LessonManager ⚠️] Video file not found at: ${videoAbsolutePath}`);

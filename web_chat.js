@@ -108,14 +108,20 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // B. Check if grade was mentioned
+      // B. If the student describes their English problem, start the first lesson immediately
       const detectedGrade = lessonManager.detectGrade(text);
       const student = lessonManager.getStudent(WEB_STUDENT_JID);
+      const studentStruggleSignals = /(ضعيف|خايف|مشكل|صعبة|قواعد|أزمنة|grammar|vocabulary|words|reading|writing|speaking|listening|سجل|درجة|درجه|max|grade|المرحلة|إنجليزي|انجليزي)/i.test(text);
+      const shouldStartImmediately = (!student && (detectedGrade || studentStruggleSignals)) ||
+        (student?.status === 'consulting' && (detectedGrade || studentStruggleSignals));
 
-      if (detectedGrade && !student) {
+      if (shouldStartImmediately) {
+        const gradeKey = detectedGrade || Object.keys(lessonManager.lessonsConfig)[0] || 'grade_3_secondary';
+        lessonManager.setStudentGrade(WEB_STUDENT_JID, gradeKey);
+
         let introText = '';
         let taskText = '';
-        const gradeData = lessonManager.lessonsConfig[detectedGrade];
+        const gradeData = lessonManager.lessonsConfig[gradeKey];
         const lesson = gradeData?.lessons?.[0];
 
         const mockSock = {
@@ -127,7 +133,7 @@ const server = http.createServer(async (req, res) => {
           }
         };
 
-        await lessonManager.deliverLesson(mockSock, WEB_STUDENT_JID, detectedGrade, 0);
+        await lessonManager.deliverLesson(mockSock, WEB_STUDENT_JID, gradeKey, 0);
 
         if (introText) historyManager.addMessage(WEB_STUDENT_JID, 'agent', introText, Date.now());
         if (taskText) historyManager.addMessage(WEB_STUDENT_JID, 'agent', taskText, Date.now() + 500);
