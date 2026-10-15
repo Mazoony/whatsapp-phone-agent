@@ -55,6 +55,13 @@ export function isFollowUpOptOutRequest(text) {
   return OPT_OUT_PATTERN.test(text || '');
 }
 
+export function mergeOptedOutJids(optedOutJids, ...jids) {
+  return [...new Set([
+    ...optedOutJids,
+    ...jids.filter(jid => typeof jid === 'string' && jid)
+  ])];
+}
+
 export function getEligibleFollowUpContacts(
   contacts,
   history,
@@ -114,11 +121,13 @@ class FollowUpManager {
     fs.writeFileSync(STATE_FILE, JSON.stringify(this.state, null, 2), 'utf-8');
   }
 
-  optOut(jid) {
-    if (this.state.optedOutJids.includes(jid)) return false;
-    this.state.optedOutJids.push(jid);
+  optOut(...jids) {
+    const optedOutJids = mergeOptedOutJids(this.state.optedOutJids, ...jids);
+    if (optedOutJids.length === this.state.optedOutJids.length) return false;
+    const newJids = optedOutJids.filter(jid => !this.state.optedOutJids.includes(jid));
+    this.state.optedOutJids = optedOutJids;
     this.saveState();
-    console.log(`[Follow-up] ${jid} opted out of future follow-ups.`);
+    console.log(`[Follow-up] ${newJids.join(', ')} opted out of future messages.`);
     return true;
   }
 

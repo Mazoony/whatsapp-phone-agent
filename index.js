@@ -15,12 +15,66 @@ import { historyManager } from './history.js';
 import { generateClientResponse, learnFromTeacherReply } from './ai.js';
 import { lessonManager, reportVideoUploadProgress } from './lesson_manager.js';
 import { followUpManager, isFollowUpOptOutRequest } from './followup_manager.js';
+import { broadcastManager } from './broadcast_manager.js';
+import {
+  clearAgentQr,
+  readLastAgentAccount,
+  readLastConnectedAt,
+  writeAgentQr,
+  writeAgentStatus
+} from './agent_status.js';
+import { installAgentLogCapture } from './agent_runtime.js';
 
 // Debounce queue for client messages: Map<jid, { timer: NodeJS.Timeout, texts: string[], images: Array<{ data: Buffer, mimeType: string }>, pushName: string }>
+installAgentLogCapture();
 const debounceMap = new Map();
 const MAX_INCOMING_IMAGE_BYTES = 10 * 1024 * 1024;
+let agentConnectionState = 'starting';
+let lastConnectedAt;
+let agentAccount = null;
+let agentHeartbeatTimer = null;
+
+try {
+  lastConnectedAt = readLastConnectedAt();
+  agentAccount = readLastAgentAccount();
+} catch (error) {
+  lastConnectedAt = null;
+  agentAccount = null;
+  console.error('[Agent Status] Could not read previous WhatsApp connection time:', error.message);
+}
+
+function getWhatsAppAccount(me) {
+  if (!me || typeof me !== 'object') return null;
+  const phoneJid = getPhoneJid(me.jid, me.id);
+  const phoneNumber = phoneJid?.slice(0, -'@s.whatsapp.net'.length).split(':')[0];
+  if (!phoneNumber || !/^\d+$/.test(phoneNumber)) return null;
+  const name = typeof me.name === 'string' && me.name !== '~' ? me.name.trim() : '';
+  return { name, phoneNumber };
+}
+
+function updateAgentStatus(connectionState = agentConnectionState, account = agentAccount) {
+  const newlyConnected = connectionState === 'connected' && agentConnectionState !== 'connected';
+  agentConnectionState = connectionState;
+  if (account) agentAccount = account;
+  if (newlyConnected) lastConnectedAt = new Date().toISOString();
+  try {
+    writeAgentStatus(agentConnectionState, lastConnectedAt, agentAccount);
+  } catch (error) {
+    console.error('[Agent Status] Could not save WhatsApp connection status:', error.message);
+  }
+}
 
 async function startAgent() {
+  try {
+    clearAgentQr();
+  } catch (error) {
+    console.error('[Agent Status] Could not clear old WhatsApp pairing QR:', error.message);
+  }
+  updateAgentStatus('connecting');
+  if (!agentHeartbeatTimer) {
+    agentHeartbeatTimer = setInterval(() => updateAgentStatus(), 10_000);
+    agentHeartbeatTimer.unref?.();
+  }
   console.log('--------------------------------------------------');
   console.log(`Starting WhatsApp Autonomous Agent on Android`);
   console.log(`Owner: ${config.ownerName} | Business: ${config.businessName}`);
@@ -29,6 +83,7 @@ async function startAgent() {
 
   const authDir = path.resolve('auth_info_baileys');
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  updateAgentStatus('connecting', getWhatsAppAccount(state.creds.me));
   const { version, isLatest } = await fetchLatestBaileysVersion();
 
   console.log(`Using WhatsApp Web v${version.join('.')}, isLatest: ${isLatest}`);
@@ -89,6 +144,11 @@ async function startAgent() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
+      try {
+        writeAgentQr(qr);
+      } catch (error) {
+        console.error('[Agent Status] Could not save WhatsApp pairing QR:', error.message);
+      }
       console.log('\n[ACTION REQUIRED] Scan this QR code on your phone:');
       console.log('Open WhatsApp > Settings (or 3 dots) > Linked Devices > Link a Device\n');
       qrcode.generate(qr, { small: true });
@@ -99,6 +159,13 @@ async function startAgent() {
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
       followUpManager.stop(sock);
+      broadcastManager.stop(sock);
+      try {
+        clearAgentQr();
+      } catch (error) {
+        console.error('[Agent Status] Could not clear WhatsApp pairing QR:', error.message);
+      }
+      updateAgentStatus('disconnected');
       console.log(`\n[Connection] Disconnected. Reason: ${lastDisconnect?.error?.message || 'Unknown'}`);
       if (shouldReconnect) {
         console.log('[Connection] Reconnecting in 5 seconds...');
@@ -107,6 +174,12 @@ async function startAgent() {
         console.log('[Connection] Session logged out. Delete "auth_info_baileys" folder and restart to re-link.');
       }
     } else if (connection === 'open') {
+      try {
+        clearAgentQr();
+      } catch (error) {
+        console.error('[Agent Status] Could not clear WhatsApp pairing QR:', error.message);
+      }
+      updateAgentStatus('connected', getWhatsAppAccount(state.creds.me));
       const esList = historyManager.getEsContactsList();
       console.log('\n==================================================');
       console.log('  [SUCCESS] WhatsApp Agent is CONNECTED & ACTIVE');
@@ -114,6 +187,7 @@ async function startAgent() {
       console.log('  Listening for incoming client messages...');
       console.log('==================================================\n');
       followUpManager.start(sock);
+      broadcastManager.start(sock);
     }
   });
 
@@ -210,7 +284,13 @@ async function startAgent() {
       historyManager.saveContact(jid, pushName);
       historyManager.addMessage(jid, 'client', text.trim(), undefined, pushName);
 
+      if (historyManager.isOwnerBlockedContact(jid, alternateJid)) {
+        console.log(`[Ignored - Owner Block] ${pushName} (${senderNumber})`);
+        continue;
+      }
+
       const isEs = historyManager.isEsContact(jid, pushName);
+      const isOwnerAllowed = historyManager.isOwnerAllowedContact(jid, alternateJid);
       const isSavedContact = historyManager.isSavedContact(jid, alternateJid);
       if (!isSavedContact && phoneJid && !historyManager.hasContactSavePrompted(jid, alternateJid)) {
         const contactName = `Es - ${pushName || phoneJid.split('@')[0]}`;
@@ -225,12 +305,14 @@ async function startAgent() {
         }
       }
 
-      if (!isEs && isSavedContact) {
+      if (!isEs && isSavedContact && !isOwnerAllowed) {
         console.log(`[Ignored - Saved Non-Es Contact] ${pushName} (${senderNumber})`);
         continue;
       }
-      if (!isEs) {
+      if (!isEs && !isOwnerAllowed) {
         console.log(`[Enabled - New Unsaved Contact] ${pushName} (${senderNumber})`);
+      } else if (isOwnerAllowed) {
+        console.log(`[Enabled - Owner Allowlist] ${pushName} (${senderNumber})`);
       }
 
       let incomingImage = null;
@@ -259,7 +341,7 @@ async function startAgent() {
       }
 
       if (isFollowUpOptOutRequest(text)) {
-        const newlyOptedOut = followUpManager.optOut(jid);
+        const newlyOptedOut = followUpManager.optOut(jid, alternateJid);
         if (newlyOptedOut) {
           const acknowledgement = 'تمام، وقفت رسائل المتابعة ليك. لو احتجت أي مساعدة في الإنجليزي، رسل لي في أي وقت.';
           try {

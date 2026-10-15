@@ -20,7 +20,7 @@
         "videoFile": "media/lessons/grade_3_secondary/lesson_1.mp4",
         "caption": "🎬 فيديو الحصة الأولى - الصف الثالث ثانوي | مستر مازن (eShool)",
         "introMessage": "يا هلا بيك! الحصة الأولى عن المضارع البسيط في الجملة المثبتة مع المفرد، وحنركز فيها على إضافة s للفعل. برسل ليك الفيديو والتمرين هسي 👇",
-        "taskMessage": "📝 *تمرين الحصة الأولى (Task 1): Present Simple — Affirmative with Singular Subjects*\n\nكمّل كل جملة بالصيغة الصحيحة للفعل الموجود بين القوسين. انتبه: كل الجمل مثبتة، والفاعل مفرد، وكل الأفعال هنا بتاخد *s* فقط.\n\n1. The analyst (interpret) the survey results before presenting them.\n2. A responsible engineer (maintain) the equipment regularly.\n3. The report (reflect) the most recent findings.\n4. The research team (conduct) a detailed investigation.\n5. This device (transmit) data securely to the control center.\n6. The international market (demand) reliable products.\n7. A local journalist (report) important developments accurately.\n8. The consultant (recommend) a practical solution to the problem.\n9. The new policy (permit) students to use the library after school.\n10. The experienced analyst (predict) changes in consumer behavior.\n11. Regular practice (benefit) every language learner.\n12. The manager (confirm) the final schedule with the staff.\n\n✍️ رسل لي إجاباتك مرقّمة من 1 إلى 12 عشان أراجعها ليك.",
+        "taskMessage": "📝 *تمرين الحصة الأولى (Task 1): Present Simple — Affirmative with Singular Subjects*\n\nكمّل كل جملة بكتابة الصيغة الصحيحة للفعل في الفراغ. الفعل الأساسي موجود بين القوسين. انتبه: كل الجمل مثبتة، والفاعل مفرد، وكل الأفعال هنا بتاخد *s* فقط.\n\n1. The analyst __________ (interpret) the survey results before presenting them.\n2. A responsible engineer __________ (maintain) the equipment regularly.\n3. The report __________ (reflect) the most recent findings.\n4. The research team __________ (conduct) a detailed investigation.\n5. This device __________ (transmit) data securely to the control center.\n6. The international market __________ (demand) reliable products.\n7. A local journalist __________ (report) important developments accurately.\n8. The consultant __________ (recommend) a practical solution to the problem.\n9. The new policy __________ (permit) students to use the library after school.\n10. The experienced analyst __________ (predict) changes in consumer behavior.\n11. Regular practice __________ (benefit) every language learner.\n12. The manager __________ (confirm) the final schedule with the staff.\n\n✍️ رسل لي إجاباتك مرقّمة من 1 إلى 12 عشان أراجعها ليك.",
         "answerKey": [
           "1. interprets — A singular subject; add -s.",
           "2. maintains — A singular subject; add -s.",
@@ -46,6 +46,33 @@
         "answerKey": [
           "1: Although he was tired, he completed his homework.",
           "2: would not have missed / wouldn't have missed"
+        ]
+      }
+    ],
+    "standaloneLessons": [
+      {
+        "id": "lesson_5",
+        "title": "الحصة الخامسة: نفي المضارع البسيط باستخدام do not",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_5.mp4",
+        "caption": "🎬 فيديو الحصة الخامسة - الصف الثالث ثانوي | مستر مازن (eShool)",
+        "introMessage": "في الحصة الخامسة حنتمرن على نفي المضارع البسيط باستخدام do not مع I وyou وwe وthey والفاعل الجمع. ضفت ليك كمان مراجعة قصيرة من الحصة الأولى.",
+        "taskMessage": "📝 *تمرين الحصة الخامسة (Task 5): Present Simple Negative with do not*\n\nكمّل الفراغ بالصيغة الصحيحة للفعلين الموجودين بين القوسين. في الأسئلة 1–11 استخدم *do not + الفعل الأساسي* فقط، من غير ما تضيف s للفعل. الأسئلة 12–15 مراجعة للمضارع البسيط المثبت مع الفاعل المفرد من الحصة الأولى.\n\n1. We __________ (not / allocate) funds without proper approval.\n2. The researchers __________ (not / disclose) preliminary findings to the public.\n3. I __________ (not / assume) that the figures are final.\n4. They __________ (not / negotiate) contract terms without legal advice.\n5. You __________ (not / require) prior authorization for this section.\n6. The employees __________ (not / submit) incomplete applications.\n7. We __________ (not / postpone) the inspection without a valid reason.\n8. The analysts __________ (not / identify) a consistent pattern in the data.\n9. I __________ (not / recommend) an untested procedure.\n10. They __________ (not / distribute) confidential documents by email.\n11. You __________ (not / interpret) this clause in isolation.\n\n*مراجعة من الحصة الأولى: المضارع البسيط المثبت مع المفرد*\n12. The analyst __________ (interpret) the survey results carefully.\n13. A responsible engineer __________ (maintain) the equipment regularly.\n14. The new policy __________ (permit) students to use the library.\n15. The manager __________ (confirm) the final schedule.\n\n✍️ رسل لي إجاباتك مرقّمة من 1 إلى 15 عشان أراجعها ليك.",
+        "answerKey": [
+          "1. do not allocate — Use do not with we, followed by the base verb.",
+          "2. do not disclose — Use do not with a plural subject, followed by the base verb.",
+          "3. do not assume — Use do not with I, followed by the base verb.",
+          "4. do not negotiate — Use do not with they, followed by the base verb.",
+          "5. do not require — Use do not with you, followed by the base verb.",
+          "6. do not submit — Employees is a plural subject; use do not and the base verb.",
+          "7. do not postpone — Use do not with we, followed by the base verb.",
+          "8. do not identify — Analysts is a plural subject; use do not and the base verb.",
+          "9. do not recommend — Use do not with I, followed by the base verb.",
+          "10. do not distribute — Use do not with they, followed by the base verb.",
+          "11. do not interpret — Use do not with you, followed by the base verb.",
+          "12. interprets — Review: add -s to the verb with a singular subject.",
+          "13. maintains — Review: add -s to the verb with a singular subject.",
+          "14. permits — Review: add -s to the verb with a singular subject.",
+          "15. confirms — Review: add -s to the verb with a singular subject."
         ]
       }
     ]

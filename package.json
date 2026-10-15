@@ -7,8 +7,9 @@
   "scripts": {
     "start": "node index.js",
     "web": "node web_chat.js",
+    "admin": "node admin_dashboard.js",
     "chat": "node simulate_chat.js",
-    "test": "node test.js && node --test followup_manager.test.js lesson_manager.test.js history.test.js phonebook.test.js humanization.test.js"
+    "test": "node test.js && node --test followup_manager.test.js lesson_manager.test.js history.test.js phonebook.test.js humanization.test.js admin_dashboard.test.js agent_status.test.js agent_runtime.test.js broadcast_utils.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

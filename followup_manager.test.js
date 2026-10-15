@@ -3,6 +3,7 @@ import test from 'node:test';
 import { config } from './config.js';
 import {
   getEligibleFollowUpContacts,
+  mergeOptedOutJids,
   isFollowUpOptOutRequest
 } from './followup_manager.js';
 
@@ -53,6 +54,13 @@ test('recognizes explicit English and Arabic follow-up opt-out requests', () => 
   assert.equal(isFollowUpOptOutRequest('cancel'), true);
   assert.equal(isFollowUpOptOutRequest('كيف حالك اليوم؟'), false);
   assert.equal(isFollowUpOptOutRequest('What does stop mean?'), false);
+});
+
+test('stores all WhatsApp identifiers when a contact opts out', () => {
+  assert.deepEqual(
+    mergeOptedOutJids(['249111111111@lid'], '249111111111@lid', '249111111111@s.whatsapp.net'),
+    ['249111111111@lid', '249111111111@s.whatsapp.net']
+  );
 });
 
 test('limits the initial cohort to the latest 700 eligible chats', () => {

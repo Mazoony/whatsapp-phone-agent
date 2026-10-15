@@ -112,6 +112,32 @@ class ChatHistoryManager {
     this.scheduleSaveContacts();
   }
 
+  isOwnerBlockedContact(...jids) {
+    return jids.some(jid => jid && this.contacts[jid]?.ownerBlocked === true);
+  }
+
+  blockContactForOwner(...jids) {
+    for (const jid of jids.filter(Boolean)) {
+      const contact = this.contacts[jid] || { jid, name: '' };
+      contact.ownerBlocked = true;
+      this.contacts[jid] = contact;
+    }
+    this.scheduleSaveContacts();
+  }
+
+  isOwnerAllowedContact(...jids) {
+    return jids.some(jid => jid && this.contacts[jid]?.ownerAllowed === true);
+  }
+
+  allowContactForOwner(...jids) {
+    for (const jid of jids.filter(Boolean)) {
+      const contact = this.contacts[jid] || { jid, name: '' };
+      contact.ownerAllowed = true;
+      this.contacts[jid] = contact;
+    }
+    this.scheduleSaveContacts();
+  }
+
   /**
    * Check if a contact contains the letters "Es" (in name, pushName, or config)
    * @param {string} jid
