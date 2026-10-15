@@ -86,6 +86,32 @@ class ChatHistoryManager {
     return this.contacts[jid];
   }
 
+  markSavedContact(jid, name = '') {
+    if (!jid) return;
+
+    const contact = this.saveContact(jid, name);
+    contact.savedInAddressBook = true;
+    this.scheduleSaveContacts();
+    return contact;
+  }
+
+  isSavedContact(...jids) {
+    return jids.some(jid => jid && this.contacts[jid]?.savedInAddressBook === true);
+  }
+
+  hasContactSavePrompted(...jids) {
+    return jids.some(jid => jid && this.contacts[jid]?.contactSavePromptedAt);
+  }
+
+  markContactSavePrompted(...jids) {
+    for (const jid of jids.filter(Boolean)) {
+      const contact = this.contacts[jid] || { jid, name: '' };
+      contact.contactSavePromptedAt = new Date().toISOString();
+      this.contacts[jid] = contact;
+    }
+    this.scheduleSaveContacts();
+  }
+
   /**
    * Check if a contact contains the letters "Es" (in name, pushName, or config)
    * @param {string} jid

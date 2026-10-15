@@ -6,30 +6,34 @@
       "ثالث ثانوي",
       "ثالثة ثانوي",
       "3 ثانوي",
-      "تالتة",
-      "ثالثة",
       "شهادة ثانوية",
       "الشهادة السودانية",
-      "الشهادة",
       "ادبي",
       "أدبي",
       "علمي",
-      "grade 3",
       "grade 3 secondary"
     ],
     "lessons": [
       {
         "id": "lesson_1",
-        "title": "الحصة الأولى: مراجعة القواعد والأزمنة (Grammar & Tenses)",
+        "title": "الحصة الأولى: المضارع البسيط المثبت مع المفرد (Present Simple Affirmative)",
         "videoFile": "media/lessons/grade_3_secondary/lesson_1.mp4",
         "caption": "🎬 فيديو الحصة الأولى - الصف الثالث ثانوي | مستر مازن (eShool)",
-        "introMessage": "يا هلا بيك! ما دام إنت في تالتة ثانوي، دي الحصة الأولى الأساسية مخصصة ليك لمراجعة القواعد والأزمنة. برسل ليك الفيديو مع التمرين التابع ليه هسي 👇",
-        "taskMessage": "📝 *تمرين الحصة الأولى (Task 1):*\n\nبعد ما تحضر الفيديو بتركيز شديد، حل التمارين دي ورسل لي إجاباتك هنا عشان أراجعها وأصححها ليك طوالي:\n\n1️⃣ *Choose the correct answer:*\n• She (live / lives / has lived) in Sudan since 2020.\n• By next month, we (finish / will finish) the first unit.\n\n2️⃣ *Correct the verb in brackets:*\n• While I was studying, my friend (arrive).\n• If you study hard, you (get) 90+ in English insha'Allah.\n\n✍️ *رسل لي إجاباتك هنا في الواتساب، وموفق يا رب!*",
+        "introMessage": "يا هلا بيك! الحصة الأولى عن المضارع البسيط في الجملة المثبتة مع المفرد، وحنركز فيها على إضافة s للفعل. برسل ليك الفيديو والتمرين هسي 👇",
+        "taskMessage": "📝 *تمرين الحصة الأولى (Task 1): Present Simple — Affirmative with Singular Subjects*\n\nكمّل كل جملة بالصيغة الصحيحة للفعل الموجود بين القوسين. انتبه: كل الجمل مثبتة، والفاعل مفرد، وكل الأفعال هنا بتاخد *s* فقط.\n\n1. The analyst (interpret) the survey results before presenting them.\n2. A responsible engineer (maintain) the equipment regularly.\n3. The report (reflect) the most recent findings.\n4. The research team (conduct) a detailed investigation.\n5. This device (transmit) data securely to the control center.\n6. The international market (demand) reliable products.\n7. A local journalist (report) important developments accurately.\n8. The consultant (recommend) a practical solution to the problem.\n9. The new policy (permit) students to use the library after school.\n10. The experienced analyst (predict) changes in consumer behavior.\n11. Regular practice (benefit) every language learner.\n12. The manager (confirm) the final schedule with the staff.\n\n✍️ رسل لي إجاباتك مرقّمة من 1 إلى 12 عشان أراجعها ليك.",
         "answerKey": [
-          "1.1: has lived (وجود since 2020 يدل على المضارع التام Present Perfect)",
-          "1.2: will finish (وجود By next month يدل على المستقبل Simple Future)",
-          "2.1: arrived (حدث قاطع أثناء الماضي المستمر: While was studying -> arrived)",
-          "2.2: will get (الحالة الشرطية الأولى: If + present simple -> will + inf)"
+          "1. interprets — A singular subject; add -s.",
+          "2. maintains — A singular subject; add -s.",
+          "3. reflects — A singular subject; add -s.",
+          "4. conducts — A singular subject; add -s.",
+          "5. transmits — A singular subject; add -s.",
+          "6. demands — A singular subject; add -s.",
+          "7. reports — A singular subject; add -s.",
+          "8. recommends — A singular subject; add -s.",
+          "9. permits — A singular subject; add -s.",
+          "10. predicts — A singular subject; add -s.",
+          "11. benefits — A singular subject; add -s.",
+          "12. confirms — A singular subject; add -s."
         ]
       },
       {
@@ -45,5 +49,60 @@
         ]
       }
     ]
+  },
+  "grade_1_primary": {
+    "name": "الصف الأول ابتدائي",
+    "keywords": ["أولى ابتدائي", "الأولى ابتدائي", "اولى ابتدائي", "اول ابتدائي", "الصف الأول ابتدائي", "الصف الاول ابتدائي", "الصف الاول الابتدائي", "١ ابتدائي", "1 ابتدائي", "grade 1 primary"],
+    "lessons": []
+  },
+  "grade_2_primary": {
+    "name": "الصف الثاني ابتدائي",
+    "keywords": ["تانية ابتدائي", "ثانية ابتدائي", "الثانية ابتدائي", "تاني ابتدائي", "الصف الثاني ابتدائي", "الصف التاني ابتدائي", "الصف الثاني الابتدائي", "٢ ابتدائي", "2 ابتدائي", "grade 2 primary"],
+    "lessons": []
+  },
+  "grade_3_primary": {
+    "name": "الصف الثالث ابتدائي",
+    "keywords": ["تالتة ابتدائي", "ثالثة ابتدائي", "الثالثة ابتدائي", "تالت ابتدائي", "الصف الثالث ابتدائي", "الصف التالت ابتدائي", "الصف الثالث الابتدائي", "٣ ابتدائي", "3 ابتدائي", "grade 3 primary"],
+    "lessons": []
+  },
+  "grade_4_primary": {
+    "name": "الصف الرابع ابتدائي",
+    "keywords": ["رابعة ابتدائي", "الرابعة ابتدائي", "رابع ابتدائي", "الصف الرابع ابتدائي", "الصف الرابع الابتدائي", "٤ ابتدائي", "4 ابتدائي", "grade 4 primary"],
+    "lessons": []
+  },
+  "grade_5_primary": {
+    "name": "الصف الخامس ابتدائي",
+    "keywords": ["خامسة ابتدائي", "الخامسة ابتدائي", "خامس ابتدائي", "الصف الخامس ابتدائي", "الصف الخامس الابتدائي", "٥ ابتدائي", "5 ابتدائي", "grade 5 primary"],
+    "lessons": []
+  },
+  "grade_6_primary": {
+    "name": "الصف السادس ابتدائي",
+    "keywords": ["سادسة ابتدائي", "السادسة ابتدائي", "سادس ابتدائي", "الصف السادس ابتدائي", "الصف السادس الابتدائي", "٦ ابتدائي", "6 ابتدائي", "grade 6 primary"],
+    "lessons": []
+  },
+  "grade_1_intermediate": {
+    "name": "الصف الأول متوسط",
+    "keywords": ["أولى متوسط", "الأولى متوسط", "اولى متوسط", "اول متوسط", "الصف الأول متوسط", "الصف الاول متوسط", "الصف الاول المتوسط", "١ متوسط", "1 متوسط", "grade 1 intermediate"],
+    "lessons": []
+  },
+  "grade_2_intermediate": {
+    "name": "الصف الثاني متوسط",
+    "keywords": ["تانية متوسط", "ثانية متوسط", "الثانية متوسط", "تاني متوسط", "الصف الثاني متوسط", "الصف التاني متوسط", "الصف الثاني المتوسط", "٢ متوسط", "2 متوسط", "grade 2 intermediate"],
+    "lessons": []
+  },
+  "grade_3_intermediate": {
+    "name": "الصف الثالث متوسط",
+    "keywords": ["تالتة متوسط", "ثالثة متوسط", "الثالثة متوسط", "تالت متوسط", "الصف الثالث متوسط", "الصف التالت متوسط", "الصف الثالث المتوسط", "٣ متوسط", "3 متوسط", "grade 3 intermediate"],
+    "lessons": []
+  },
+  "grade_1_secondary": {
+    "name": "الصف الأول ثانوي",
+    "keywords": ["أولى ثانوي", "الأولى ثانوي", "اولى ثانوي", "اول ثانوي", "الصف الأول ثانوي", "الصف الاول ثانوي", "الصف الاول الثانوي", "١ ثانوي", "1 ثانوي", "grade 1 secondary"],
+    "lessons": []
+  },
+  "grade_2_secondary": {
+    "name": "الصف الثاني ثانوي",
+    "keywords": ["تانية ثانوي", "ثانية ثانوي", "الثانية ثانوي", "تاني ثانوي", "الصف الثاني ثانوي", "الصف التاني ثانوي", "الصف الثاني الثانوي", "٢ ثانوي", "2 ثانوي", "grade 2 secondary"],
+    "lessons": []
   }
 }

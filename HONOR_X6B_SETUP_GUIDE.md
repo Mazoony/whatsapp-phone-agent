@@ -83,7 +83,7 @@ OWNER_NAME=Your Name
 BUSINESS_NAME=Your Business Name
 BOT_ROLE=Executive Assistant
 DEBOUNCE_SECONDS=6
-TYPING_DELAY_MS=3000
+TYPING_WPM=40
 ALLOWED_NUMBERS=all
 BLOCKED_NUMBERS=
 IGNORE_GROUPS=true
@@ -95,7 +95,15 @@ FOLLOWUP_START_DELAY_SECONDS=60
 ```
 *(Press `CTRL + O`, then `ENTER` to save, and `CTRL + X` to exit `nano`).*
 
+The agent keeps the WhatsApp typing indicator active while it waits at the configured typing speed. The default `TYPING_WPM=40` estimates about 300 ms per character, with a one-second minimum and no maximum; long replies therefore take proportionally longer before sending.
+
 When WhatsApp connects and its saved chat history is available, the agent starts a personalized follow-up campaign for up to 700 eligible one-to-one chats whose contact names contain "Es". It uses each chat's own history, waits 30 seconds between sends, and repeats the same cohort 72 hours after a campaign completes. Students can opt out by replying `إيقاف`, `stop`, or `unsubscribe`. To disable campaigns, set `FOLLOWUPS_ENABLED=false` in `.env` and restart the agent.
+
+### Lesson videos for each grade
+The agent recognizes all Sudanese grade/stage combinations: grades 1–6 in ابتدائي, 1–3 in متوسط, and 1–3 in ثانوي. Lesson delivery requires each grade's lesson entries in `lessons.json` and matching video files under `media/lessons/<grade_key>/` (for example, `media/lessons/grade_1_primary/lesson_1.mp4`). Currently, lesson videos and exercises are configured only for `grade_3_secondary`; the other grades are placeholders and will not receive another grade's lessons. Add each grade's lesson videos and matching exercise/answer-key entries before enabling delivery for that grade.
+
+### Saving new student phone numbers
+When a previously unknown phone number messages the agent, Termux opens Android's prefilled contact form using `Es - <WhatsApp profile name>` (or the number if no profile name is available). Tap **Save** on the phone to add it to the address book. The agent cannot silently write to Android contacts through Baileys. This phonebook prompt is available only when running on Android in Termux.
 
 ---
 

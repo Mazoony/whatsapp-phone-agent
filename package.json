@@ -8,7 +8,7 @@
     "start": "node index.js",
     "web": "node web_chat.js",
     "chat": "node simulate_chat.js",
-    "test": "node test.js && node --test followup_manager.test.js"
+    "test": "node test.js && node --test followup_manager.test.js lesson_manager.test.js history.test.js phonebook.test.js humanization.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

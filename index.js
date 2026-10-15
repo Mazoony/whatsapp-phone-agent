@@ -8,6 +8,8 @@ import makeWASocket, {
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import path from 'path';
+import { buildContactInsertArgs, getPhoneJid, isTermuxAndroid, openContactInsert } from './phonebook.js';
+import { sendHumanizedMessage } from './humanization.js';
 import { config } from './config.js';
 import { historyManager } from './history.js';
 import { generateClientResponse, learnFromTeacherReply } from './ai.js';
@@ -22,7 +24,7 @@ async function startAgent() {
   console.log('--------------------------------------------------');
   console.log(`Starting WhatsApp Autonomous Agent on Android`);
   console.log(`Owner: ${config.ownerName} | Business: ${config.businessName}`);
-  console.log(`Debounce: ${config.debounceSeconds}s | Typing Delay: ${config.typingDelayMs}ms`);
+  console.log(`Debounce: ${config.debounceSeconds}s | Typing speed: ${config.typingWordsPerMinute} WPM`);
   console.log('--------------------------------------------------');
 
   const authDir = path.resolve('auth_info_baileys');
@@ -51,16 +53,34 @@ async function startAgent() {
   sock.ev.on('contacts.upsert', (contacts) => {
     if (!Array.isArray(contacts)) return;
     for (const c of contacts) {
-      const name = c.name || c.notify || c.verifiedName;
-      if (name) historyManager.saveContact(c.id, name);
+      const jids = [c.id, c.jid, c.lid].filter(Boolean);
+      if (c.name) {
+        for (const contactJid of jids) {
+          historyManager.markSavedContact(contactJid, c.name);
+        }
+      } else {
+        const displayName = c.notify || c.verifiedName || '';
+        for (const contactJid of jids) {
+          historyManager.saveContact(contactJid, displayName);
+        }
+      }
     }
   });
 
   sock.ev.on('contacts.update', (updates) => {
     if (!Array.isArray(updates)) return;
     for (const u of updates) {
-      const name = u.name || u.notify || u.verifiedName;
-      if (name) historyManager.saveContact(u.id, name);
+      const jids = [u.id, u.jid, u.lid].filter(Boolean);
+      if (u.name) {
+        for (const contactJid of jids) {
+          historyManager.markSavedContact(contactJid, u.name);
+        }
+      } else {
+        const displayName = u.notify || u.verifiedName || '';
+        for (const contactJid of jids) {
+          historyManager.saveContact(contactJid, displayName);
+        }
+      }
     }
   });
 
@@ -101,8 +121,17 @@ async function startAgent() {
   sock.ev.on('messaging-history.set', ({ contacts, messages }) => {
     if (contacts && Array.isArray(contacts)) {
       for (const c of contacts) {
-        const name = c.name || c.notify || c.verifiedName;
-        if (name) historyManager.saveContact(c.id, name);
+        const jids = [c.id, c.jid, c.lid].filter(Boolean);
+        if (c.name) {
+          for (const contactJid of jids) {
+            historyManager.markSavedContact(contactJid, c.name);
+          }
+        } else {
+          const displayName = c.notify || c.verifiedName || '';
+          for (const contactJid of jids) {
+            historyManager.saveContact(contactJid, displayName);
+          }
+        }
       }
     }
 
@@ -175,9 +204,34 @@ async function startAgent() {
 
       if (!text.trim()) continue;
 
-      const pushName = msg.pushName || senderNumber;
+      const alternateJid = msg.key.remoteJidAlt || '';
+      const phoneJid = getPhoneJid(jid, alternateJid);
+      const pushName = msg.pushName || phoneJid?.split('@')[0] || senderNumber;
       historyManager.saveContact(jid, pushName);
       historyManager.addMessage(jid, 'client', text.trim(), undefined, pushName);
+
+      const isEs = historyManager.isEsContact(jid, pushName);
+      const isSavedContact = historyManager.isSavedContact(jid, alternateJid);
+      if (!isSavedContact && phoneJid && !historyManager.hasContactSavePrompted(jid, alternateJid)) {
+        const contactName = `Es - ${pushName || phoneJid.split('@')[0]}`;
+        if (isTermuxAndroid() && buildContactInsertArgs(phoneJid, contactName)) {
+          try {
+            await openContactInsert(phoneJid, contactName);
+            historyManager.markContactSavePrompted(jid, alternateJid);
+            console.log(`[Phonebook] Opened Android contact form for ${contactName}. Save it on the phone to add it.`);
+          } catch (err) {
+            console.error(`[Phonebook] Could not open contact form for ${phoneJid.split('@')[0].slice(-4)}:`, err.message);
+          }
+        }
+      }
+
+      if (!isEs && isSavedContact) {
+        console.log(`[Ignored - Saved Non-Es Contact] ${pushName} (${senderNumber})`);
+        continue;
+      }
+      if (!isEs) {
+        console.log(`[Enabled - New Unsaved Contact] ${pushName} (${senderNumber})`);
+      }
 
       let incomingImage = null;
       if (imageMessage) {
@@ -198,7 +252,7 @@ async function startAgent() {
         } catch (err) {
           console.error(`[Image] Could not download image from ${pushName}:`, err.message);
           const reply = 'وصلتني الصورة، لكن ما قدرت أفتحها هسي. ممكن ترسلها مرة تانية كصورة واضحة؟';
-          await sock.sendMessage(jid, { text: reply });
+          await sendHumanizedMessage(sock, jid, reply, config.typingWordsPerMinute);
           historyManager.addMessage(jid, 'agent', reply);
           continue;
         }
@@ -209,7 +263,7 @@ async function startAgent() {
         if (newlyOptedOut) {
           const acknowledgement = 'تمام، وقفت رسائل المتابعة ليك. لو احتجت أي مساعدة في الإنجليزي، رسل لي في أي وقت.';
           try {
-            await sock.sendMessage(jid, { text: acknowledgement });
+            await sendHumanizedMessage(sock, jid, acknowledgement, config.typingWordsPerMinute);
             historyManager.addMessage(jid, 'agent', acknowledgement);
           } catch (err) {
             console.error(`[Follow-up] Could not send opt-out confirmation to ${jid}:`, err.message);
@@ -218,8 +272,7 @@ async function startAgent() {
         continue;
       }
 
-      const isEs = historyManager.isEsContact(jid, pushName);
-      const esTag = isEs ? ' [⭐ Es Contact - Permanent History]' : '';
+      const esTag = ' [⭐ Es Contact - Permanent History]';
       console.log(`[Incoming] ${pushName} (${senderNumber})${esTag}: "${text.trim()}"`);
 
       // 6. Handle Debouncing (aggregate rapid bursts into a single reply)
@@ -257,11 +310,12 @@ async function startAgent() {
           const detectedGrade = lessonManager.detectGrade(aggregatedText);
           const student = lessonManager.getStudent(jid);
           const studentStruggleSignals = /(ضعيف|خايف|مشكل|صعبة|قواعد|أزمنة|grammar|vocabulary|words|reading|writing|speaking|listening|سجل|درجة|درجه|max|grade|المرحلة|إنجليزي|انجليزي)/i.test(aggregatedText);
-          const shouldStartImmediately = (!student && (detectedGrade || studentStruggleSignals)) ||
-            (student?.status === 'consulting' && (detectedGrade || studentStruggleSignals));
+          const gradeLessons = detectedGrade ? lessonManager.lessonsConfig[detectedGrade]?.lessons : null;
+          const shouldStartImmediately = detectedGrade && gradeLessons?.length > 0 &&
+            (!student || student.status === 'consulting' || student.grade !== detectedGrade);
 
           if (currentEntry.images.length === 0 && shouldStartImmediately) {
-            const gradeKey = detectedGrade || Object.keys(lessonManager.lessonsConfig)[0] || 'grade_3_secondary';
+            const gradeKey = detectedGrade;
             lessonManager.setStudentGrade(jid, gradeKey);
             console.log(`[Lesson Auto-Start 🎓] ${pushName} is ready for ${gradeKey}. Delivering Lesson 1 immediately...`);
             await sock.sendPresenceUpdate('composing', jid);
@@ -270,27 +324,23 @@ async function startAgent() {
             return;
           }
 
-          // Humanization: Show "typing..." presence
+          if (!detectedGrade && studentStruggleSignals) {
+            console.log(`[Lesson Setup] Could not determine the student's stage and grade from the message.`);
+          } else if (detectedGrade && !gradeLessons?.length) {
+            console.log(`[Lesson Setup] No lessons are configured yet for ${detectedGrade}. Continuing the conversation without sending a different grade's lesson.`);
+          }
+
           console.log(`[Agent] Generating response for ${pushName}...`);
-          await sock.sendPresenceUpdate('composing', jid);
 
           // Generate response with Gemini
           const reply = await generateClientResponse(jid, pushName, aggregatedText, currentEntry.images);
 
-          // Wait typing delay to simulate realistic human speed
-          if (config.typingDelayMs > 0) {
-            await new Promise((res) => setTimeout(res, config.typingDelayMs));
-          }
-
-          // Send WhatsApp message
-          await sock.sendMessage(jid, { text: reply });
+          await sendHumanizedMessage(sock, jid, reply, config.typingWordsPerMinute);
           console.log(`[Agent -> ${pushName}]: "${reply}"`);
 
           // Record sent reply in history
           historyManager.addMessage(jid, 'agent', reply);
 
-          // Reset presence to paused
-          await sock.sendPresenceUpdate('paused', jid);
         } catch (err) {
           console.error(`[Error] Failed to reply to ${pushName}:`, err.message);
           await sock.sendPresenceUpdate('paused', jid);

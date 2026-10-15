@@ -3,6 +3,7 @@ import path from 'path';
 import { config } from './config.js';
 import { historyManager } from './history.js';
 import { generateStudentFollowUp } from './ai.js';
+import { sendHumanizedMessage } from './humanization.js';
 
 const DATA_DIR = path.resolve('data');
 const STATE_FILE = path.join(DATA_DIR, 'followup_state.json');
@@ -244,7 +245,7 @@ class FollowUpManager {
           }
           this.state.inFlightJid = jid;
           this.saveState();
-          await sock.sendMessage(jid, { text: message });
+          await sendHumanizedMessage(sock, jid, message, config.typingWordsPerMinute);
           historyManager.addMessage(jid, 'agent', message);
           console.log(`[Follow-up] Sent personalized check-in to ${name} (${jid.slice(0, jid.indexOf('@'))}).`);
           this.state.nextIndex += 1;

@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { config } from './config.js';
 import { evaluateStudentTask } from './task_evaluator.js';
+import { sendHumanizedMessage } from './humanization.js';
 
 const DATA_DIR = path.resolve('data');
 const PROGRESS_FILE = path.join(DATA_DIR, 'student_progress.json');
@@ -119,11 +121,18 @@ class LessonManager {
    */
   detectGrade(text) {
     if (!text) return null;
-    const lower = text.toLowerCase();
+    const normalize = value => value
+      .toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 1632))
+      .replace(/[ًٌٍَُِّْـ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const normalizedText = normalize(text);
 
     for (const [gradeKey, data] of Object.entries(this.lessonsConfig)) {
       for (const keyword of data.keywords) {
-        if (lower.includes(keyword.toLowerCase())) {
+        if (normalizedText.includes(normalize(keyword))) {
           return gradeKey;
         }
       }
@@ -183,8 +192,7 @@ class LessonManager {
 
     // 1. Send Intro message
     if (lesson.introMessage) {
-      await sock.sendMessage(jid, { text: lesson.introMessage });
-      await new Promise(r => setTimeout(r, 2000));
+      await sendHumanizedMessage(sock, jid, lesson.introMessage, config.typingWordsPerMinute);
     }
 
     // 2. Send the Video itself if the file exists
@@ -217,14 +225,17 @@ class LessonManager {
     } else {
       console.warn(`[LessonManager ⚠️] Video file not found at: ${videoAbsolutePath}`);
       console.warn(`[LessonManager] Please place the video file in: ${lesson.videoFile}`);
-      await sock.sendMessage(jid, {
-        text: `*(ملاحظة من مستر مازن: فيديو "${lesson.title}" قيد الرفع للمحادثة)*`
-      });
+      await sendHumanizedMessage(
+        sock,
+        jid,
+        `*(ملاحظة من مستر مازن: فيديو "${lesson.title}" قيد الرفع للمحادثة)*`,
+        config.typingWordsPerMinute
+      );
     }
 
     // 3. Send the Task / Exercise message
     if (lesson.taskMessage) {
-      await sock.sendMessage(jid, { text: lesson.taskMessage });
+      await sendHumanizedMessage(sock, jid, lesson.taskMessage, config.typingWordsPerMinute);
     }
 
     // 4. Update student progress state
@@ -260,7 +271,7 @@ class LessonManager {
     console.log(`[Task Evaluated] Student: ${pushName} | Passed: ${evalResult.allCorrect}`);
 
     // Send the teacher's pedagogical feedback
-    await sock.sendMessage(jid, { text: evalResult.feedback });
+    await sendHumanizedMessage(sock, jid, evalResult.feedback, config.typingWordsPerMinute);
 
     const student = this.progress[jid];
 

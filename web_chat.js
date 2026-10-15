@@ -111,12 +111,12 @@ const server = http.createServer(async (req, res) => {
       // B. If the student describes their English problem, start the first lesson immediately
       const detectedGrade = lessonManager.detectGrade(text);
       const student = lessonManager.getStudent(WEB_STUDENT_JID);
-      const studentStruggleSignals = /(ضعيف|خايف|مشكل|صعبة|قواعد|أزمنة|grammar|vocabulary|words|reading|writing|speaking|listening|سجل|درجة|درجه|max|grade|المرحلة|إنجليزي|انجليزي)/i.test(text);
-      const shouldStartImmediately = (!student && (detectedGrade || studentStruggleSignals)) ||
-        (student?.status === 'consulting' && (detectedGrade || studentStruggleSignals));
+      const gradeLessons = detectedGrade ? lessonManager.lessonsConfig[detectedGrade]?.lessons : null;
+      const shouldStartImmediately = detectedGrade && gradeLessons?.length > 0 &&
+        (!student || student.status === 'consulting' || student.grade !== detectedGrade);
 
       if (shouldStartImmediately) {
-        const gradeKey = detectedGrade || Object.keys(lessonManager.lessonsConfig)[0] || 'grade_3_secondary';
+        const gradeKey = detectedGrade;
         lessonManager.setStudentGrade(WEB_STUDENT_JID, gradeKey);
 
         let introText = '';
