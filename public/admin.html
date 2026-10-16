@@ -18,11 +18,30 @@
       --amber: #b87516;
       --red: #b94747;
       --shadow: 0 12px 30px rgba(30, 56, 44, .06);
+      --chat-doodle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%239eb8a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' opacity='.23'%3E%3Cpath d='M29 28c7-11 20-5 18 4-1 5-7 8-12 6l-5 5 1-8c-5-1-6-4-2-7zM133 31l3 7 7 1-6 4 1 7-6-4-6 4 2-7-6-4 7-1zM184 83c0-7 6-12 13-12s13 5 13 12-6 12-13 12h-3l-6 5 1-7c-3-2-5-6-5-10zM61 100c-7-7-18-2-15 6 2 5 8 6 12 3 3 5 10 5 12 0 3-8-5-14-9-9zM112 121c0-8 7-15 15-15s15 7 15 15-7 15-15 15-15-7-15-15zm7 0h16m-8-8v16M28 177c9-11 17-11 25 0-8 11-16 11-25 0zm5 0h15M93 184c0-5 4-9 9-9s9 4 9 9-4 9-9 9-9-4-9-9zm9-18v5m0 27v5m-18-19h5m27 0h5M169 167c7 3 12 9 13 17-8 0-14-4-18-10m4-7c-1 8-5 15-12 19m13-19-1 14M77 39c-5 2-8 7-8 12 0 7 5 12 12 12 6 0 11-5 11-11 0-4-2-7-5-9'/%3E%3C/g%3E%3C/svg%3E");
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
     button, input { font: inherit; }
     button { cursor: pointer; }
+    body.auth-locked .layout { display: none; }
+    .auth-screen { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle at top, #e5f3eb, var(--canvas) 55%); }
+    .auth-screen[hidden] { display: none; }
+    .auth-card { width: min(100%, 390px); padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: var(--shadow); }
+    .auth-brand { display: flex; align-items: center; gap: 11px; margin-bottom: 24px; }
+    .auth-brand-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; color: #12563f; background: #d8f3e2; font-weight: 850; }
+    .auth-brand strong, .auth-brand small { display: block; }
+    .auth-brand small { color: var(--muted); font-size: 11px; }
+    .auth-card h1 { margin: 0 0 5px; font-size: 22px; letter-spacing: -.5px; }
+    .auth-card > p { margin: 0 0 20px; color: var(--muted); font-size: 12px; }
+    .auth-form { display: grid; gap: 12px; }
+    .auth-form label { display: grid; gap: 5px; font-size: 11px; font-weight: 650; }
+    .auth-form label[hidden] { display: none; }
+    .auth-form input { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; }
+    .auth-form input:focus { outline: 0; border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
+    .auth-form .primary-button { min-height: 42px; margin-top: 4px; }
+    .auth-error { min-height: 18px; margin: 0; color: var(--red); font-size: 11px; }
+    .auth-help { margin-top: 15px; color: var(--muted); font-size: 10px; }
     .layout { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); }
     aside { background: #17362e; color: white; padding: 26px 18px; display: flex; flex-direction: column; gap: 30px; }
     .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
@@ -61,14 +80,50 @@
     .metric-value { font-size: 26px; font-weight: 760; margin-top: 12px; letter-spacing: -.8px; }
     .metric-foot { color: #94a099; font-size: 10px; margin-top: 1px; }
     .agent-status-line { display: flex; align-items: center; gap: 8px; }
+    .live-update-indicator { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; color: #208453; font-size: 10px; font-weight: 600; white-space: nowrap; }
+    .live-update-indicator::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #2eaa71; }
+    .live-update-indicator.reconnecting { color: #a26b18; }
+    .live-update-indicator.reconnecting::before { background: #d4932d; }
     .agent-account-detail { overflow-wrap: anywhere; }
     .agent-runtime-grid { display: grid; grid-template-columns: minmax(220px, .35fr) minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
     .agent-qr-panel, .agent-log-panel { padding: 16px; }
     .agent-qr-panel h3, .agent-log-panel h3 { margin: 0; font-size: 13px; }
     .agent-qr-panel p, .agent-log-panel p { color: var(--muted); font-size: 11px; margin: 5px 0 10px; }
+    .agent-media-panel { padding: 16px; margin-bottom: 14px; }
+    .agent-media-panel h3 { margin: 0; font-size: 13px; }
+    .agent-media-list { display: grid; gap: 9px; margin-top: 12px; }
+    .agent-media-item { padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; }
+    .agent-media-top, .agent-media-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .agent-media-top { font-size: 12px; font-weight: 650; }
+    .agent-media-meta { color: var(--muted); font-size: 10px; margin-top: 5px; overflow-wrap: anywhere; }
+    .agent-media-progress { height: 7px; margin-top: 9px; border-radius: 10px; overflow: hidden; background: #e8efeb; }
+    .agent-media-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--green); transition: width .25s ease; }
+    .agent-media-item.failed .agent-media-progress > span { background: #b94747; }
+    .agent-media-item.failed .agent-media-status { color: #b94747; }
+    .agent-media-item.sent .agent-media-status { color: #208453; }
+    .agent-media-empty { padding: 14px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 11px; }
+    .agent-queue-panel { padding: 16px; margin-bottom: 14px; }
+    .agent-queue-panel h3 { margin: 0; font-size: 13px; }
+    .agent-queue-list { display: grid; gap: 8px; margin-top: 12px; }
+    .agent-queue-item { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; transition: transform .45s cubic-bezier(.2,.75,.25,1), opacity .25s ease; will-change: transform; }
+    .agent-queue-position { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 750; }
+    .agent-queue-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
+    .agent-queue-detail { margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .agent-queue-state { color: var(--muted); font-size: 10px; font-weight: 650; white-space: nowrap; }
+    .agent-queue-item.active { border-color: #a8d7c1; background: #f5fbf7; }
+    .agent-queue-item.active .agent-queue-state { color: #208453; }
+    .agent-queue-empty { padding: 14px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 11px; }
+    @media (prefers-reduced-motion: reduce) { .agent-queue-item { transition: none; } }
     .agent-qr-wrap { display: grid; place-items: center; min-height: 210px; border: 1px dashed var(--line); border-radius: 10px; background: #fafcfb; }
     .agent-qr-wrap img { display: block; width: min(100%, 230px); height: auto; image-rendering: pixelated; }
     .agent-log { height: 250px; overflow: auto; margin: 0; padding: 12px; border-radius: 9px; background: #15251f; color: #d5e4dc; font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .agent-conversation-panel { padding: 16px; margin-bottom: 14px; }
+    .agent-conversation-panel h3 { margin: 0; font-size: 13px; }
+    .agent-conversation-panel > p { color: var(--muted); font-size: 11px; margin: 5px 0 10px; }
+    .agent-conversation { height: 360px; overflow: auto; padding: 12px; border-radius: 9px; background-color: #f2f6f3; background-image: var(--chat-doodle); background-size: 220px 220px; display: flex; flex-direction: column; gap: 9px; }
+    .agent-conversation .message { max-width: min(85%, 680px); }
+    .agent-conversation .message-label { display: block; color: #65766c; font-size: 9px; font-weight: 700; margin-bottom: 4px; }
+    .agent-conversation-empty { color: var(--muted); font-size: 11px; margin: auto; text-align: center; }
     .agent-status-dot { width: 9px; height: 9px; border-radius: 50%; background: #9ba8a1; }
     .agent-status-dot.connected { background: #2eaa71; box-shadow: 0 0 0 3px #2eaa711c; }
     .agent-status-dot.connecting { background: #d4932d; }
@@ -78,6 +133,12 @@
     .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 17px; border-bottom: 1px solid var(--line); }
     .panel-head h3 { margin: 0; font-size: 13px; }
     .panel-head span { color: var(--muted); font-size: 11px; }
+    .workbook-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin-bottom: 14px; }
+    .workbook-panel h3 { margin: 0; font-size: 13px; }
+    .workbook-panel p { margin: 5px 0; color: var(--muted); font-size: 11px; }
+    .workbook-panel small { color: var(--muted); font-size: 10px; }
+    .workbook-download { display: inline-flex; flex-shrink: 0; text-decoration: none; }
+    .workbook-download[aria-disabled="true"] { pointer-events: none; opacity: .55; }
     .bar-list { padding: 11px 17px 15px; display: grid; gap: 12px; }
     .bar-row { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr 25px; align-items: center; gap: 12px; font-size: 11px; }
     .bar-label { color: #50615a; }
@@ -89,7 +150,35 @@
     .quick-row:last-child { border: 0; }
     .quick-row span:first-child { color: #5b6963; }
     .quick-row b { font-size: 11px; }
-    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 20px 0 12px; }
+    .gender-statistics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+    .gender-stat { padding: 15px 17px; }
+    .gender-stat-label { color: var(--muted); font-size: 11px; font-weight: 650; }
+    .gender-stat-value { margin-top: 8px; font-size: 24px; font-weight: 760; letter-spacing: -.6px; }
+    .gender-stat-foot { color: #94a099; font-size: 10px; }
+    .gender-stat-track { height: 6px; margin-top: 10px; overflow: hidden; border-radius: 99px; background: #eef2ef; }
+    .gender-stat-fill { width: 0; height: 100%; border-radius: inherit; background: #248962; transition: width .35s ease; }
+    .gender-stat-note { margin: 8px 0 0; color: var(--muted); font-size: 10px; }
+    .weekly-chat-panel { padding: 15px 17px 12px; }
+    .weekly-chat-panel h2 { margin: 0; font-size: 13px; }
+    .weekly-chat-panel p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+    .weekly-chat-chart { overflow-x: auto; margin-top: 8px; }
+    .weekly-chat-chart svg { display: block; width: 100%; min-width: 540px; height: auto; }
+    .weekly-chat-chart text { fill: var(--muted); font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .weekly-chat-chart .weekly-chat-grid { stroke: #e5ebe7; stroke-width: 1; }
+    .weekly-chat-chart .weekly-chat-line { fill: none; stroke: #23875a; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .weekly-chat-chart .weekly-chat-point { fill: white; stroke: #23875a; stroke-width: 3; }
+    .weekly-chat-summary { margin-top: 3px !important; }
+    .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin: 20px 0 12px; }
+    .chat-sort-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .chat-sort-controls[hidden] { display: none; }
+    .chat-sort-controls label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
+    .chat-sort-controls select { max-width: 170px; min-height: 36px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; font: inherit; font-size: 10px; }
+    .chat-date-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 12px 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: #fafcfb; }
+    .chat-date-filter[hidden] { display: none; }
+    .chat-date-filter label { display: flex; align-items: center; gap: 8px; color: #50615a; font-size: 11px; font-weight: 650; }
+    .chat-date-filter input { min-height: 34px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font: inherit; }
+    .chat-date-filter button { border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; color: var(--ink); background: white; font: inherit; font-size: 10px; }
+    .date-chat-preview { display: block; max-width: 360px; margin-top: 4px; overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
     .filter-note { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: #326a4f; background: #f0f8f2; border: 1px solid #dceee1; border-radius: 9px; padding: 9px 12px; margin: 15px 0 0; font-size: 11px; }
     .filter-note button { border: 0; color: #137b5a; background: transparent; font-weight: 700; }
     .broadcast-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 15px; border-bottom: 1px solid var(--line); background: #fafcfb; }
@@ -103,6 +192,25 @@
     .composer p { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
     .composer textarea { width: 100%; min-height: 110px; resize: vertical; padding: 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
     .composer textarea:focus { outline: 0; border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
+    .broadcast-format-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 10px 0 0; padding: 6px; border: 1px solid var(--line); border-bottom: 0; border-radius: 9px 9px 0 0; background: #f8faf9; }
+    .broadcast-format-toolbar button { min-width: 32px; height: 30px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; color: var(--ink); background: transparent; font: inherit; font-size: 12px; }
+    .broadcast-format-toolbar button:hover, .broadcast-format-toolbar button:focus-visible { border-color: var(--line); background: white; outline: none; }
+    .broadcast-format-toolbar .format-bold { font-weight: 800; }
+    .broadcast-format-toolbar .format-italic { font-style: italic; }
+    .broadcast-format-toolbar .format-strike { text-decoration: line-through; }
+    .broadcast-format-toolbar .format-code { font-family: monospace; }
+    .broadcast-format-toolbar .format-divider { width: 1px; height: 20px; margin: 0 3px; background: var(--line); }
+    #broadcast-message { border-top-left-radius: 0; border-top-right-radius: 0; }
+    .broadcast-attachment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .broadcast-attachment-button { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; color: var(--ink); background: white; font: inherit; font-size: 11px; font-weight: 650; }
+    .broadcast-attachment-button:disabled { opacity: .55; cursor: not-allowed; }
+    .broadcast-recording-status { align-self: center; color: #b94747; font-size: 11px; }
+    .broadcast-attachments { display: grid; gap: 7px; margin-top: 9px; }
+    .broadcast-attachment { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 8px 10px; background: #f7faf8; border: 1px solid var(--line); border-radius: 8px; font-size: 11px; }
+    .broadcast-attachment-name { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+    .broadcast-attachment audio { width: min(300px, 100%); height: 34px; }
+    .broadcast-attachment-remove { border: 0; color: #a13535; background: transparent; font: inherit; font-weight: 700; }
+    .composer textarea:disabled { background: #f4f6f5; }
     .composer-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
     .primary-button { border: 0; border-radius: 8px; padding: 9px 14px; background: var(--green); color: white; font-weight: 700; }
     .primary-button:disabled { cursor: not-allowed; opacity: .5; }
@@ -122,14 +230,22 @@
     .chat-item:hover, .chat-item.selected { background: #f2f8f4; }
     .chat-name-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
     .chat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
+    .chat-item.unread .chat-name { color: #12563f; font-weight: 800; }
+    .badge.unread { background: #fff1d8; color: #925a05; }
     .chat-time { white-space: nowrap; font-size: 9px; color: #93a098; }
     .chat-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; margin-top: 5px; }
     .badge { display: inline-flex; background: var(--green-soft); color: var(--green); border-radius: 20px; padding: 2px 7px; font-size: 9px; margin-top: 6px; }
+    .badge.gender { background: #eef0fb; color: #4f568e; }
+    .badge.paid { background: #eaf6ed; color: #286442; }
     .conversation { min-width: 0; display: flex; flex-direction: column; }
     .conversation-head { padding: 14px 17px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; align-items: center; min-height: 58px; }
     .conversation-head strong { font-size: 12px; }
     .conversation-head small { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
-    .messages { flex: 1; max-height: 560px; overflow: auto; background: #f7f9f7; padding: 16px; display: flex; flex-direction: column; gap: 9px; }
+    .presence-state { display: inline-flex; align-items: center; gap: 5px; width: fit-content; border: 1px solid #e4ebe7; border-radius: 999px; padding: 2px 7px; background: #f8faf8; color: #65766c; font-size: 9px; }
+    .presence-state.online { border-color: #c9e8d3; background: #eff9f2; color: #16804b; font-weight: 700; }
+    .presence-state i { width: 7px; height: 7px; border-radius: 50%; background: #9ba8a1; }
+    .presence-state.online i { background: #20b768; box-shadow: 0 0 0 2px #20b76822; }
+    .messages { flex: 1; max-height: 560px; overflow: auto; background-color: #f2f6f3; background-image: var(--chat-doodle); background-size: 220px 220px; padding: 16px; display: flex; flex-direction: column; gap: 9px; }
     .message { max-width: min(85%, 580px); padding: 9px 11px; border-radius: 10px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .message.client { align-self: flex-start; background: white; border: 1px solid #e8ede9; border-top-left-radius: 3px; }
     .message.agent { align-self: flex-end; background: #e4f3e9; border: 1px solid #d9ecdf; border-top-right-radius: 3px; }
@@ -163,6 +279,18 @@
     .activity-legend i:nth-of-type(5) { background: #23875a; }
     .contact-name-button { border: 0; padding: 0; background: transparent; color: var(--green); font: inherit; font-weight: 700; text-align: left; }
     .contact-name-button:hover, .contact-name-button:focus-visible { text-decoration: underline; }
+    .contact-actions { display: flex; gap: 6px; white-space: nowrap; }
+    .contact-actions button { border: 1px solid var(--line); background: white; border-radius: 6px; padding: 4px 8px; color: var(--ink); font-size: 10px; }
+    .contact-actions button[data-payment-label] { color: #286442; border-color: #b9ddc4; }
+    .contact-gender { min-width: 145px; border: 1px solid var(--line); border-radius: 6px; background: white; padding: 5px 7px; color: var(--ink); font: inherit; font-size: 10px; }
+    .gender-save-status { display: block; color: var(--muted); font-size: 9px; }
+    .contact-actions button[data-contact-action="ban"], .contact-actions button[data-contact-action="delete"] { color: var(--red); border-color: #eccaca; }
+    .blocked-contacts { margin-top: 14px; }
+    .blocked-contacts h3 { margin: 0; padding: 12px 14px; font-size: 12px; }
+    .blocked-label { color: var(--red); font-size: 10px; font-weight: 700; }
+    .ban-number-form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 12px 0; }
+    .ban-number-form label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
+    .ban-number-form input { min-width: 220px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
     .es-student-activity { margin-top: 14px; padding: 14px; }
     .es-student-activity[hidden] { display: none; }
     .es-student-activity .student-activity-head { margin-bottom: 5px; }
@@ -197,11 +325,27 @@
       .chat-layout { grid-template-columns: 1fr; }
       .chat-list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 255px; }
       .conversation { min-height: 390px; }
+      .gender-statistics { gap: 8px; }
+      .gender-stat { padding: 12px; }
     }
-    @media (max-width: 420px) { .metrics { gap: 8px; } .metric { padding: 12px; } .metric-value { font-size: 22px; } .nav-item { font-size: 0; } .nav-icon { font-size: 15px; } }
+    @media (max-width: 420px) { .metrics { gap: 8px; } .metric { padding: 12px; } .metric-value { font-size: 22px; } .gender-statistics { grid-template-columns: 1fr; } .nav-item { font-size: 0; } .nav-icon { font-size: 15px; } }
   </style>
 </head>
-<body>
+<body class="auth-locked">
+  <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="auth-brand-icon">e</span><div><strong>eShool Admin</strong><small>Private local dashboard</small></div></div>
+      <h1 id="auth-title">Unlock your dashboard</h1>
+      <p id="auth-description">Enter your dashboard password to view student and contact information.</p>
+      <form class="auth-form" id="auth-form">
+        <label for="auth-password">Password<input id="auth-password" type="password" autocomplete="current-password" required></label>
+        <label for="auth-confirm-password" id="auth-confirm-label" hidden>Confirm password<input id="auth-confirm-password" type="password" autocomplete="new-password"></label>
+        <p class="auth-error" id="auth-error" aria-live="polite"></p>
+        <button class="primary-button" id="auth-submit" type="submit">Unlock dashboard</button>
+      </form>
+      <p class="auth-help" id="auth-help">Your session expires after 12 hours or when the dashboard restarts.</p>
+    </div>
+  </section>
   <div class="layout">
     <aside>
       <div class="brand">
@@ -221,8 +365,8 @@
 
     <main>
       <header class="topbar">
-        <div><h1 id="page-title">Overview</h1><p class="subheading" id="page-subtitle">A quick view of chat activity and student progress.</p></div>
-        <div class="top-actions"><span class="local-tag"><i class="local-dot"></i> Local only</span><button class="refresh" id="refresh" title="Refresh data" aria-label="Refresh data">↻</button></div>
+        <div><h1 id="page-title">Overview</h1><p class="subheading" id="page-subtitle">A quick view of chat activity and student progress. <span class="live-update-indicator" id="live-update-status">Live updates on</span></p></div>
+        <div class="top-actions"><span class="local-tag"><i class="local-dot"></i> Local only</span><button class="pagination button" id="dashboard-logout" type="button">Lock</button><button class="refresh" id="refresh" title="Refresh data" aria-label="Refresh data">↻</button></div>
       </header>
       <div id="error" class="error" hidden></div>
 
@@ -248,6 +392,11 @@
             <span class="metric-value" id="metric-es">—</span>
             <span class="metric-foot">Saved in WhatsApp-synced phone book · View list →</span>
           </button>
+          <article class="metric" aria-label="Contacts with permanent agent history">
+            <div class="metric-top"><span>Permanent history</span><span class="metric-icon">∞</span></div>
+            <div class="metric-value" id="metric-permanent-history">—</div>
+            <div class="metric-foot">Contact records retained by the agent · matches its startup count</div>
+          </article>
           <button class="metric metric-button" data-go="agent" aria-label="View recent chats handled by the agent">
             <span class="metric-top"><span>Chats handled</span><span class="metric-icon">↗</span></span>
             <span class="metric-value" id="metric-handled">—</span>
@@ -260,6 +409,35 @@
             <span class="metric-foot agent-account-detail" id="agent-account-detail">Linked WhatsApp account: not reported</span>
           </button>
         </div>
+
+        <div class="section-heading"><div><h2>Chats throughout the week</h2><p>Unique direct chats with incoming messages, day by day.</p></div></div>
+        <article class="panel weekly-chat-panel">
+          <div id="weekly-chat-summary" class="weekly-chat-summary" aria-live="polite">Loading the last seven days…</div>
+          <div id="weekly-chat-chart" class="weekly-chat-chart" aria-live="polite"></div>
+        </article>
+
+        <div class="section-heading"><div><h2>Gender statistics</h2><p>Gender across saved Es phone-book contacts.</p></div></div>
+        <div class="gender-statistics" aria-live="polite">
+          <article class="panel gender-stat">
+            <div class="gender-stat-label">Female</div>
+            <div class="gender-stat-value" id="gender-female">—</div>
+            <div class="gender-stat-foot" id="gender-female-percent">—</div>
+            <div class="gender-stat-track"><div class="gender-stat-fill" id="gender-female-bar"></div></div>
+          </article>
+          <article class="panel gender-stat">
+            <div class="gender-stat-label">Male</div>
+            <div class="gender-stat-value" id="gender-male">—</div>
+            <div class="gender-stat-foot" id="gender-male-percent">—</div>
+            <div class="gender-stat-track"><div class="gender-stat-fill" id="gender-male-bar"></div></div>
+          </article>
+          <article class="panel gender-stat">
+            <div class="gender-stat-label">Not identified</div>
+            <div class="gender-stat-value" id="gender-unknown">—</div>
+            <div class="gender-stat-foot" id="gender-unknown-percent">—</div>
+            <div class="gender-stat-track"><div class="gender-stat-fill" id="gender-unknown-bar"></div></div>
+          </article>
+        </div>
+        <p class="gender-stat-note" id="gender-stat-note">—</p>
 
         <div class="section-heading"><div><h2>Student lesson progress</h2><p>Current status across recorded student progress.</p></div></div>
         <div class="columns">
@@ -287,6 +465,19 @@
 
       <section class="section" id="section-chats">
         <div class="section-heading"><div><h2>Chats</h2><p>Search contact names or saved conversation text.</p></div></div>
+        <article class="panel agent-conversation-panel" id="agent-conversation-panel" hidden>
+          <h3>Recent messages and agent replies</h3>
+          <p>Latest saved messages across direct chats, shown in time order. Updates live while the agent tab is open.</p>
+          <div class="agent-conversation" id="agent-conversation" aria-live="polite"><div class="agent-conversation-empty">Waiting for saved chat messages…</div></div>
+        </article>
+        <article class="panel agent-queue-panel" id="agent-queue-panel" hidden>
+          <div class="agent-media-top"><h3>Live chat queue</h3><span class="agent-queue-state">FIFO · updates live</span></div>
+          <div class="agent-queue-list" id="agent-queue-list" aria-live="polite"><div class="agent-queue-empty">No chats are waiting for the agent.</div></div>
+        </article>
+        <article class="panel agent-media-panel" id="agent-media-panel" hidden>
+          <h3>Video &amp; media delivery</h3>
+          <div class="agent-media-list" id="agent-media-list" aria-live="polite"><div class="agent-media-empty">Waiting for media activity…</div></div>
+        </article>
         <div class="agent-runtime-grid" id="agent-runtime-panel" hidden>
           <article class="panel agent-qr-panel">
             <h3>Reconnect WhatsApp</h3>
@@ -305,6 +496,23 @@
         </div>
         <div class="toolbar">
           <label class="search"><span class="search-icon">⌕</span><input id="search" type="search" placeholder="Search chats or messages…" autocomplete="off"></label>
+          <div class="chat-sort-controls" id="chat-sort-controls">
+            <label for="chat-sort">Sort
+              <select id="chat-sort">
+                <option value="date-desc">Newest activity</option>
+                <option value="date-asc">Oldest activity</option>
+                <option value="unread-first">Unread first</option>
+                <option value="read-first">Read first</option>
+              </select>
+            </label>
+            <label for="chat-read-filter">Show
+              <select id="chat-read-filter">
+                <option value="all">All chats</option>
+                <option value="unread">Unread</option>
+                <option value="read">Read</option>
+              </select>
+            </label>
+          </div>
           <span class="result-count" id="chat-count">— chats</span>
         </div>
         <div class="panel">
@@ -341,19 +549,42 @@
       </section>
 
       <section class="section" id="section-es-contacts">
-        <div class="section-heading"><div><h2>Es phone-book contacts</h2><p>All saved Es contacts can be selected, including contacts who have not messaged first. Explicit opt-outs and blocked numbers remain excluded.</p></div></div>
+        <div class="section-heading"><div><h2 id="broadcast-recipient-heading">Es phone-book contacts</h2><p id="broadcast-recipient-description">Ban a number to stop all agent replies and follow-ups. Delete removes its local contact record and also blocks it; WhatsApp may sync its contact record again, but the number remains excluded.</p></div></div>
         <div class="toolbar">
           <label class="search"><span class="search-icon">⌕</span><input id="contact-search" type="search" placeholder="Search names or phone numbers…" autocomplete="off"></label>
-          <div class="top-actions"><span class="result-count" id="contact-count">— contacts</span><button class="pagination button" id="refresh-es-contacts" type="button">Reload saved contacts</button><button class="pagination button" id="toggle-contact-view" type="button">Show all phone-book contacts</button></div>
+          <div class="top-actions"><span class="result-count" id="contact-count">— contacts</span><button class="pagination button" id="update-es-contacts" type="button">Update from WhatsApp</button><button class="pagination button" id="refresh-es-contacts" type="button">Reload list</button><button class="pagination button" id="toggle-contact-view" type="button">Show all phone-book contacts</button></div>
         </div>
-        <p class="activity-note" id="contact-refresh-status" aria-live="polite">Reloads saved WhatsApp contact records automatically every 30 seconds. New phone-book contacts appear after WhatsApp syncs them to the agent.</p>
+        <label class="activity-note" for="broadcast-recipient-type">Bulk message recipient group
+          <select id="broadcast-recipient-type">
+            <option value="es">Eligible Es contacts · saved in address book</option>
+            <option value="non-es">Non-Es · all tracked direct chats</option>
+          </select>
+        </label>
+        <p class="activity-note" id="contact-refresh-status" aria-live="polite">Use Update from WhatsApp to request a fresh contact sync from the connected phone. New contacts must be saved in WhatsApp and have “Es” in the contact name.</p>
+        <div class="chat-date-filter" id="chat-date-filter">
+          <label for="contact-activity-date">Show eligible chats active on
+            <input id="contact-activity-date" type="date">
+          </label>
+          <button id="clear-contact-activity-date" type="button">Clear date</button>
+          <span class="result-count" id="contact-date-help">Choose a date to find eligible chats with WhatsApp activity that day.</span>
+        </div>
+        <form class="ban-number-form" id="ban-number-form">
+          <label>Ban a number not shown in the list<input id="ban-number-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="International phone number" required></label>
+          <button class="primary-button" id="ban-number-submit" type="submit">Ban number</button>
+        </form>
         <div class="panel table-wrap">
           <div class="broadcast-toolbar">
             <label class="selection-label"><input id="select-all-contacts" type="checkbox"><span id="select-all-label">Select all eligible contacts</span></label>
+            <button id="select-next-broadcast-batch" class="pagination button" type="button" hidden>Select next batch</button>
             <span class="selection-count" id="selection-count">0 selected</span>
           </div>
-          <table><thead><tr><th class="contact-checkbox-cell">Send</th><th>Contact</th><th>Phone number</th></tr></thead><tbody id="contact-rows"><tr><td colspan="3" class="empty">Loading contacts…</td></tr></tbody></table>
+          <table><thead><tr><th class="contact-checkbox-cell">Send</th><th>Contact</th><th>Phone number</th><th>Gender (inferred)</th><th>Actions</th></tr></thead><tbody id="contact-rows"><tr><td colspan="5" class="empty">Loading contacts…</td></tr></tbody></table>
           <div class="pagination"><button id="contact-previous">Previous</button><span id="contact-page-status">Page 1</span><button id="contact-next">Next</button></div>
+        </div>
+        <p class="activity-note">Choose Female, Male, or Not identified to save a manual value. Select Auto to use the language-based inference instead. Inferred gender is not verified and may be wrong.</p>
+        <div class="panel table-wrap blocked-contacts">
+          <h3>Banned or deleted numbers</h3>
+          <table><thead><tr><th>Phone number</th><th>Action</th><th>Blocked since</th><th></th></tr></thead><tbody id="blocked-contact-rows"><tr><td colspan="4" class="empty">Loading blocked numbers…</td></tr></tbody></table>
         </div>
         <article class="panel es-student-activity" id="es-student-activity" hidden>
           <div class="student-activity-head">
@@ -376,9 +607,31 @@
           <div class="activity-legend" aria-label="Fewer to more incoming messages">Fewer <i></i><i></i><i></i><i></i><i></i> More</div>
         </article>
         <article class="panel composer">
-          <h3>Message selected contacts</h3>
+          <h3 id="broadcast-composer-heading">Message selected Es contacts</h3>
           <p>Queued for the WhatsApp agent and sent individually with a 5-second gap. Faster bulk sending may increase the risk of WhatsApp rate limits or account restrictions. Explicit opt-outs, owner-blocked contacts, configured blocked numbers, and your own number are excluded. Replies such as STOP or إيقاف are honored.</p>
+          <div class="broadcast-format-toolbar" role="toolbar" aria-label="Message formatting">
+            <button type="button" class="format-bold" data-message-format="bold" aria-label="Bold" title="Bold (Ctrl+B)"><strong>B</strong></button>
+            <button type="button" class="format-italic" data-message-format="italic" aria-label="Italic" title="Italic (Ctrl+I)"><em>I</em></button>
+            <button type="button" class="format-strike" data-message-format="strike" aria-label="Strikethrough" title="Strikethrough (Ctrl+Shift+X)">S</button>
+            <button type="button" class="format-code" data-message-format="code" aria-label="Monospace" title="Monospace">&lt;/&gt;</button>
+            <span class="format-divider" aria-hidden="true"></span>
+            <button type="button" data-message-format="bullet" aria-label="Bulleted list" title="Bulleted list">• List</button>
+            <button type="button" data-message-format="numbered" aria-label="Numbered list" title="Numbered list">1. List</button>
+            <button type="button" data-message-format="link" aria-label="Insert link" title="Insert link">🔗 Link</button>
+            <button type="button" data-message-format="clear" aria-label="Clear formatting" title="Clear formatting">Tx</button>
+          </div>
           <textarea id="broadcast-message" maxlength="4000" placeholder="Write the message to send…" aria-label="Broadcast message"></textarea>
+          <p class="activity-note">Formatting uses WhatsApp text styles: *bold*, _italic_, ~strikethrough~, and monospace. Lists and links are sent as plain message text.</p>
+          <input id="broadcast-file-input" type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" multiple hidden>
+          <div class="broadcast-attachment-actions">
+            <button class="broadcast-attachment-button" id="attach-broadcast-file" type="button">Attach media or file</button>
+            <button class="broadcast-attachment-button" id="start-broadcast-recording" type="button">Record voice note</button>
+            <button class="broadcast-attachment-button" id="stop-broadcast-recording" type="button" hidden>Stop recording</button>
+            <button class="broadcast-attachment-button" id="cancel-broadcast-recording" type="button" hidden>Cancel recording</button>
+            <span class="broadcast-recording-status" id="broadcast-recording-status" aria-live="polite"></span>
+          </div>
+          <div class="broadcast-attachments" id="broadcast-attachments" aria-live="polite"></div>
+          <p class="activity-note">Attach up to 5 files (20 MB each) or record a voice note. Images and videos can include the message as a caption; for audio, the text is sent separately.</p>
           <div class="composer-actions"><span class="result-count" id="message-length">0 / 4,000</span><button class="primary-button" id="send-broadcast" disabled>Queue message</button></div>
         </article>
         <article class="panel broadcast-jobs">
@@ -389,8 +642,16 @@
 
       <section class="section" id="section-progress">
         <div class="section-heading"><div><h2>Student progress</h2><p>Students with a saved lesson progress record.</p></div></div>
+        <article class="panel workbook-panel">
+          <div>
+            <h3>Student data workbook</h3>
+            <p id="workbook-status" aria-live="polite">Preparing the latest Excel workbook…</p>
+            <small>Includes student contacts, lesson progress, and saved one-to-one conversation history. Stored locally on this computer.</small>
+          </div>
+          <a class="primary-button workbook-download" id="workbook-download" href="/api/admin/student-workbook.xlsx" download="students.xlsx" aria-disabled="true">Download Excel</a>
+        </article>
         <div class="panel table-wrap">
-          <table><thead><tr><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Last delivery</th></tr></thead><tbody id="progress-rows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Last student message</th><th>Texts received</th><th>Active days (30d)</th><th>Last delivery</th></tr></thead><tbody id="progress-rows"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody></table>
         </div>
       </section>
     </main>
@@ -406,6 +667,9 @@
     let contactOffset = 0;
     let totalEsContacts = 0;
     let totalEligibleContacts = 0;
+    let contactActivityDate = '';
+    let broadcastRecipientType = 'es';
+    let broadcastBatchOffset = 0;
     let selectedJids = new Set();
     let showingEligibleOnly = true;
     let selectedJid = '';
@@ -415,6 +679,18 @@
     let esActivityDays = 30;
     let searchTimer;
     let contactSearchTimer;
+    let pendingBroadcastAttachments = [];
+    let activeBroadcastRecorder = null;
+    let broadcastRecordingStream = null;
+    let broadcastRecordingChunks = [];
+    let discardBroadcastRecording = false;
+    let broadcastAttachmentUploads = 0;
+    let broadcastQueueing = false;
+    let authSetupRequired = false;
+    let dashboardStarted = false;
+    let dashboardEvents = null;
+    let dashboardPollTimer = null;
+    let agentPollTimer = null;
     const $ = selector => document.querySelector(selector);
 
     function showError(message) {
@@ -423,15 +699,382 @@
       error.hidden = !message;
     }
 
+    $('#contact-rows').addEventListener('change', async event => {
+      const select = event.target.closest('[data-contact-gender]');
+      if (!select) return;
+      const number = select.dataset.contactGender;
+      const status = select.nextElementSibling;
+      const previousValue = select.dataset.savedGender || 'auto';
+      select.disabled = true;
+      status.textContent = 'Saving…';
+      try {
+        const result = await api(`/api/admin/contact-gender/${encodeURIComponent(number)}`, {
+          method: 'POST',
+          body: JSON.stringify({ gender: select.value })
+        });
+        status.textContent = result.source === 'manual' ? 'Saved manually' : 'Using inference';
+        await loadEsContacts();
+      } catch (error) {
+        select.value = previousValue;
+        status.textContent = `Could not save: ${error.message}`;
+        select.disabled = false;
+      }
+    });
+
     async function api(path, options = {}) {
       const response = await fetch(path, {
         headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
         cache: 'no-store',
+        credentials: 'same-origin',
         ...options
       });
       const data = await response.json();
+      if (response.status === 401) showAuthenticationScreen(false);
       if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
       return data;
+    }
+
+    function showAuthenticationScreen(setupRequired) {
+      if (dashboardEvents) dashboardEvents.close();
+      dashboardEvents = null;
+      if (dashboardPollTimer) clearInterval(dashboardPollTimer);
+      if (agentPollTimer) clearInterval(agentPollTimer);
+      dashboardPollTimer = null;
+      agentPollTimer = null;
+      dashboardStarted = false;
+      authSetupRequired = setupRequired;
+      document.body.classList.add('auth-locked');
+      $('#auth-screen').hidden = false;
+      $('#auth-title').textContent = setupRequired ? 'Create a dashboard password' : 'Unlock your dashboard';
+      $('#auth-description').textContent = setupRequired
+        ? 'Choose a strong password to protect student and contact information on this device.'
+        : 'Enter your dashboard password to view student and contact information.';
+      $('#auth-confirm-label').hidden = !setupRequired;
+      $('#auth-password').autocomplete = setupRequired ? 'new-password' : 'current-password';
+      $('#auth-confirm-password').required = setupRequired;
+      $('#auth-submit').textContent = setupRequired ? 'Set password and unlock' : 'Unlock dashboard';
+      $('#auth-help').textContent = setupRequired
+        ? 'Use at least 12 characters. The password is stored locally as a salted scrypt hash. If you forget it, remove data/admin_auth.json while the dashboard is stopped to set a new one.'
+        : 'Your session expires after 12 hours or when the dashboard restarts.';
+      $('#auth-error').textContent = '';
+      $('#auth-password').value = '';
+      $('#auth-confirm-password').value = '';
+      $('#auth-password').focus();
+    }
+
+    function startDashboard() {
+      document.body.classList.remove('auth-locked');
+      $('#auth-screen').hidden = true;
+      $('#auth-password').value = '';
+      $('#auth-confirm-password').value = '';
+      if (dashboardStarted) return;
+      dashboardStarted = true;
+      refreshAll();
+      dashboardEvents = new EventSource('/api/admin/events');
+      dashboardEvents.addEventListener('dashboard-update', event => {
+        try {
+          const update = JSON.parse(event.data);
+          scheduleDashboardRefresh(Array.isArray(update.files) ? update.files : []);
+        } catch (error) {
+          showError(`Could not process dashboard update: ${error.message}`);
+        }
+      });
+      dashboardPollTimer = setInterval(refreshAll, 15000);
+      agentPollTimer = setInterval(() => {
+        if (handledChatsOnly) {
+          loadAgentLogs().catch(error => showError(`Could not refresh WhatsApp agent log: ${error.message}`));
+          loadAgentConversation().catch(error => showError(`Could not refresh recent agent messages: ${error.message}`));
+          loadAgentMediaActivity().catch(error => showError(`Could not refresh media delivery status: ${error.message}`));
+          loadAgentQr().catch(error => showError(`Could not refresh WhatsApp pairing QR: ${error.message}`));
+          loadAgentQueue().catch(error => showError(`Could not refresh the live chat queue: ${error.message}`));
+        }
+      }, 5000);
+      dashboardEvents.addEventListener('error', () => {
+        const indicator = $('#live-update-status');
+        if (!indicator) return;
+        indicator.textContent = 'Reconnecting';
+        indicator.classList.add('reconnecting');
+      });
+      dashboardEvents.addEventListener('connected', () => {
+        const indicator = $('#live-update-status');
+        if (!indicator) return;
+        indicator.textContent = 'Live updates on';
+        indicator.classList.remove('reconnecting');
+        refreshAll();
+      });
+      dashboardEvents.addEventListener('dashboard-update', () => {
+        const indicator = $('#live-update-status');
+        if (!indicator) return;
+        indicator.textContent = 'Live updates on';
+        indicator.classList.remove('reconnecting');
+      });
+    }
+
+    function updateBroadcastControls() {
+      $('#send-broadcast').disabled = broadcastQueueing ||
+        broadcastAttachmentUploads > 0 ||
+        selectedRecipientCount() === 0 ||
+        (!$('#broadcast-message').value.trim() && pendingBroadcastAttachments.length === 0);
+      $('#attach-broadcast-file').disabled = broadcastQueueing ||
+        broadcastAttachmentUploads > 0 ||
+        pendingBroadcastAttachments.length >= 5;
+      const recordingButton = $('#start-broadcast-recording');
+      const recordingUnavailableReason = !window.isSecureContext
+        ? 'Microphone access requires HTTPS or opening this dashboard on localhost.'
+        : !navigator.mediaDevices?.getUserMedia
+          ? 'This browser does not provide microphone access.'
+          : typeof MediaRecorder === 'undefined'
+            ? 'This browser does not support audio recording.'
+            : '';
+      recordingButton.disabled = broadcastQueueing ||
+        broadcastAttachmentUploads > 0 ||
+        pendingBroadcastAttachments.length >= 5 ||
+        Boolean(activeBroadcastRecorder) ||
+        Boolean(recordingUnavailableReason);
+      recordingButton.title = recordingUnavailableReason;
+      const recordingStatus = $('#broadcast-recording-status');
+      if (recordingUnavailableReason) {
+        recordingStatus.textContent = recordingUnavailableReason;
+        recordingStatus.dataset.recordingUnavailable = 'true';
+      } else if (recordingStatus.dataset.recordingUnavailable === 'true') {
+        recordingStatus.textContent = '';
+        delete recordingStatus.dataset.recordingUnavailable;
+      }
+      $('#broadcast-file-input').disabled = broadcastQueueing ||
+        broadcastAttachmentUploads > 0 ||
+        pendingBroadcastAttachments.length >= 5;
+    }
+
+    function renderBroadcastAttachments() {
+      $('#broadcast-attachments').innerHTML = pendingBroadcastAttachments.map((attachment, index) => `
+        <div class="broadcast-attachment">
+          <span class="broadcast-attachment-name">${escapeHtml(attachment.fileName)} · ${attachment.size < 1024 * 1024 ? `${attachment.size.toLocaleString()} B` : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`}${attachment.voiceNote ? ' · voice note' : ''}</span>
+          ${attachment.uploading ? '<span>Uploading…</span>' : ''}
+          ${attachment.previewUrl && attachment.mimeType.startsWith('audio/')
+            ? `<audio controls preload="metadata" src="${escapeHtml(attachment.previewUrl)}"></audio>`
+            : ''}
+          <button class="broadcast-attachment-remove" type="button" data-remove-broadcast-attachment="${index}" aria-label="Remove ${escapeHtml(attachment.fileName)}"${attachment.uploading ? ' disabled' : ''}>Remove</button>
+        </div>
+      `).join('');
+      for (const player of $('#broadcast-attachments').querySelectorAll('audio')) {
+        player.addEventListener('error', () => {
+          $('#broadcast-recording-status').textContent =
+            'This browser could not play the attached audio. Check the recording format and try recording again.';
+        }, { once: true });
+      }
+      updateBroadcastControls();
+    }
+
+    function getFileMimeType(file) {
+      if (file.type) return file.type;
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      return ({
+        aac: 'audio/aac',
+        csv: 'text/csv',
+        doc: 'application/msword',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        m4a: 'audio/mp4',
+        mp3: 'audio/mpeg',
+        mp4: 'video/mp4',
+        ogg: 'audio/ogg',
+        opus: 'audio/ogg',
+        pdf: 'application/pdf',
+        png: 'image/png',
+        ppt: 'application/vnd.ms-powerpoint',
+        pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        txt: 'text/plain',
+        wav: 'audio/wav',
+        webm: 'audio/webm',
+        webp: 'image/webp',
+        xls: 'application/vnd.ms-excel',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        mov: 'video/quicktime',
+        '3gp': 'video/3gpp'
+      })[extension] || 'application/octet-stream';
+    }
+
+    async function uploadBroadcastAttachment(file, { voiceNote = false, previewBlob = file } = {}) {
+      const mimeType = getFileMimeType(file);
+      const previewUrl = previewBlob ? URL.createObjectURL(previewBlob) : '';
+      const pendingAttachment = {
+        fileName: file.name,
+        size: file.size,
+        mimeType,
+        voiceNote,
+        uploading: true,
+        previewUrl
+      };
+      pendingBroadcastAttachments.push(pendingAttachment);
+      renderBroadcastAttachments();
+      try {
+        const response = await fetch('/api/admin/broadcast-media', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': mimeType,
+            'X-File-Name': encodeURIComponent(file.name),
+            'X-Voice-Note': String(voiceNote)
+          },
+          body: file,
+          cache: 'no-store'
+        });
+        const attachment = await response.json();
+        if (!response.ok) throw new Error(attachment.error || `Upload failed (${response.status})`);
+        Object.assign(pendingAttachment, attachment, { uploading: false, previewUrl });
+        renderBroadcastAttachments();
+      } catch (error) {
+        pendingBroadcastAttachments = pendingBroadcastAttachments.filter(
+          attachment => attachment !== pendingAttachment
+        );
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        renderBroadcastAttachments();
+        throw error;
+      }
+    }
+
+    async function addBroadcastFiles(files, voiceNote = false, previewBlob = null) {
+      const selectedFiles = [...files];
+      const remaining = 5 - pendingBroadcastAttachments.length;
+      if (selectedFiles.length > remaining) {
+        throw new Error(`You can attach up to 5 files per bulk message.`);
+      }
+      broadcastAttachmentUploads += selectedFiles.length;
+      updateBroadcastControls();
+      try {
+        for (const file of selectedFiles) {
+          $('#broadcast-recording-status').textContent = `Uploading ${file.name}…`;
+          await uploadBroadcastAttachment(file, {
+            voiceNote,
+            previewBlob: previewBlob || file
+          });
+        }
+        $('#broadcast-recording-status').textContent = '';
+      } finally {
+        broadcastAttachmentUploads -= selectedFiles.length;
+        updateBroadcastControls();
+      }
+    }
+
+    function clearBroadcastAttachments() {
+      for (const attachment of pendingBroadcastAttachments) {
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      }
+      pendingBroadcastAttachments = [];
+      renderBroadcastAttachments();
+    }
+
+    function updateBroadcastMessageLength() {
+      const message = $('#broadcast-message');
+      $('#message-length').textContent = `${message.value.length.toLocaleString()} / 4,000`;
+      updateBroadcastControls();
+    }
+
+    function replaceBroadcastMessage(start, end, replacement, selectionStart, selectionEnd = selectionStart) {
+      const message = $('#broadcast-message');
+      if (message.value.length - (end - start) + replacement.length > 4000) {
+        showError('Message must not exceed 4,000 characters, including formatting.');
+        return;
+      }
+      message.setRangeText(replacement, start, end, 'preserve');
+      message.focus();
+      message.setSelectionRange(selectionStart, selectionEnd);
+      message.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function applyBroadcastInlineFormat(marker) {
+      const message = $('#broadcast-message');
+      const start = message.selectionStart;
+      const end = message.selectionEnd;
+      const selected = message.value.slice(start, end);
+      const alreadyWrapped = selected &&
+        message.value.slice(start - marker.length, start) === marker &&
+        message.value.slice(end, end + marker.length) === marker;
+      if (alreadyWrapped) {
+        replaceBroadcastMessage(
+          start - marker.length,
+          end + marker.length,
+          selected,
+          start - marker.length,
+          end - marker.length
+        );
+        return;
+      }
+      replaceBroadcastMessage(
+        start,
+        end,
+        `${marker}${selected}${marker}`,
+        start + marker.length,
+        end + marker.length
+      );
+    }
+
+    function applyBroadcastList(prefix, numbered = false) {
+      const message = $('#broadcast-message');
+      const value = message.value;
+      const selectionStart = message.selectionStart;
+      const selectionEnd = message.selectionEnd;
+      const lineStart = value.lastIndexOf('\n', Math.max(0, selectionStart - 1)) + 1;
+      const nextLineEnd = value.indexOf('\n', selectionEnd);
+      const lineEnd = nextLineEnd < 0 ? value.length : nextLineEnd;
+      const block = value.slice(lineStart, lineEnd);
+      const lines = block.split('\n');
+      const allPrefixed = lines.every((line, index) =>
+        numbered ? new RegExp(`^${index + 1}\\. `).test(line) : line.startsWith(prefix));
+      const formatted = lines.map((line, index) => {
+        if (allPrefixed) {
+          return numbered ? line.replace(new RegExp(`^${index + 1}\\. `), '') : line.slice(prefix.length);
+        }
+        return numbered ? `${index + 1}. ${line}` : `${prefix}${line}`;
+      }).join('\n');
+      replaceBroadcastMessage(
+        lineStart,
+        lineEnd,
+        formatted,
+        lineStart,
+        lineStart + formatted.length
+      );
+    }
+
+    function addBroadcastLink() {
+      const message = $('#broadcast-message');
+      const start = message.selectionStart;
+      const end = message.selectionEnd;
+      const selected = message.value.slice(start, end);
+      const url = window.prompt('Enter the web address to include. WhatsApp recognizes URLs as links:', selected.match(/https?:\/\/\S+/)?.[0] || 'https://');
+      if (url === null || !url.trim()) return;
+      const normalizedUrl = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
+      const insertion = selected
+        ? `${selected}${/\s$/.test(selected) ? '' : ' '}${normalizedUrl}`
+        : normalizedUrl;
+      replaceBroadcastMessage(start, end, insertion, start + insertion.length);
+    }
+
+    function applyBroadcastFormatting(format) {
+      const markers = { bold: '*', italic: '_', strike: '~', code: '```' };
+      if (markers[format]) {
+        applyBroadcastInlineFormat(markers[format]);
+      } else if (format === 'bullet') {
+        applyBroadcastList('• ');
+      } else if (format === 'numbered') {
+        applyBroadcastList('', true);
+      } else if (format === 'link') {
+        addBroadcastLink();
+      } else if (format === 'clear') {
+        const message = $('#broadcast-message');
+        const start = message.selectionStart;
+        const end = message.selectionEnd;
+        const selected = message.value.slice(start, end);
+        if (selected) {
+          const cleaned = selected.replace(/```|[*_~]/g, '');
+          replaceBroadcastMessage(start, end, cleaned, start, start + cleaned.length);
+        } else {
+          const cleaned = message.value.replace(/```|[*_~]/g, '');
+          replaceBroadcastMessage(0, message.value.length, cleaned, 0, cleaned.length);
+        }
+      }
     }
 
     function formatDate(value, includeTime = true) {
@@ -441,6 +1084,23 @@
       return new Intl.DateTimeFormat(undefined, includeTime
         ? { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
         : { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
+    }
+
+    function presenceMarkup(presence, { alwaysShow = false } = {}) {
+      if (presence?.status === 'online') {
+        return '<span class="presence-state online" title="WhatsApp presence is subject to the contact’s privacy settings."><i></i>Online</span>';
+      }
+      if (presence?.status === 'offline') {
+        return presence.lastSeenAt
+          ? `<span class="presence-state" title="Last seen reported by WhatsApp"><i></i>Last seen ${escapeHtml(formatDate(presence.lastSeenAt))}</span>`
+          : '<span class="presence-state"><i></i>Offline</span>';
+      }
+      if (presence?.lastSeenAt) {
+        return `<span class="presence-state" title="Last seen reported by WhatsApp"><i></i>Last seen ${escapeHtml(formatDate(presence.lastSeenAt))}</span>`;
+      }
+      return alwaysShow
+        ? '<span class="presence-state" title="WhatsApp may not share this contact’s presence."><i></i>Status unavailable</span>'
+        : '';
     }
 
     function escapeHtml(value) {
@@ -455,13 +1115,74 @@
       $(`#bar-${name}`).style.width = `${Math.min(100, value / max * 100)}%`;
     }
 
+    function renderWeeklyChatActivity(activity) {
+      const container = $('#weekly-chat-chart');
+      const days = activity.days;
+      if (!Array.isArray(days) || days.length !== 7) {
+        throw new Error('Weekly chat activity data is incomplete.');
+      }
+      const width = 760;
+      const height = 230;
+      const left = 42;
+      const right = 18;
+      const top = 18;
+      const bottom = 46;
+      const plotWidth = width - left - right;
+      const plotHeight = height - top - bottom;
+      const maximum = Math.max(1, ...days.map(day => day.chats));
+      const ticks = [...new Set([0, Math.ceil(maximum / 2), maximum])];
+      const grid = ticks.map(value => {
+        const y = top + plotHeight - (value / maximum) * plotHeight;
+        return `<line class="weekly-chat-grid" x1="${left}" y1="${y}" x2="${width - right}" y2="${y}"></line><text x="${left - 8}" y="${y + 3}" text-anchor="end">${value}</text>`;
+      }).join('');
+      const points = days.map((day, index) => {
+        const x = left + index * (plotWidth / (days.length - 1));
+        const y = top + plotHeight - (day.chats / maximum) * plotHeight;
+        return { ...day, x, y };
+      });
+      const line = points.map(point => `${point.x},${point.y}`).join(' ');
+      const marks = points.map(point => {
+        const labelDate = new Intl.DateTimeFormat(undefined, {
+          month: 'numeric',
+          day: 'numeric',
+          timeZone: 'UTC'
+        }).format(new Date(`${point.date}T00:00:00Z`));
+        const description = `${point.day}, ${labelDate}: ${point.chats} ${point.chats === 1 ? 'chat' : 'chats'}`;
+        return `<circle class="weekly-chat-point" cx="${point.x}" cy="${point.y}" r="5"><title>${escapeHtml(description)}</title></circle><text x="${point.x}" y="${height - 23}" text-anchor="middle">${escapeHtml(point.day)}</text><text x="${point.x}" y="${height - 9}" text-anchor="middle">${escapeHtml(labelDate)}</text>`;
+      }).join('');
+      container.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Number of unique chats with incoming messages for each of the last seven days">
+          ${grid}
+          <polyline class="weekly-chat-line" points="${line}"></polyline>
+          ${marks}
+        </svg>`;
+      const total = days.reduce((sum, day) => sum + day.chats, 0);
+      $('#weekly-chat-summary').textContent =
+        `${total.toLocaleString()} chat-days over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
+    }
+
     async function loadOverview() {
-      const data = await api('/api/admin/overview');
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const data = await api(`/api/admin/overview?${new URLSearchParams({ timeZone })}`);
+      renderWeeklyChatActivity(data.weeklyChatActivity);
       $('#metric-chats').textContent = data.totalChats.toLocaleString();
       $('#metric-active').textContent = data.activeToday.toLocaleString();
       $('#metric-students').textContent = data.studentsWithProgress.toLocaleString();
       $('#metric-es').textContent = data.esContacts.toLocaleString();
+      $('#metric-permanent-history').textContent = data.permanentHistoryContacts.toLocaleString();
       $('#metric-handled').textContent = data.handledChats.toLocaleString();
+      const genderStatistics = data.genderStatistics;
+      for (const gender of ['female', 'male', 'unknown']) {
+        const count = genderStatistics[gender];
+        const percentage = genderStatistics.total
+          ? count / genderStatistics.total * 100
+          : 0;
+        $(`#gender-${gender}`).textContent = count.toLocaleString();
+        $(`#gender-${gender}-percent`).textContent = `${percentage.toFixed(1)}% of Es contacts`;
+        $(`#gender-${gender}-bar`).style.width = `${percentage}%`;
+      }
+      $('#gender-stat-note').textContent =
+        `${genderStatistics.total.toLocaleString()} Es contacts · ${genderStatistics.manual.toLocaleString()} manually set · ${genderStatistics.inferred.toLocaleString()} inferred`;
       $('#lesson-count').textContent = `${data.configuredLessons} configured lessons`;
       $('#quick-awaiting').textContent = data.awaitingTask;
       $('#quick-reattempt').textContent = data.awaitingReattempt;
@@ -477,14 +1198,29 @@
         <button class="chat-item" data-open-chat="${escapeHtml(chat.jid)}">
           <span class="chat-name-row"><span class="chat-name">${escapeHtml(chat.name)}</span><span class="chat-time">${formatDate(chat.lastActivity)}</span></span>
           <span class="chat-preview">${escapeHtml(chat.lastMessage)}</span>
+          ${chat.gender?.value !== 'unknown' ? `<span class="badge gender">${chat.gender.value === 'female' ? 'Female' : 'Male'}${chat.gender.source === 'manual' ? ' · manual' : ' · inferred'}</span>` : ''}
         </button>`).join('') : '<div class="empty">No saved chats found.</div>';
     }
 
     async function loadChats() {
       const query = new URLSearchParams({ q: $('#search').value, offset: String(offset), limit: String(PAGE_SIZE) });
+      if (!handledChatsOnly) {
+        query.set('sort', $('#chat-sort').value);
+        query.set('read', $('#chat-read-filter').value);
+      }
       if (activeChatsOnly) query.set('active', '24h');
       if (handledChatsOnly) query.set('handled', '1');
       const data = await api(`/api/admin/chats?${query}`);
+      if ($('#section-chats').classList.contains('active') && !handledChatsOnly && data.chats.length) {
+        const jids = [selectedJid, ...data.chats.map(chat => chat.jid)]
+          .filter((jid, index, all) => jid && all.indexOf(jid) === index)
+          .slice(0, 30);
+        api('/api/admin/presence-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jids })
+        }).catch(error => console.error('[Dashboard] Could not request WhatsApp chat presence:', error.message));
+      }
       totalChats = data.total;
       $('#chat-count').textContent = `${data.total.toLocaleString()} chats`;
       const page = Math.floor(offset / PAGE_SIZE) + 1;
@@ -497,9 +1233,13 @@
         ? 'Showing direct chats with saved agent replies, ordered by latest agent reply.'
         : 'Showing chats active within the last 24 hours.';
       $('#chat-list').innerHTML = data.chats.length ? data.chats.map(chat => `
-        <button class="chat-item ${chat.jid === selectedJid ? 'selected' : ''}" data-open-chat="${escapeHtml(chat.jid)}">
+        <button class="chat-item ${chat.jid === selectedJid ? 'selected' : ''} ${chat.unread ? 'unread' : ''}" data-open-chat="${escapeHtml(chat.jid)}">
           <span class="chat-name-row"><span class="chat-name">${escapeHtml(chat.name)}</span><span class="chat-time">${formatDate(handledChatsOnly ? chat.lastHandledAt : chat.lastActivity)}</span></span>
           <span class="chat-preview">${escapeHtml(chat.lastMessage)}</span>
+          ${presenceMarkup(chat.presence, { alwaysShow: true })}
+          ${chat.unread ? '<span class="badge unread">Unread</span>' : ''}
+          ${chat.gender?.value !== 'unknown' ? `<span class="badge gender">${chat.gender.value === 'female' ? 'Female' : 'Male'}${chat.gender.source === 'manual' ? ' · manual' : ' · inferred'}</span>` : ''}
+          ${chat.paid ? `<span class="badge paid">Paid · ${chat.paid.source === 'manual' ? 'manual' : 'student-reported'}</span>` : ''}
           ${handledChatsOnly ? '<span class="badge">Agent replied</span>' : ''}
           ${chat.progress ? `<span class="badge">${escapeHtml(chat.progress.gradeName)} · ${escapeHtml(chat.progress.status)}</span>` : ''}
         </button>`).join('') : '<div class="empty">No matching chats.</div>';
@@ -510,10 +1250,21 @@
 
     async function loadConversation(jid) {
       selectedJid = jid;
+      await api('/api/admin/chat-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jid })
+      });
       await loadChats();
       const query = new URLSearchParams({ jid });
       const conversation = await api(`/api/admin/conversation?${query}`);
-      $('#conversation-head').innerHTML = `<div><strong>${escapeHtml(conversation.name)}</strong><small>${conversation.totalMessages} saved messages · ${conversation.isEs ? 'Es contact' : 'Contact'}</small></div>${conversation.progress ? `<span class="status ${escapeHtml(conversation.progress.status)}">${escapeHtml(conversation.progress.status)}</span>` : ''}`;
+      const genderLabel = conversation.gender?.value === 'unknown'
+        ? 'Gender not identified'
+        : `${conversation.gender.value === 'female' ? 'Female' : 'Male'}${conversation.gender.source === 'manual' ? ' · manually set' : ' · inferred'}`;
+      const paymentLabel = conversation.paid
+        ? `<span class="badge paid">Paid · ${conversation.paid.source === 'manual' ? 'manual' : 'student-reported'}</span>`
+        : '';
+      $('#conversation-head').innerHTML = `<div><strong>${escapeHtml(conversation.name)}</strong><small>${conversation.totalMessages} saved messages · ${conversation.isEs ? 'Es contact' : 'Contact'} · ${escapeHtml(genderLabel)}</small><span id="conversation-presence">${presenceMarkup(conversation.presence, { alwaysShow: true })}</span></div><div>${paymentLabel}${conversation.progress ? `<span class="status ${escapeHtml(conversation.progress.status)}">${escapeHtml(conversation.progress.status)}</span>` : ''}</div>`;
       $('#messages').innerHTML = conversation.messages.length ? conversation.messages.map(message => `
         <article class="message ${message.role === 'agent' ? 'agent' : 'client'}">${escapeHtml(message.text)}<time>${formatDate(message.timestamp)}</time></article>`).join('') : '<div class="empty">No messages in this chat.</div>';
       $('#messages').scrollTop = $('#messages').scrollHeight;
@@ -521,6 +1272,19 @@
       $('#send-chat-message').disabled = !$('#chat-message').value.trim();
       $('#activity-days').disabled = false;
       await Promise.all([loadDirectMessageStatuses(jid), loadStudentActivity(jid)]);
+      try {
+        await api('/api/admin/presence-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jid })
+        });
+      } catch (error) {
+        console.error('[Dashboard] Could not request WhatsApp presence:', error.message);
+        const presence = $('#conversation-presence');
+        if (presence && jid === selectedJid) {
+          presence.innerHTML = presenceMarkup(null, { alwaysShow: true });
+        }
+      }
     }
 
     async function loadStudentActivity(jid = selectedJid) {
@@ -654,7 +1418,23 @@
     async function loadProgress() {
       const { students } = await api('/api/admin/progress');
       $('#progress-rows').innerHTML = students.length ? students.map(student => `
-        <tr><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${formatDate(student.deliveredAt)}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">No student progress recorded yet.</td></tr>';
+        <tr><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${formatDate(student.deliveredAt)}</td></tr>`).join('') : '<tr><td colspan="8" class="empty">No student progress recorded yet.</td></tr>';
+    }
+
+    async function loadWorkbookStatus() {
+      const status = await api('/api/admin/student-workbook');
+      const download = $('#workbook-download');
+      const statusText = $('#workbook-status');
+      download.setAttribute('aria-disabled', String(status.state !== 'ready'));
+      if (status.state === 'ready') {
+        const updatedAt = formatDate(status.updatedAt);
+        statusText.textContent =
+          `${status.students.toLocaleString()} students · ${status.messages.toLocaleString()} saved messages · updated ${updatedAt}.`;
+      } else if (status.state === 'updating') {
+        statusText.textContent = 'Refreshing the Excel workbook from the latest dashboard data…';
+      } else {
+        statusText.textContent = `Workbook update failed: ${status.error || 'Unknown error'}`;
+      }
     }
 
     async function loadAgentStatus() {
@@ -697,6 +1477,158 @@
       if (nearBottom) container.scrollTop = container.scrollHeight;
     }
 
+    async function loadAgentConversation() {
+      if (!handledChatsOnly) return;
+      const { messages } = await api('/api/admin/agent-conversation?limit=100');
+      const container = $('#agent-conversation');
+      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+      container.innerHTML = messages.length
+        ? messages.map(message => {
+          const isAgent = message.role === 'agent';
+          const sender = isAgent ? `Agent · ${message.name}` : message.name;
+          const recipientHint = message.phoneNumber ? ` · ${message.phoneNumber}` : '';
+          return `<article class="message ${isAgent ? 'agent' : 'client'}"><span class="message-label">${escapeHtml(sender + recipientHint)}</span>${escapeHtml(message.text)}<time>${formatDate(message.timestamp)}</time></article>`;
+        }).join('')
+        : '<div class="agent-conversation-empty">No incoming messages or agent replies have been saved yet.</div>';
+      if (nearBottom) container.scrollTop = container.scrollHeight;
+    }
+
+    function formatQueueDuration(timestamp) {
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000));
+      if (!Number.isFinite(elapsedSeconds)) return 'just now';
+      if (elapsedSeconds < 60) return `${elapsedSeconds}s`;
+      return `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`;
+    }
+
+    function createAgentQueueItem() {
+      const item = document.createElement('div');
+      item.className = 'agent-queue-item';
+      const position = document.createElement('span');
+      position.className = 'agent-queue-position';
+      const identity = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'agent-queue-name';
+      const detail = document.createElement('div');
+      detail.className = 'agent-queue-detail';
+      identity.append(name, detail);
+      const state = document.createElement('span');
+      state.className = 'agent-queue-state';
+      item.append(position, identity, state);
+      return item;
+    }
+
+    function renderAgentQueue(queue) {
+      const container = $('#agent-queue-list');
+      const rows = [];
+      if (queue.active) rows.push({ ...queue.active, active: true });
+      for (const waiting of queue.waiting || []) rows.push({ ...waiting, active: false });
+
+      if (!rows.length) {
+        container.replaceChildren();
+        const empty = document.createElement('div');
+        empty.className = 'agent-queue-empty';
+        empty.textContent = 'No chats are waiting for the agent.';
+        container.append(empty);
+        return;
+      }
+
+      const existing = new Map([...container.querySelectorAll('.agent-queue-item')]
+        .map(item => [item.dataset.queueKey, item]));
+      const previousRects = new Map([...existing].map(([key, item]) => [key, item.getBoundingClientRect()]));
+      const activeJid = queue.active?.jid;
+      const nextItems = [];
+
+      for (const row of rows) {
+        const key = row.jid === activeJid && !row.active ? `${row.jid}:pending` : row.jid;
+        let item = existing.get(key);
+        if (item) existing.delete(key);
+        else item = createAgentQueueItem();
+        item.dataset.queueKey = key;
+        item.classList.toggle('active', row.active);
+        item.querySelector('.agent-queue-position').textContent = `#${row.position}`;
+        item.querySelector('.agent-queue-name').textContent = row.name || row.jid;
+        item.querySelector('.agent-queue-detail').textContent = row.active
+          ? `Handling · ${formatQueueDuration(row.startedAt || row.queuedAt)}`
+          : `Waiting · ${formatQueueDuration(row.queuedAt)}`;
+        item.querySelector('.agent-queue-state').textContent = row.active ? 'Handling now' : 'Waiting';
+        nextItems.push(item);
+      }
+
+      for (const staleItem of existing.values()) staleItem.remove();
+      for (const item of [...container.children]) {
+        if (!item.classList.contains('agent-queue-item')) item.remove();
+      }
+      for (const item of nextItems) container.append(item);
+
+      const movedItems = [];
+      for (const item of nextItems) {
+        const previous = previousRects.get(item.dataset.queueKey);
+        if (!previous) continue;
+        const current = item.getBoundingClientRect();
+        const deltaY = previous.top - current.top;
+        if (deltaY) {
+          item.style.transition = 'none';
+          item.style.transform = `translateY(${deltaY}px)`;
+          movedItems.push(item);
+        }
+      }
+      if (movedItems.length) {
+        requestAnimationFrame(() => {
+          for (const item of movedItems) {
+            item.style.transition = '';
+            item.style.transform = '';
+          }
+        });
+      }
+    }
+
+    async function loadAgentQueue() {
+      if (!handledChatsOnly) return;
+      renderAgentQueue(await api('/api/admin/chat-queue'));
+    }
+
+    async function loadAgentMediaActivity() {
+      if (!handledChatsOnly) return;
+      const { activities } = await api('/api/admin/agent-media');
+      const container = $('#agent-media-list');
+      if (!activities.length) {
+        container.innerHTML = '<div class="agent-media-empty">No video or media has been sent since activity tracking was enabled.</div>';
+        return;
+      }
+
+      const labels = {
+        image: 'Image',
+        video: 'Video',
+        audio: 'Audio',
+        document: 'Document',
+        sticker: 'Sticker'
+      };
+      const statuses = {
+        queued: 'Queued',
+        uploading: 'Uploading',
+        sent: 'Sent',
+        failed: 'Failed'
+      };
+      container.innerHTML = activities.map(activity => {
+        const percent = Number.isFinite(activity.percent)
+          ? Math.max(0, Math.min(100, activity.percent))
+          : null;
+        const size = Number.isFinite(activity.total)
+          ? `${(activity.total / (1024 * 1024)).toFixed(1)} MB`
+          : 'Size unknown';
+        const progressLabel = percent === null
+          ? 'Preparing upload…'
+          : `${percent}% · ${size}`;
+        const mediaName = labels[activity.mediaType] || 'Media';
+        return `
+          <div class="agent-media-item ${escapeHtml(activity.status)}">
+            <div class="agent-media-top"><span>${escapeHtml(mediaName)} · ${escapeHtml(activity.description || 'WhatsApp media')}</span><span class="agent-media-status">${escapeHtml(statuses[activity.status] || activity.status)}</span></div>
+            <div class="agent-media-progress" role="progressbar" aria-label="${escapeHtml(mediaName)} upload progress" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div>
+            <div class="agent-media-meta"><span>${escapeHtml(activity.recipientJid || 'Recipient unavailable')}</span><span>${escapeHtml(progressLabel)} · ${formatDate(activity.updatedAt)}</span></div>
+          </div>`;
+      }).join('');
+    }
+
     async function loadAgentQr() {
       if (!handledChatsOnly) return;
       const result = await api('/api/admin/agent-qr');
@@ -725,19 +1657,42 @@
         offset: String(contactOffset),
         limit: String(CONTACT_PAGE_SIZE)
       });
+      if (showingEligibleOnly) query.set('recipientType', broadcastRecipientType);
+      if (showingEligibleOnly && contactActivityDate) {
+        query.set('date', contactActivityDate);
+        query.set('timeZone', Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+      }
       const data = await api(`/api/admin/${showingEligibleOnly ? 'broadcast-recipients' : 'es-contacts'}?${query}`);
       totalEsContacts = data.total;
-      $('#contact-count').textContent = `${data.total.toLocaleString()} ${showingEligibleOnly ? 'eligible recipients' : 'contacts'}`;
+      $('#contact-count').textContent = contactActivityDate && showingEligibleOnly
+        ? `${data.total.toLocaleString()} ${broadcastRecipientType === 'es' ? 'eligible Es chats' : 'eligible non-Es chats'} on ${contactActivityDate}`
+        : `${data.total.toLocaleString()} ${showingEligibleOnly ? broadcastRecipientType === 'es' ? 'eligible Es recipients' : 'eligible non-Es chats' : 'contacts'}`;
       const refreshedAt = new Intl.DateTimeFormat(undefined, {
         hour: 'numeric',
         minute: '2-digit',
         second: '2-digit'
       }).format(new Date());
       $('#contact-refresh-status').textContent =
-        `Showing ${showingEligibleOnly ? 'eligible recipients' : 'saved Es contacts'} · refreshed ${refreshedAt}. The list reloads every 30 seconds; new phone-book contacts appear after WhatsApp syncs them to the agent.`;
+        `Showing ${showingEligibleOnly ? broadcastRecipientType === 'es' ? 'eligible saved Es contacts' : 'all tracked non-Es direct chats' : 'saved Es phone-book contacts'}${contactActivityDate && showingEligibleOnly ? ` active on ${contactActivityDate}` : ''} · refreshed ${refreshedAt}.`;
+      $('#chat-date-filter').hidden = !showingEligibleOnly || broadcastRecipientType !== 'es';
+      $('#contact-activity-date').value = contactActivityDate;
+      $('#contact-date-help').textContent = broadcastRecipientType !== 'es'
+        ? 'Non-Es recipients include unsaved direct chats; blocked numbers, opted-out contacts, and numbers outside your allowlist are excluded.'
+        : contactActivityDate
+          ? 'Uses your browser timezone and WhatsApp chat timestamps where available; incoming message history is also checked.'
+          : 'Each eligible chat shows its latest WhatsApp date and time when available.';
+      $('#broadcast-recipient-heading').textContent = showingEligibleOnly
+        ? broadcastRecipientType === 'es' ? 'Eligible Es contacts' : 'Tracked non-Es chats'
+        : 'Es phone-book contacts';
+      $('#broadcast-recipient-description').textContent = broadcastRecipientType === 'non-es'
+        ? 'Includes tracked one-to-one chats even if the number is not saved in the phone book. Blocked, opted-out, and disallowed numbers are excluded.'
+        : 'Ban a number to stop all agent replies and follow-ups. Delete removes its local contact record and also blocks it; WhatsApp may sync its contact record again, but the number remains excluded.';
+      $('#broadcast-composer-heading').textContent =
+        `Message selected ${broadcastRecipientType === 'es' ? 'Es contacts' : 'non-Es contacts'}`;
       $('#toggle-contact-view').textContent = showingEligibleOnly
         ? `Show all ${$('#metric-es').textContent} phone-book contacts`
         : 'Show eligible recipients only';
+      $('#toggle-contact-view').hidden = broadcastRecipientType !== 'es';
       const page = Math.floor(contactOffset / CONTACT_PAGE_SIZE) + 1;
       const pages = Math.max(1, Math.ceil(totalEsContacts / CONTACT_PAGE_SIZE));
       $('#contact-page-status').textContent = `Page ${page} of ${pages}`;
@@ -745,33 +1700,66 @@
       $('#contact-next').disabled = contactOffset + CONTACT_PAGE_SIZE >= totalEsContacts;
       const eligibleQuery = new URLSearchParams({
         offset: '0',
-        limit: '5000'
+        limit: '1',
+        recipientType: broadcastRecipientType
       });
-      const eligibleData = await api(`/api/admin/broadcast-recipients?${eligibleQuery}`);
-      const eligibleJids = new Set(eligibleData.contacts.map(contact => contact.jid));
-      totalEligibleContacts = eligibleData.total;
-      for (const jid of selectedJids) {
-        if (!eligibleJids.has(jid)) selectedJids.delete(jid);
+      if (showingEligibleOnly && broadcastRecipientType === 'es' && contactActivityDate) {
+        eligibleQuery.set('date', contactActivityDate);
+        eligibleQuery.set('timeZone', Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
       }
-      const selectedEligibleCount = [...selectedJids].filter(jid => eligibleJids.has(jid)).length;
-      $('#select-all-label').textContent = `Select all ${totalEligibleContacts.toLocaleString()} eligible contacts`;
+      const eligibleData = await api(`/api/admin/broadcast-recipients?${eligibleQuery}`);
+      totalEligibleContacts = eligibleData.total;
+      const selectedEligibleCount = selectedJids.size;
+      $('#select-all-label').textContent = totalEligibleContacts > 5000
+        ? `Select first 5,000 of ${totalEligibleContacts.toLocaleString()} ${broadcastRecipientType === 'es' ? 'eligible Es contacts' : 'eligible non-Es chats'}${contactActivityDate ? ` on ${contactActivityDate}` : ''} · 5,000 per broadcast`
+        : showingEligibleOnly && contactActivityDate
+          ? `Select all ${totalEligibleContacts.toLocaleString()} eligible chats on ${contactActivityDate}`
+          : `Select all ${totalEligibleContacts.toLocaleString()} ${broadcastRecipientType === 'es' ? 'eligible Es contacts' : 'eligible non-Es chats'}`;
       $('#select-all-contacts').checked =
         totalEligibleContacts > 0 && selectedEligibleCount === totalEligibleContacts;
       $('#select-all-contacts').indeterminate =
         selectedEligibleCount > 0 && selectedEligibleCount < totalEligibleContacts;
       $('#select-all-contacts').disabled = totalEligibleContacts === 0;
+      const nextBatchButton = $('#select-next-broadcast-batch');
+      nextBatchButton.hidden = totalEligibleContacts <= 5000;
+      nextBatchButton.disabled = broadcastBatchOffset >= totalEligibleContacts;
+      nextBatchButton.textContent = broadcastBatchOffset >= totalEligibleContacts
+        ? 'All eligible batches selected'
+        : `Select batch ${broadcastBatchOffset + 1}–${Math.min(broadcastBatchOffset + 5000, totalEligibleContacts)} (replaces selection)`;
       $('#selection-count').textContent = `${selectedJids.size.toLocaleString()} selected`;
-      $('#send-broadcast').disabled = selectedJids.size === 0 || !$('#broadcast-message').value.trim();
+      updateBroadcastControls();
       $('#contact-rows').innerHTML = data.contacts.length ? data.contacts.map(contact => `
         <tr>
           <td class="contact-checkbox-cell">${showingEligibleOnly
-            ? `<input type="checkbox" data-broadcast-jid="${escapeHtml(contact.jid)}" aria-label="Select ${escapeHtml(contact.name)}" ${selectedJids.has(contact.jid) ? 'checked' : ''}>`
-            : contact.canMessage
-              ? `<input type="checkbox" data-broadcast-jid="${escapeHtml(contact.jid)}" aria-label="Select ${escapeHtml(contact.name)}" ${selectedJids.has(contact.jid) ? 'checked' : ''}>`
+            ? `<input type="checkbox" data-broadcast-jid="${escapeHtml(contact.jid)}" aria-label="Select ${escapeHtml(contact.name)}" ${selectedJids.has(contact.jid) ? 'checked' : ''} ${!selectedJids.has(contact.jid) && selectedJids.size >= 5000 ? 'disabled' : ''}>`
+            : broadcastRecipientType === 'es' && contact.canMessage
+              ? `<input type="checkbox" data-broadcast-jid="${escapeHtml(contact.jid)}" aria-label="Select ${escapeHtml(contact.name)}" ${selectedJids.has(contact.jid) ? 'checked' : ''} ${!selectedJids.has(contact.jid) && selectedJids.size >= 5000 ? 'disabled' : ''}>`
               : '<span class="not-eligible" title="Requires an incoming chat and no opt-out">—</span>'}</td>
-          <td><button class="contact-name-button" type="button" data-student-activity="${escapeHtml(contact.jid)}" data-student-name="${escapeHtml(contact.name)}">${escapeHtml(contact.name)}</button></td><td dir="ltr">${escapeHtml(contact.phoneNumber)}</td>
+          <td><button class="contact-name-button" type="button" data-student-activity="${escapeHtml(contact.jid)}" data-student-name="${escapeHtml(contact.name)}">${escapeHtml(contact.name)}</button>${contact.paid ? `<span class="badge paid" title="Payment status is not independently verified">Paid · ${contact.paid.source === 'manual' ? 'manual' : 'student-reported'}</span>` : ''}${showingEligibleOnly ? `<small class="date-chat-preview">${contact.lastActivityAt ? `${contact.activitySource === 'whatsapp' ? 'WhatsApp activity' : 'Saved incoming message'}: ${formatDate(contact.lastActivityAt)}` : 'WhatsApp activity: Unavailable'}${contactActivityDate && contact.lastIncomingAt ? ` · message: ${formatDate(contact.lastIncomingAt)}${contact.lastIncomingMessage ? ` · ${escapeHtml(contact.lastIncomingMessage)}` : ''}` : ''}</small>` : ''}</td><td dir="ltr">${escapeHtml(contact.phoneNumber)}</td>
+          <td><select class="contact-gender" data-contact-gender="${escapeHtml(contact.phoneNumber)}" data-saved-gender="${contact.gender.source === 'manual' ? escapeHtml(contact.gender.value) : 'auto'}" aria-label="Gender for ${escapeHtml(contact.name)}">
+            <option value="auto" ${contact.gender.source !== 'manual' ? 'selected' : ''}>Auto: ${contact.gender.value === 'unknown' ? 'Not identified' : `${contact.gender.value === 'female' ? 'Female' : 'Male'} (inferred)`}</option>
+            <option value="female" ${contact.gender.source === 'manual' && contact.gender.value === 'female' ? 'selected' : ''}>Female · manual</option>
+            <option value="male" ${contact.gender.source === 'manual' && contact.gender.value === 'male' ? 'selected' : ''}>Male · manual</option>
+            <option value="unknown" ${contact.gender.source === 'manual' && contact.gender.value === 'unknown' ? 'selected' : ''}>Not identified · manual</option>
+          </select><span class="gender-save-status" aria-live="polite"></span></td>
+          <td class="contact-actions"><button type="button" data-payment-label data-phone-number="${escapeHtml(contact.phoneNumber)}" data-payment-status="${contact.paid ? 'unpaid' : 'paid'}">${contact.paid ? 'Mark unpaid' : 'Mark paid'}</button><span class="payment-label-status" data-payment-label-status aria-live="polite"></span>${contact.block
+            ? `<span class="blocked-label">${contact.block.reason === 'deleted' ? 'Deleted' : 'Banned'}</span><button type="button" data-contact-action="unblock" data-phone-number="${escapeHtml(contact.phoneNumber)}">Allow</button>`
+            : `<button type="button" data-contact-action="ban" data-phone-number="${escapeHtml(contact.phoneNumber)}">Ban</button>`}
+            <button type="button" data-contact-action="delete" data-phone-number="${escapeHtml(contact.phoneNumber)}">Delete</button></td>
         </tr>`).join('') :
-        '<tr><td colspan="3" class="empty">No saved Es phone-book contacts found.</td></tr>';
+        `<tr><td colspan="5" class="empty">${showingEligibleOnly ? `No eligible ${broadcastRecipientType === 'es' ? 'Es contacts' : 'non-Es direct chats'} found.` : 'No saved Es phone-book contacts found.'}</td></tr>`;
+    }
+
+    async function loadBlockedContacts() {
+      const { blockedNumbers } = await api('/api/admin/blocked-contacts');
+      $('#blocked-contact-rows').innerHTML = blockedNumbers.length ? blockedNumbers.map(record => `
+        <tr>
+          <td dir="ltr">${escapeHtml(record.number)}</td>
+          <td>${record.reason === 'deleted' ? 'Deleted locally and blocked' : 'Banned'}</td>
+          <td>${escapeHtml(formatDate(record.blockedAt))}</td>
+          <td><button type="button" data-contact-action="unblock" data-phone-number="${escapeHtml(record.number)}">Allow again</button></td>
+        </tr>`).join('') :
+        '<tr><td colspan="4" class="empty">No banned or deleted numbers.</td></tr>';
     }
 
     function selectedRecipientCount() {
@@ -792,11 +1780,64 @@
     async function refreshAll() {
       showError('');
       try {
-        await Promise.all([loadOverview(), loadChats(), loadProgress(), loadEsContacts(), loadBroadcastJobs(), loadAgentStatus()]);
+        await Promise.all([
+          loadOverview(),
+          loadChats(),
+          loadProgress(),
+          loadEsContacts(),
+          loadBlockedContacts(),
+          loadBroadcastJobs(),
+          loadAgentStatus(),
+          loadWorkbookStatus()
+        ]);
         if (selectedJid) await loadConversation(selectedJid);
       } catch (error) {
         showError(`Could not load dashboard data: ${error.message}`);
       }
+    }
+
+    let scheduledDashboardRefresh = new Set();
+    let dashboardRefreshTimer = null;
+    function scheduleDashboardRefresh(files) {
+      for (const file of files) scheduledDashboardRefresh.add(file);
+      if (dashboardRefreshTimer) clearTimeout(dashboardRefreshTimer);
+      dashboardRefreshTimer = setTimeout(async () => {
+        dashboardRefreshTimer = null;
+        const changedFiles = scheduledDashboardRefresh;
+        scheduledDashboardRefresh = new Set();
+        const tasks = [];
+        const has = (...names) => names.some(name => changedFiles.has(name));
+
+        if (has('chat_history.json')) {
+          tasks.push(loadOverview(), loadChats(), loadProgress());
+          if (selectedJid) tasks.push(loadConversation(selectedJid));
+          if (handledChatsOnly) tasks.push(loadAgentConversation());
+        }
+        if (has('whatsapp_presence.json')) {
+          tasks.push(loadChats());
+          if (selectedJid) tasks.push(loadConversation(selectedJid));
+        }
+        if (has('contacts.json', 'followup_state.json', 'blocked_contacts.json', 'contact_gender.json', 'contact_payment_labels.json')) {
+          tasks.push(loadOverview(), loadEsContacts(), loadBlockedContacts());
+        }
+        if (has('student_progress.json', 'lessons.json')) {
+            tasks.push(loadOverview(), loadProgress(), loadWorkbookStatus());
+        }
+          if (has('contacts.json', 'chat_history.json', 'students.xlsx')) tasks.push(loadWorkbookStatus());
+        if (has('agent_status.json')) tasks.push(loadAgentStatus());
+        if (has('agent_qr.json') && handledChatsOnly) tasks.push(loadAgentQr());
+        if (has('agent_media_activity.json') && handledChatsOnly) tasks.push(loadAgentMediaActivity());
+        if (has('incoming_chat_queue.json') && handledChatsOnly) tasks.push(loadAgentQueue());
+        if (has('agent.log') && handledChatsOnly) tasks.push(loadAgentLogs());
+        if (has('chat_read_state.json') && !handledChatsOnly) tasks.push(loadChats());
+        if (has('broadcast_requests.json', 'broadcast_state.json')) tasks.push(loadBroadcastJobs());
+        if (has('message_requests.json', 'broadcast_state.json')) tasks.push(loadDirectMessageStatuses());
+        if (tasks.length === 0) return;
+
+        const results = await Promise.allSettled(tasks);
+        const failure = results.find(result => result.status === 'rejected');
+        if (failure) showError(`Could not refresh dashboard data: ${failure.reason.message}`);
+      }, 100);
     }
 
     function activateSection(name) {
@@ -804,10 +1845,17 @@
       const sectionName = name === 'agent' ? 'chats' : name;
       document.querySelectorAll('.section').forEach(section => section.classList.toggle('active', section.id === `section-${sectionName}`));
       $('#agent-runtime-panel').hidden = name !== 'agent';
+      $('#agent-media-panel').hidden = name !== 'agent';
+      $('#agent-queue-panel').hidden = name !== 'agent';
+      $('#agent-conversation-panel').hidden = name !== 'agent';
+      $('#chat-sort-controls').hidden = handledChatsOnly;
+      if (name === 'progress') {
+        loadWorkbookStatus().catch(error => showError(`Could not load student workbook status: ${error.message}`));
+      }
       const titles = {
         overview: ['Overview', 'A quick view of chat activity and student progress.'],
         chats: ['Chats', 'Search and review locally saved conversations.'],
-        agent: ['WhatsApp agent', 'Recent direct chats with saved agent replies, ordered by the latest agent reply.'],
+        agent: ['WhatsApp agent', 'A readable live view of incoming messages and the agent’s replies, alongside its terminal log.'],
         'es-contacts': ['Es contacts', 'Review Es contacts synced from your phone book.'],
         progress: ['Student progress', 'Review students and their current lesson status.']
       };
@@ -830,7 +1878,7 @@
       offset = 0;
       $('#search').value = '';
       activateSection('agent');
-      Promise.all([loadChats(), loadAgentLogs(), loadAgentQr()])
+      Promise.all([loadChats(), loadAgentConversation(), loadAgentLogs(), loadAgentQr(), loadAgentMediaActivity(), loadAgentQueue()])
         .catch(error => showError(`Could not load WhatsApp agent activity: ${error.message}`));
     }
 
@@ -896,12 +1944,21 @@
       const jid = checkbox.dataset.broadcastJid;
       if (checkbox.checked) selectedJids.add(jid);
       else selectedJids.delete(jid);
+      updateBroadcastControls();
       loadEsContacts().catch(error => showError(error.message));
     });
     $('#search').addEventListener('input', () => {
       clearTimeout(searchTimer);
       offset = 0;
       searchTimer = setTimeout(() => loadChats().catch(error => showError(error.message)), 220);
+    });
+    $('#chat-sort').addEventListener('change', () => {
+      offset = 0;
+      loadChats().catch(error => showError(error.message));
+    });
+    $('#chat-read-filter').addEventListener('change', () => {
+      offset = 0;
+      loadChats().catch(error => showError(error.message));
     });
     $('#previous').addEventListener('click', () => { offset = Math.max(0, offset - PAGE_SIZE); loadChats().catch(error => showError(error.message)); });
     $('#next').addEventListener('click', () => { if (offset + PAGE_SIZE < totalChats) offset += PAGE_SIZE; loadChats().catch(error => showError(error.message)); });
@@ -910,6 +1967,126 @@
       clearTimeout(contactSearchTimer);
       contactOffset = 0;
       contactSearchTimer = setTimeout(() => loadEsContacts().catch(error => showError(error.message)), 220);
+    });
+    $('#contact-rows').addEventListener('click', async event => {
+      const paymentButton = event.target.closest('[data-payment-label]');
+      if (paymentButton) {
+        const phoneNumber = paymentButton.dataset.phoneNumber;
+        const getStatusElement = () => [...$('#contact-rows').querySelectorAll('[data-payment-label]')]
+          .find(button => button.dataset.phoneNumber === phoneNumber)
+          ?.closest('td')
+          .querySelector('[data-payment-label-status]');
+        const markingPaid = paymentButton.dataset.paymentStatus === 'paid';
+        paymentButton.disabled = true;
+        const status = getStatusElement();
+        if (status) status.textContent = markingPaid ? 'Saving paid status…' : 'Clearing paid status…';
+        try {
+          await api(`/api/admin/contact-payment-label/${encodeURIComponent(phoneNumber)}`, {
+            method: 'POST',
+            body: JSON.stringify({ status: paymentButton.dataset.paymentStatus })
+          });
+          await loadEsContacts();
+          const updatedStatus = getStatusElement();
+          if (updatedStatus) {
+            updatedStatus.textContent = markingPaid
+              ? 'Paid status saved. WhatsApp label sync is queued.'
+              : 'Paid status cleared. WhatsApp label removal is queued.';
+          }
+        } catch (error) {
+          const currentStatus = getStatusElement();
+          if (currentStatus) currentStatus.textContent = `Could not save: ${error.message}`;
+          showError(`Could not update paid status: ${error.message}`);
+          const currentButton = [...$('#contact-rows').querySelectorAll('[data-payment-label]')]
+            .find(button => button.dataset.phoneNumber === phoneNumber);
+          if (currentButton) currentButton.disabled = false;
+        }
+        return;
+      }
+      const button = event.target.closest('[data-contact-action]');
+      if (!button) return;
+      const { contactAction: action, phoneNumber } = button.dataset;
+      const confirmation = action === 'delete'
+        ? `Delete ${phoneNumber} from local contacts and block the number?`
+        : action === 'ban'
+          ? `Ban ${phoneNumber}? The agent will stop replying and sending follow-ups.`
+          : `Allow the agent to interact with ${phoneNumber} again?`;
+      if (!window.confirm(confirmation)) return;
+      button.disabled = true;
+      try {
+        await api(`/api/admin/contacts/${encodeURIComponent(phoneNumber)}${action === 'delete' ? '' : `/${action}`}`, {
+          method: action === 'delete' ? 'DELETE' : 'POST'
+        });
+        await Promise.all([loadEsContacts(), loadBlockedContacts()]);
+      } catch (error) {
+        showError(error.message);
+        button.disabled = false;
+      }
+    });
+    $('#ban-number-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const phoneNumber = $('#ban-number-input').value.replace(/[^0-9]/g, '');
+      if (!/^\d{5,15}$/.test(phoneNumber)) {
+        showError('Enter a valid phone number with 5 to 15 digits.');
+        return;
+      }
+      if (!window.confirm(`Ban ${phoneNumber}? The agent will stop replying and sending follow-ups.`)) return;
+      const button = $('#ban-number-submit');
+      button.disabled = true;
+      try {
+        await api(`/api/admin/contacts/${encodeURIComponent(phoneNumber)}/ban`, { method: 'POST' });
+        $('#ban-number-input').value = '';
+        await Promise.all([loadEsContacts(), loadBlockedContacts()]);
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    $('#blocked-contact-rows').addEventListener('click', async event => {
+      const button = event.target.closest('[data-contact-action="unblock"]');
+      if (!button) return;
+      if (!window.confirm(`Allow the agent to interact with ${button.dataset.phoneNumber} again?`)) return;
+      button.disabled = true;
+      try {
+        await api(`/api/admin/contacts/${encodeURIComponent(button.dataset.phoneNumber)}/unblock`, { method: 'POST' });
+        await Promise.all([loadEsContacts(), loadBlockedContacts()]);
+      } catch (error) {
+        showError(error.message);
+        button.disabled = false;
+      }
+    });
+    $('#update-es-contacts').addEventListener('click', async () => {
+      const button = $('#update-es-contacts');
+      button.disabled = true;
+      button.textContent = 'Requesting update…';
+      $('#contact-refresh-status').textContent = 'Requesting a fresh contact sync from the connected WhatsApp phone…';
+      try {
+        const request = await api('/api/admin/contact-sync', { method: 'POST' });
+        const deadline = Date.now() + 90_000;
+        let status;
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          status = await api(`/api/admin/contact-sync/${encodeURIComponent(request.id)}`);
+          if (status.status === 'failed') throw new Error(status.error || 'WhatsApp could not update contacts.');
+          if (Date.now() >= deadline && status.status !== 'completed') {
+            throw new Error('Contact update is taking longer than expected. Try again shortly.');
+          }
+        } while (status.status !== 'completed');
+        await Promise.all([loadEsContacts(), loadOverview(), loadWorkbookStatus()]);
+        const updatedAt = new Intl.DateTimeFormat(undefined, {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit'
+        }).format(new Date(status.completedAt));
+        $('#contact-refresh-status').textContent =
+          `WhatsApp contact update completed at ${updatedAt}. Showing ${totalEsContacts.toLocaleString()} ${showingEligibleOnly ? broadcastRecipientType === 'es' ? 'eligible Es recipients' : 'tracked non-Es direct chats' : 'saved Es contacts'}.`;
+      } catch (error) {
+        $('#contact-refresh-status').textContent = `Could not update contacts: ${error.message}`;
+        showError(error.message);
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Update from WhatsApp';
+      }
     });
     $('#refresh-es-contacts').addEventListener('click', () => {
       const button = $('#refresh-es-contacts');
@@ -922,22 +2099,73 @@
       const shouldSelectAll = event.target.checked;
       const query = new URLSearchParams({
         offset: '0',
-        limit: '5000'
+        limit: '5000',
+        recipientType: broadcastRecipientType
       });
+      if (showingEligibleOnly && broadcastRecipientType === 'es' && contactActivityDate) {
+        query.set('date', contactActivityDate);
+        query.set('timeZone', Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+      }
       try {
         const { contacts } = await api(`/api/admin/broadcast-recipients?${query}`);
-        selectedJids = shouldSelectAll
-          ? new Set(contacts.map(contact => contact.jid))
-          : new Set();
+        selectedJids = shouldSelectAll ? new Set(contacts.map(contact => contact.jid)) : new Set();
+        broadcastBatchOffset = shouldSelectAll ? Math.min(5000, totalEligibleContacts) : 0;
         await loadEsContacts();
       } catch (error) {
         showError(error.message);
         await loadEsContacts();
       }
     });
+    $('#select-next-broadcast-batch').addEventListener('click', async () => {
+      const query = new URLSearchParams({
+        offset: String(broadcastBatchOffset),
+        limit: '5000',
+        recipientType: broadcastRecipientType
+      });
+      if (showingEligibleOnly && broadcastRecipientType === 'es' && contactActivityDate) {
+        query.set('date', contactActivityDate);
+        query.set('timeZone', Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+      }
+      try {
+        const { contacts } = await api(`/api/admin/broadcast-recipients?${query}`);
+        selectedJids = new Set(contacts.map(contact => contact.jid));
+        broadcastBatchOffset += contacts.length;
+        await loadEsContacts();
+      } catch (error) {
+        showError(error.message);
+        await loadEsContacts();
+      }
+    });
+    $('#contact-activity-date').addEventListener('change', event => {
+      contactActivityDate = event.target.value;
+      selectedJids.clear();
+      contactOffset = 0;
+      broadcastBatchOffset = 0;
+      loadEsContacts().catch(error => showError(`Could not find chats for that date: ${error.message}`));
+    });
+    $('#clear-contact-activity-date').addEventListener('click', () => {
+      contactActivityDate = '';
+      selectedJids.clear();
+      contactOffset = 0;
+      broadcastBatchOffset = 0;
+      loadEsContacts().catch(error => showError(`Could not clear the chat date filter: ${error.message}`));
+    });
+    $('#broadcast-recipient-type').addEventListener('change', event => {
+      broadcastRecipientType = event.target.value;
+      showingEligibleOnly = true;
+      contactActivityDate = '';
+      selectedJids.clear();
+      contactOffset = 0;
+      broadcastBatchOffset = 0;
+      loadEsContacts().catch(error =>
+        showError(`Could not load ${broadcastRecipientType === 'es' ? 'Es' : 'non-Es'} recipients: ${error.message}`));
+    });
     $('#toggle-contact-view').addEventListener('click', () => {
       showingEligibleOnly = !showingEligibleOnly;
+      selectedJids.clear();
       contactOffset = 0;
+      broadcastBatchOffset = 0;
+      if (!showingEligibleOnly) contactActivityDate = '';
       loadEsContacts().catch(error => showError(error.message));
     });
     $('#contact-previous').addEventListener('click', () => {
@@ -948,10 +2176,140 @@
       if (contactOffset + CONTACT_PAGE_SIZE < totalEsContacts) contactOffset += CONTACT_PAGE_SIZE;
       loadEsContacts().catch(error => showError(error.message));
     });
+    $('.broadcast-format-toolbar').addEventListener('mousedown', event => {
+      if (event.target.closest('[data-message-format]')) event.preventDefault();
+    });
+    $('.broadcast-format-toolbar').addEventListener('click', event => {
+      const button = event.target.closest('[data-message-format]');
+      if (button) applyBroadcastFormatting(button.dataset.messageFormat);
+    });
+    $('#broadcast-message').addEventListener('keydown', event => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      const key = event.key.toLowerCase();
+      const format = key === 'b' ? 'bold' : key === 'i' ? 'italic'
+        : key === 'x' && event.shiftKey ? 'strike'
+          : '';
+      if (!format) return;
+      event.preventDefault();
+      applyBroadcastFormatting(format);
+    });
     $('#broadcast-message').addEventListener('input', () => {
-      const length = $('#broadcast-message').value.length;
-      $('#message-length').textContent = `${length.toLocaleString()} / 4,000`;
-      $('#send-broadcast').disabled = selectedRecipientCount() === 0 || !$('#broadcast-message').value.trim();
+      updateBroadcastMessageLength();
+    });
+    $('#attach-broadcast-file').addEventListener('click', () => $('#broadcast-file-input').click());
+    $('#broadcast-file-input').addEventListener('change', async event => {
+      const files = [...event.target.files];
+      event.target.value = '';
+      if (!files.length) return;
+      try {
+        await addBroadcastFiles(files);
+      } catch (error) {
+        $('#broadcast-recording-status').textContent = error.message;
+        showError(error.message);
+      }
+    });
+    $('#broadcast-attachments').addEventListener('click', event => {
+      const button = event.target.closest('[data-remove-broadcast-attachment]');
+      if (!button) return;
+      const [attachment] = pendingBroadcastAttachments.splice(Number(button.dataset.removeBroadcastAttachment), 1);
+      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      renderBroadcastAttachments();
+    });
+    $('#start-broadcast-recording').addEventListener('click', async () => {
+      try {
+        broadcastRecordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const preferredTypes = [
+          'audio/ogg;codecs=opus',
+          'audio/webm;codecs=opus',
+          'audio/mp4'
+        ];
+        const previewAudio = document.createElement('audio');
+        const mimeType = preferredTypes.find(type =>
+          MediaRecorder.isTypeSupported(type) && previewAudio.canPlayType(type) !== ''
+        );
+        activeBroadcastRecorder = mimeType
+          ? new MediaRecorder(broadcastRecordingStream, { mimeType })
+          : new MediaRecorder(broadcastRecordingStream);
+        broadcastRecordingChunks = [];
+        discardBroadcastRecording = false;
+        activeBroadcastRecorder.addEventListener('dataavailable', event => {
+          if (!event.data.size || discardBroadcastRecording) return;
+          const currentSize = broadcastRecordingChunks.reduce((size, chunk) => size + chunk.size, 0);
+          if (currentSize + event.data.size > 20 * 1024 * 1024) {
+            discardBroadcastRecording = true;
+            $('#broadcast-recording-status').textContent = 'Recording exceeded 20 MB; it will be discarded.';
+            activeBroadcastRecorder.stop();
+            return;
+          }
+          broadcastRecordingChunks.push(event.data);
+        });
+        activeBroadcastRecorder.addEventListener('stop', async () => {
+          const recorder = activeBroadcastRecorder;
+          activeBroadcastRecorder = null;
+          for (const track of broadcastRecordingStream?.getTracks() || []) track.stop();
+          broadcastRecordingStream = null;
+          $('#stop-broadcast-recording').hidden = true;
+          $('#cancel-broadcast-recording').hidden = true;
+          $('#start-broadcast-recording').hidden = false;
+          if (discardBroadcastRecording) {
+            broadcastRecordingChunks = [];
+            updateBroadcastControls();
+            return;
+          }
+          if (!broadcastRecordingChunks.length) {
+            $('#broadcast-recording-status').textContent =
+              'No audio data was captured. Check the microphone input and try again.';
+            updateBroadcastControls();
+            return;
+          }
+          const recordingType = (recorder?.mimeType || mimeType || 'audio/webm').split(';', 1)[0];
+          const extension = recordingType === 'audio/ogg' ? 'ogg'
+            : recordingType === 'audio/mp4' ? 'm4a'
+              : 'webm';
+          const recording = new File(
+            broadcastRecordingChunks,
+            `voice-note.${extension}`,
+            { type: recordingType }
+          );
+          const preview = new Blob(broadcastRecordingChunks, { type: recordingType });
+          broadcastRecordingChunks = [];
+          if (!recording.size) {
+            $('#broadcast-recording-status').textContent =
+              'No audio data was captured. Check the microphone input and try again.';
+            updateBroadcastControls();
+            return;
+          }
+          try {
+            await addBroadcastFiles([recording], true, preview);
+          } catch (error) {
+            $('#broadcast-recording-status').textContent = error.message;
+            showError(error.message);
+          } finally {
+            updateBroadcastControls();
+          }
+        });
+        activeBroadcastRecorder.start();
+        $('#start-broadcast-recording').hidden = true;
+        $('#stop-broadcast-recording').hidden = false;
+        $('#cancel-broadcast-recording').hidden = false;
+        $('#broadcast-recording-status').textContent = 'Recording…';
+        updateBroadcastControls();
+      } catch (error) {
+        for (const track of broadcastRecordingStream?.getTracks() || []) track.stop();
+        broadcastRecordingStream = null;
+        activeBroadcastRecorder = null;
+        $('#broadcast-recording-status').textContent = `Could not start recording: ${error.message}`;
+        showError(`Could not start recording: ${error.message}`);
+      }
+    });
+    $('#stop-broadcast-recording').addEventListener('click', () => {
+      if (activeBroadcastRecorder?.state === 'recording') activeBroadcastRecorder.stop();
+      $('#broadcast-recording-status').textContent = 'Preparing voice note…';
+    });
+    $('#cancel-broadcast-recording').addEventListener('click', () => {
+      discardBroadcastRecording = true;
+      if (activeBroadcastRecorder?.state === 'recording') activeBroadcastRecorder.stop();
+      $('#broadcast-recording-status').textContent = 'Recording discarded.';
     });
     $('#chat-message').addEventListener('input', () => {
       $('#send-chat-message').disabled = !selectedJid || !$('#chat-message').value.trim();
@@ -986,46 +2344,124 @@
     });
     $('#send-broadcast').addEventListener('click', async () => {
       const button = $('#send-broadcast');
-      button.disabled = true;
       showError('');
       try {
         const jids = [...selectedJids];
         if (!jids.length) throw new Error('No eligible contacts are selected.');
+        const recipientLabel = broadcastRecipientType === 'es'
+          ? 'eligible saved Es contacts'
+          : 'tracked non-Es direct chats (including unsaved contacts)';
         const confirmed = window.confirm(
-          `Queue this message for ${jids.length.toLocaleString()} eligible Es contacts? It will be sent individually with a 5-second gap after the WhatsApp agent is connected. Faster sending may increase the risk of WhatsApp rate limits or account restrictions.`
+          `Queue this message${pendingBroadcastAttachments.length ? ` with ${pendingBroadcastAttachments.length} attachment(s)` : ''} for ${jids.length.toLocaleString()} ${recipientLabel}${contactActivityDate ? ` active on ${contactActivityDate}` : ''}? It will be sent individually with a 5-second gap after the WhatsApp agent is connected. Faster sending may increase the risk of WhatsApp rate limits or account restrictions.`
         );
         if (!confirmed) return;
 
+        broadcastQueueing = true;
+        button.disabled = true;
+        updateBroadcastControls();
         const result = await api('/api/admin/broadcasts', {
           method: 'POST',
           body: JSON.stringify({
             text: $('#broadcast-message').value,
-            jids
+            attachments: pendingBroadcastAttachments.map(attachment => attachment.id),
+            jids,
+            recipientType: broadcastRecipientType,
+            ...(contactActivityDate ? {
+              activityDate: contactActivityDate,
+              activityTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+            } : {})
           })
         });
         $('#broadcast-message').value = '';
         $('#message-length').textContent = '0 / 4,000';
+        clearBroadcastAttachments();
+        $('#broadcast-recording-status').textContent = '';
         selectedJids.clear();
         await Promise.all([loadEsContacts(), loadBroadcastJobs()]);
-        showError(`Message queued for ${result.total.toLocaleString()} recipients. It will send when the WhatsApp agent is connected.`);
+        showError(`Message queued for ${result.total.toLocaleString()} ${recipientLabel}. It will send when the WhatsApp agent is connected.`);
       } catch (error) {
         showError(error.message);
       } finally {
-        button.disabled = selectedRecipientCount() === 0 || !$('#broadcast-message').value.trim();
+        broadcastQueueing = false;
+        updateBroadcastControls();
       }
     });
     $('#refresh').addEventListener('click', refreshAll);
-    refreshAll();
-    setInterval(refreshAll, 30000);
-    setInterval(() => loadAgentStatus().catch(error => showError(`Could not load WhatsApp agent status: ${error.message}`)), 10000);
-    setInterval(() => {
-      if (handledChatsOnly) {
-        Promise.all([loadAgentLogs(), loadAgentQr()])
-          .catch(error => showError(`Could not refresh WhatsApp agent activity: ${error.message}`));
+    $('#auth-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const password = $('#auth-password').value;
+      const confirmPassword = $('#auth-confirm-password').value;
+      const button = $('#auth-submit');
+      const error = $('#auth-error');
+      error.textContent = '';
+      if (authSetupRequired && password !== confirmPassword) {
+        error.textContent = 'The passwords do not match.';
+        return;
       }
-    }, 2500);
-    setInterval(() => loadBroadcastJobs().catch(error => showError(error.message)), 5000);
-    setInterval(() => loadDirectMessageStatuses().catch(error => showError(error.message)), 3000);
+      button.disabled = true;
+      try {
+        if (authSetupRequired) {
+          const setupResponse = await fetch('/api/admin/auth/setup', {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            cache: 'no-store',
+            body: JSON.stringify({ password, confirmPassword })
+          });
+          const setupResult = await setupResponse.json();
+          if (!setupResponse.ok) throw new Error(setupResult.error || `Setup failed (${setupResponse.status})`);
+        }
+        const loginResponse = await fetch('/api/admin/auth/login', {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          cache: 'no-store',
+          body: JSON.stringify({ password })
+        });
+        const loginResult = await loginResponse.json();
+        if (!loginResponse.ok) throw new Error(loginResult.error || `Login failed (${loginResponse.status})`);
+        startDashboard();
+      } catch (loginError) {
+        error.textContent = loginError.message;
+        if (authSetupRequired && loginError.message.includes('already configured')) {
+          showAuthenticationScreen(false);
+          $('#auth-error').textContent = 'A password has already been set. Enter it to unlock the dashboard.';
+        }
+      } finally {
+        button.disabled = false;
+      }
+    });
+    $('#dashboard-logout').addEventListener('click', async () => {
+      try {
+        const response = await fetch('/api/admin/auth/logout', {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+        if (!response.ok) throw new Error(`Could not lock dashboard (${response.status}).`);
+        showAuthenticationScreen(false);
+      } catch (error) {
+        showError(error.message);
+      }
+    });
+    async function initializeDashboardAuth() {
+      try {
+        const response = await fetch('/api/admin/auth/status', {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+        const status = await response.json();
+        if (!response.ok) throw new Error(status.error || `Could not check dashboard password (${response.status}).`);
+        if (status.authenticated) startDashboard();
+        else showAuthenticationScreen(status.setupRequired);
+      } catch (error) {
+        showAuthenticationScreen(false);
+        $('#auth-error').textContent = error.message;
+      }
+    }
+    initializeDashboardAuth();
   </script>
 </body>
 </html>

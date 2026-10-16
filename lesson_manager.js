@@ -1,54 +1,50 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { evaluateStudentTask } from './task_evaluator.js';
 import { sendHumanizedMessage } from './humanization.js';
 
+const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve('data');
 const PROGRESS_FILE = path.join(DATA_DIR, 'student_progress.json');
 const LESSONS_FILE = path.resolve('lessons.json');
-let activeVideoUpload = null;
-let videoUploadQueue = Promise.resolve();
 
-function formatBytes(bytes) {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function renderVideoUploadProgress(loaded, total) {
-  if (!activeVideoUpload || !process.stdout.isTTY) return;
-
-  const ratio = total > 0 ? Math.min(loaded / total, 1) : 0;
-  const percent = Math.floor(ratio * 100);
-  const width = 24;
-  const filled = Math.floor(ratio * width);
-  const bar = `${'='.repeat(filled)}${' '.repeat(width - filled)}`;
-  const totalText = total > 0 ? formatBytes(total) : formatBytes(activeVideoUpload.fileSize);
-
-  process.stdout.write(
-    `\r[Video upload] ${percent.toString().padStart(3)}% [${bar}] ${formatBytes(loaded)} / ${totalText}`
-  );
-}
-
-export function reportVideoUploadProgress(event) {
-  if (!activeVideoUpload) return;
-
-  const loaded = Math.min(event.loaded || 0, activeVideoUpload.fileSize);
-  const total = event.total || activeVideoUpload.fileSize;
-  renderVideoUploadProgress(loaded, total);
-}
-
-function finishVideoUpload(success) {
-  if (!activeVideoUpload) return;
-
-  const { fileSize } = activeVideoUpload;
-  if (process.stdout.isTTY) {
-    if (success) renderVideoUploadProgress(fileSize, fileSize);
-    process.stdout.write(`\r[Video upload] ${success ? 'Complete' : 'Failed'}: ${formatBytes(fileSize)}${' '.repeat(48)}\n`);
-  } else {
-    console.log(`[LessonManager] Video upload ${success ? 'complete' : 'failed'} (${formatBytes(fileSize)}).`);
+export function resolveLessonVideoPath(videoFile) {
+  if (typeof videoFile !== 'string' || !videoFile.trim()) {
+    throw new TypeError('A lesson video path is required.');
   }
+  return path.resolve(APP_DIR, videoFile);
+}
 
-  activeVideoUpload = null;
+function normalizeLessonConsentMessage(message) {
+  return message
+    .toLowerCase()
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/[ًٌٍَُِّْـ]/g, '')
+    .replace(/[?!.,،؛]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isLessonPermissionQuestion(message) {
+  return typeof message === 'string' &&
+    /\b(?:may|can|could)\s+i\s+send\b.{0,60}\blessons?\b/i.test(message);
+}
+
+export function isLessonDeliveryDecline(message, previousAgentMessage = '') {
+  if (typeof message !== 'string' || !isLessonPermissionQuestion(previousAgentMessage)) return false;
+  const normalized = normalizeLessonConsentMessage(message);
+  return /^(?:no|not yet|later|maybe later|لا|ما هسي|بعدين|لاحقا)(?:\b|\s|$)/i.test(normalized) ||
+    /\b(?:not yet|not now|later)\b|بعدين|لاحقا/i.test(normalized);
+}
+
+export function hasLessonDeliveryConsent(message, previousAgentMessage = '') {
+  if (typeof message !== 'string' || !isLessonPermissionQuestion(previousAgentMessage)) return false;
+  const normalized = normalizeLessonConsentMessage(message);
+  if (isLessonDeliveryDecline(message, previousAgentMessage)) return false;
+
+  return /\b(?:yes|yeah|yep|sure|okay|ok|go ahead|send it|please do|i agree)\b|ايوة|ايوه|ايوا|نعم|تمام|موافق|ماشي|مافي مشكلة/i.test(normalized);
 }
 
 class LessonManager {
@@ -176,6 +172,61 @@ class LessonManager {
     return lessons[student.currentLessonIndex] || null;
   }
 
+  isLessonVideoRequest(text) {
+    if (typeof text !== 'string') return false;
+    const normalized = text
+      .toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[ًٌٍَُِّْـ]/g, '')
+      .replace(/[?!.,،؛]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const mentionsVideo = /\bvideo\b|\bclip\b|فيديو|مقطع|كليب/.test(normalized);
+    const requestsVideo = /\b(send|resend|share|forward|show|again)\b|ارسل|رسل|ابعث|ابعت|وريني|اديني|اعيد|عايز|داير|اريد|ممكن|تاني|مرة/.test(normalized);
+    return mentionsVideo && requestsVideo;
+  }
+
+  isLessonDeliveryRequest(text) {
+    if (typeof text !== 'string') return false;
+    const normalized = text
+      .toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[ًٌٍَُِّْـ]/g, '')
+      .replace(/[?!.,،؛]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return (
+      /\b(?:send|share|start|begin)\b.{0,40}\b(?:the\s+)?(?:lesson|lessons|class|video)\b/i.test(normalized) ||
+      /\b(?:lesson|lessons|class|video)\b.{0,30}\b(?:send|share|now)\b/i.test(normalized) ||
+      /(?:ارسل|رسل|ابعث|ابعت|داير|عايز|عاوز|اريد).{0,30}(?:درس|دروس|فيديو|حصة)/i.test(normalized)
+    );
+  }
+
+  async resendCurrentLessonVideo(sock, jid) {
+    const lesson = this.getCurrentLesson(jid);
+    if (!lesson) return false;
+
+    const videoAbsolutePath = typeof lesson.videoFile === 'string' && lesson.videoFile.trim()
+      ? resolveLessonVideoPath(lesson.videoFile)
+      : null;
+    if (!videoAbsolutePath || !fs.existsSync(videoAbsolutePath)) {
+      console.error(`[LessonManager] Cannot resend video for ${lesson.id}; file is missing: ${lesson.videoFile || '(not configured)'}`);
+      await sock.sendMessage(jid, {
+        text: `ما قدرت أرسل فيديو "${lesson.title}" لأن ملف الفيديو غير موجود عندي.`
+      });
+      return true;
+    }
+
+    console.log(`[LessonManager] Resending ${lesson.title} video to ${jid}...`);
+    const video = fs.readFileSync(videoAbsolutePath);
+    await sock.sendMessage(jid, {
+      video,
+      caption: lesson.caption || lesson.title,
+      mimetype: 'video/mp4'
+    });
+    return true;
+  }
+
   /**
    * Send the video lesson and respective task to the student via WhatsApp
    */
@@ -186,7 +237,7 @@ class LessonManager {
     }
 
     const lesson = gradeData.lessons[lessonIndex];
-    const videoAbsolutePath = path.resolve(lesson.videoFile);
+    const videoAbsolutePath = resolveLessonVideoPath(lesson.videoFile);
 
     console.log(`[LessonManager] Delivering ${lesson.title} to ${jid}...`);
 
@@ -199,28 +250,11 @@ class LessonManager {
     if (fs.existsSync(videoAbsolutePath)) {
       console.log(`[LessonManager] Uploading video file: ${videoAbsolutePath}`);
       const video = fs.readFileSync(videoAbsolutePath);
-      const previousUpload = videoUploadQueue;
-      let releaseUpload;
-      videoUploadQueue = new Promise(resolve => {
-        releaseUpload = resolve;
+      await sock.sendMessage(jid, {
+        video,
+        caption: lesson.caption || lesson.title,
+        mimetype: 'video/mp4'
       });
-      await previousUpload;
-
-      activeVideoUpload = { fileSize: video.length };
-      renderVideoUploadProgress(0, video.length);
-      try {
-        await sock.sendMessage(jid, {
-          video,
-          caption: lesson.caption || lesson.title,
-          mimetype: 'video/mp4'
-        });
-        finishVideoUpload(true);
-      } catch (err) {
-        finishVideoUpload(false);
-        throw err;
-      } finally {
-        releaseUpload();
-      }
       await new Promise(r => setTimeout(r, 2500));
     } else {
       console.warn(`[LessonManager ⚠️] Video file not found at: ${videoAbsolutePath}`);
@@ -283,8 +317,10 @@ class LessonManager {
       if (gradeData && gradeData.lessons && gradeData.lessons[nextIndex]) {
         console.log(`[LessonManager] Advancing ${pushName} to Lesson Index ${nextIndex}...`);
         // Wait 3 seconds then deliver next lesson
-        setTimeout(async () => {
-          await this.deliverLesson(sock, jid, student.grade, nextIndex);
+        setTimeout(() => {
+          this.deliverLesson(sock, jid, student.grade, nextIndex).catch(error => {
+            console.error(`[LessonManager] Failed to deliver ${gradeData.lessons[nextIndex].id} to ${jid}:`, error.message);
+          });
         }, 3000);
       } else {
         student.status = 'completed';

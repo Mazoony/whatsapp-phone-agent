@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { config } from './config.js';
+import { getPhoneJid } from './phonebook.js';
 
 const DATA_DIR = path.resolve('data');
 const HISTORY_FILE = path.join(DATA_DIR, 'chat_history.json');
@@ -66,17 +67,19 @@ class ChatHistoryManager {
    * @param {string} jid
    * @param {string} name Contact display name or pushName
    */
-  saveContact(jid, name) {
+  saveContact(jid, name, linkedPhoneJid = null) {
     if (!jid) return;
     const cleanName = (name || '').trim();
     const existing = this.contacts[jid] || {};
     const bestName = cleanName || existing.name || '';
+    const phoneJid = getPhoneJid(linkedPhoneJid, existing.phoneJid, jid);
 
-    const isEs = config.isEsContact(bestName, jid) || existing.isEs || false;
+    const isEs = config.isEsContact(bestName, phoneJid || jid) || existing.isEs || false;
 
     this.contacts[jid] = {
       ...existing,
       jid,
+      ...(phoneJid ? { phoneJid } : {}),
       name: bestName,
       isEs,
       updatedAt: new Date().toISOString()
@@ -86,13 +89,29 @@ class ChatHistoryManager {
     return this.contacts[jid];
   }
 
-  markSavedContact(jid, name = '') {
+  markSavedContact(jid, name = '', linkedPhoneJid = null) {
     if (!jid) return;
 
-    const contact = this.saveContact(jid, name);
+    const contact = this.saveContact(jid, name, linkedPhoneJid);
     contact.savedInAddressBook = true;
     this.scheduleSaveContacts();
     return contact;
+  }
+
+  saveWhatsAppContact(contact) {
+    if (!contact || typeof contact !== 'object') return;
+    const jids = [...new Set([contact.id, contact.jid, contact.lid]
+      .filter(jid => typeof jid === 'string' && jid))];
+    const phoneJid = getPhoneJid(...jids);
+    const name = contact.name || contact.notify || contact.verifiedName || '';
+
+    for (const jid of jids) {
+      if (contact.name) {
+        this.markSavedContact(jid, contact.name, phoneJid);
+      } else {
+        this.saveContact(jid, name, phoneJid);
+      }
+    }
   }
 
   isSavedContact(...jids) {
@@ -101,6 +120,20 @@ class ChatHistoryManager {
 
   hasContactSavePrompted(...jids) {
     return jids.some(jid => jid && this.contacts[jid]?.contactSavePromptedAt);
+  }
+
+  hasLessonDeliveryConsent(...jids) {
+    return jids.some(jid => jid && this.contacts[jid]?.lessonConsentGrantedAt);
+  }
+
+  setLessonDeliveryConsent(granted, ...jids) {
+    for (const jid of jids.filter(Boolean)) {
+      const contact = this.contacts[jid] || { jid, name: '' };
+      if (granted) contact.lessonConsentGrantedAt = new Date().toISOString();
+      else delete contact.lessonConsentGrantedAt;
+      this.contacts[jid] = contact;
+    }
+    this.scheduleSaveContacts();
   }
 
   markContactSavePrompted(...jids) {

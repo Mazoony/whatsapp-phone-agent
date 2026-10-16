@@ -25,3 +25,17 @@ test('agent log records formatted terminal output and returns the latest bounded
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });
+
+test('agent log trims oversized files after closing the source file', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-log-trim-test-'));
+  const logFile = path.join(temporaryDirectory, 'agent.log');
+
+  try {
+    fs.writeFileSync(logFile, 'Older log entry\n'.repeat(100_000));
+    appendAgentLog('info', ['New log entry'], logFile);
+    assert.ok(fs.statSync(logFile).size < 600 * 1024);
+    assert.match(readRecentAgentLogs(logFile, 1).lines[0], /\[info\] New log entry$/);
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});

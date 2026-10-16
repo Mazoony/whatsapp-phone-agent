@@ -15,18 +15,19 @@ function trimLogFile(filePath) {
   if (stats.size <= MAX_LOG_BYTES) return;
 
   const file = fs.openSync(filePath, 'r');
+  let retained;
   try {
     const bytesToKeep = Math.min(LOG_RETAIN_BYTES, stats.size);
     const buffer = Buffer.alloc(bytesToKeep);
     fs.readSync(file, buffer, 0, bytesToKeep, stats.size - bytesToKeep);
     const firstLine = buffer.indexOf(0x0a);
-    const retained = firstLine >= 0 ? buffer.subarray(firstLine + 1) : buffer;
-    const temporaryPath = `${filePath}.${process.pid}.tmp`;
-    fs.writeFileSync(temporaryPath, retained);
-    fs.renameSync(temporaryPath, filePath);
+    retained = firstLine >= 0 ? buffer.subarray(firstLine + 1) : buffer;
   } finally {
     fs.closeSync(file);
   }
+  const temporaryPath = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, retained);
+  fs.renameSync(temporaryPath, filePath);
 }
 
 export function appendAgentLog(level, values, filePath = AGENT_LOG_FILE) {

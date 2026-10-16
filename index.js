@@ -13,9 +13,34 @@ import { sendHumanizedMessage } from './humanization.js';
 import { config } from './config.js';
 import { historyManager } from './history.js';
 import { generateClientResponse, learnFromTeacherReply } from './ai.js';
-import { lessonManager, reportVideoUploadProgress } from './lesson_manager.js';
+import { sudaneseArabicLearner } from './sudanese_arabic_learning.js';
+import {
+  hasLessonDeliveryConsent,
+  isLessonDeliveryDecline,
+  lessonManager
+} from './lesson_manager.js';
+import { contactSyncManager } from './contact_sync.js';
 import { followUpManager, isFollowUpOptOutRequest } from './followup_manager.js';
 import { broadcastManager } from './broadcast_manager.js';
+import {
+  grammarTutor,
+  isGrammarCourseControlRequest,
+  isGrammarCourseStartRequest
+} from './grammar_tutor.js';
+import {
+  createIncomingMessageDeduplicator,
+  shouldProcessIncomingUpsert
+} from './incoming_message_utils.js';
+import { IncomingChatQueue } from './incoming_chat_queue.js';
+import { whatsappChatActivityStore } from './whatsapp_chat_activity.js';
+import {
+  WhatsAppPresenceManager
+} from './whatsapp_presence.js';
+import {
+  applyWhatsAppPaidLabel,
+  createContactPaymentLabelsStore,
+  isExplicitPaidClaim
+} from './contact_payment_labels.js';
 import {
   clearAgentQr,
   readLastAgentAccount,
@@ -24,15 +49,31 @@ import {
   writeAgentStatus
 } from './agent_status.js';
 import { installAgentLogCapture } from './agent_runtime.js';
+import {
+  reportMediaUploadProgress,
+  wrapSocketWithMediaUploadProgress
+} from './media_upload_progress.js';
 
 // Debounce queue for client messages: Map<jid, { timer: NodeJS.Timeout, texts: string[], images: Array<{ data: Buffer, mimeType: string }>, pushName: string }>
 installAgentLogCapture();
 const debounceMap = new Map();
+const isDuplicateIncomingMessage = createIncomingMessageDeduplicator();
 const MAX_INCOMING_IMAGE_BYTES = 10 * 1024 * 1024;
+let paymentLabelTimer = null;
+let processingPaymentLabels = false;
 let agentConnectionState = 'starting';
 let lastConnectedAt;
 let agentAccount = null;
 let agentHeartbeatTimer = null;
+const contactPaymentLabels = createContactPaymentLabelsStore();
+const whatsappPresenceManager = new WhatsAppPresenceManager();
+
+function saveWhatsAppContacts(contacts) {
+  if (!Array.isArray(contacts)) return;
+  for (const contact of contacts) {
+    historyManager.saveWhatsAppContact(contact);
+  }
+}
 
 try {
   lastConnectedAt = readLastConnectedAt();
@@ -61,6 +102,30 @@ function updateAgentStatus(connectionState = agentConnectionState, account = age
     writeAgentStatus(agentConnectionState, lastConnectedAt, agentAccount);
   } catch (error) {
     console.error('[Agent Status] Could not save WhatsApp connection status:', error.message);
+  }
+}
+
+async function processPendingPaymentLabels(sock) {
+  if (processingPaymentLabels) return;
+  processingPaymentLabels = true;
+  try {
+    for (const label of contactPaymentLabels.pendingActions()) {
+      try {
+        await applyWhatsAppPaidLabel(sock, label.jid, label.whatsappAction);
+        if (label.whatsappAction === 'add') {
+          contactPaymentLabels.markWhatsAppApplied(label.number);
+        } else {
+          contactPaymentLabels.markWhatsAppRemoved(label.number);
+        }
+        console.log(`[Contact Labels] Applied the ${label.label} status in WhatsApp for ${label.number.slice(-4)}.`);
+      } catch (error) {
+        console.error(`[Contact Labels] Could not apply the pending ${label.label} WhatsApp label for ${label.number.slice(-4)}:`, error.message);
+      }
+    }
+  } catch (error) {
+    console.error('[Contact Labels] Could not read pending WhatsApp label changes:', error.message);
+  } finally {
+    processingPaymentLabels = false;
   }
 }
 
@@ -96,46 +161,52 @@ async function startAgent() {
     auth: state,
     generateHighQualityLinkPreview: true,
     syncFullHistory: true, // Enable full history sync from phone
-    options: {
-      onUploadProgress: reportVideoUploadProgress
-    }
+    options: { onUploadProgress: reportMediaUploadProgress }
   });
+  wrapSocketWithMediaUploadProgress(sock);
+  const incomingChatQueue = new IncomingChatQueue();
+  let processingChatQueue = false;
+  const processNextQueuedChat = async () => {
+    if (processingChatQueue) return;
+    processingChatQueue = true;
+    try {
+      let entry;
+      while ((entry = incomingChatQueue.takeNext())) {
+        try {
+          await entry.process();
+        } catch (error) {
+          console.error(`[Agent Queue] Could not process chat ${entry.jid}:`, error.message);
+        } finally {
+          incomingChatQueue.finish(entry);
+        }
+      }
+    } finally {
+      processingChatQueue = false;
+    }
+  };
 
   // Save auth state when credentials change
   sock.ev.on('creds.update', saveCreds);
 
   // Track contacts updates and new contacts from phonebook
-  sock.ev.on('contacts.upsert', (contacts) => {
-    if (!Array.isArray(contacts)) return;
-    for (const c of contacts) {
-      const jids = [c.id, c.jid, c.lid].filter(Boolean);
-      if (c.name) {
-        for (const contactJid of jids) {
-          historyManager.markSavedContact(contactJid, c.name);
-        }
-      } else {
-        const displayName = c.notify || c.verifiedName || '';
-        for (const contactJid of jids) {
-          historyManager.saveContact(contactJid, displayName);
-        }
-      }
-    }
-  });
+  sock.ev.on('contacts.upsert', saveWhatsAppContacts);
 
-  sock.ev.on('contacts.update', (updates) => {
-    if (!Array.isArray(updates)) return;
-    for (const u of updates) {
-      const jids = [u.id, u.jid, u.lid].filter(Boolean);
-      if (u.name) {
-        for (const contactJid of jids) {
-          historyManager.markSavedContact(contactJid, u.name);
-        }
-      } else {
-        const displayName = u.notify || u.verifiedName || '';
-        for (const contactJid of jids) {
-          historyManager.saveContact(contactJid, displayName);
-        }
-      }
+  sock.ev.on('contacts.update', saveWhatsAppContacts);
+
+  const saveWhatsAppChatActivity = chats => {
+    try {
+      whatsappChatActivityStore.record(chats);
+    } catch (error) {
+      console.error('[WhatsApp Chat Activity] Could not save chat timestamps:', error.message);
+    }
+  };
+  sock.ev.on('chats.upsert', saveWhatsAppChatActivity);
+  sock.ev.on('chats.update', saveWhatsAppChatActivity);
+  sock.ev.on('presence.update', update => {
+    try {
+      whatsappPresenceManager.recordPresenceUpdate(update);
+    } catch (error) {
+      console.error('[WhatsApp Presence] Could not save presence update:', error.message);
     }
   });
 
@@ -160,6 +231,10 @@ async function startAgent() {
 
       followUpManager.stop(sock);
       broadcastManager.stop(sock);
+      contactSyncManager.stop(sock);
+      whatsappPresenceManager.stop();
+      if (paymentLabelTimer) clearInterval(paymentLabelTimer);
+      paymentLabelTimer = null;
       try {
         clearAgentQr();
       } catch (error) {
@@ -188,26 +263,23 @@ async function startAgent() {
       console.log('==================================================\n');
       followUpManager.start(sock);
       broadcastManager.start(sock);
+      contactSyncManager.start(sock);
+      whatsappPresenceManager.start(sock);
+      if (paymentLabelTimer) clearInterval(paymentLabelTimer);
+      paymentLabelTimer = setInterval(() => {
+        processPendingPaymentLabels(sock).catch(error =>
+          console.error('[Contact Labels] Queue processing failed:', error.message));
+      }, 3000);
+      paymentLabelTimer.unref?.();
+      processPendingPaymentLabels(sock).catch(error =>
+        console.error('[Contact Labels] Queue processing failed:', error.message));
     }
   });
 
   // Populate history and contacts from WhatsApp initial sync
-  sock.ev.on('messaging-history.set', ({ contacts, messages }) => {
-    if (contacts && Array.isArray(contacts)) {
-      for (const c of contacts) {
-        const jids = [c.id, c.jid, c.lid].filter(Boolean);
-        if (c.name) {
-          for (const contactJid of jids) {
-            historyManager.markSavedContact(contactJid, c.name);
-          }
-        } else {
-          const displayName = c.notify || c.verifiedName || '';
-          for (const contactJid of jids) {
-            historyManager.saveContact(contactJid, displayName);
-          }
-        }
-      }
-    }
+  sock.ev.on('messaging-history.set', ({ chats, contacts, messages }) => {
+    saveWhatsAppContacts(contacts);
+    saveWhatsAppChatActivity(chats);
 
     if (messages && Array.isArray(messages)) {
       for (const msg of messages) {
@@ -232,14 +304,25 @@ async function startAgent() {
   });
 
   // Process incoming messages
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
+  sock.ev.on('messages.upsert', async ({ messages, type, requestId }) => {
+    if (!shouldProcessIncomingUpsert({ type, requestId })) return;
+    if (requestId) {
+      console.log(`[Catch-up] Processing ${messages.length} message(s) fetched after the linked device was unavailable.`);
+    }
 
     for (const msg of messages) {
+      if (isDuplicateIncomingMessage(msg)) continue;
       // 1. Ignore if message has no payload or is a status update
       if (!msg.message) continue;
       const jid = msg.key.remoteJid;
       if (!jid || jid === 'status@broadcast') continue;
+      const alternateJid = msg.key.remoteJidAlt || '';
+      const phoneJid = getPhoneJid(jid, alternateJid);
+      try {
+        whatsappChatActivityStore.recordMessage(jid, msg.messageTimestamp);
+      } catch (error) {
+        console.error('[WhatsApp Chat Activity] Could not save message timestamp:', error.message);
+      }
 
       // 2. When message is sent by yourself, learn from your reply!
       if (msg.key.fromMe) {
@@ -263,7 +346,9 @@ async function startAgent() {
       }
 
       // 4. Check whitelist / blacklist
-      const senderNumber = jid.split('@')[0];
+      const senderNumber = phoneJid
+        ? phoneJid.slice(0, -'@s.whatsapp.net'.length).split(':')[0]
+        : jid.split('@')[0];
       if (!config.shouldReplyTo(senderNumber)) {
         continue;
       }
@@ -278,8 +363,6 @@ async function startAgent() {
 
       if (!text.trim()) continue;
 
-      const alternateJid = msg.key.remoteJidAlt || '';
-      const phoneJid = getPhoneJid(jid, alternateJid);
       const pushName = msg.pushName || phoneJid?.split('@')[0] || senderNumber;
       historyManager.saveContact(jid, pushName);
       historyManager.addMessage(jid, 'client', text.trim(), undefined, pushName);
@@ -313,6 +396,15 @@ async function startAgent() {
         console.log(`[Enabled - New Unsaved Contact] ${pushName} (${senderNumber})`);
       } else if (isOwnerAllowed) {
         console.log(`[Enabled - Owner Allowlist] ${pushName} (${senderNumber})`);
+      }
+
+      try {
+        const learning = sudaneseArabicLearner.observe(text.trim());
+        if (learning.newCues.length) {
+          console.log(`[Arabic Learning] New Sudanese expressions observed: ${learning.newCues.join(', ')}`);
+        }
+      } catch (error) {
+        console.error('[Arabic Learning] Could not record client language cues:', error.message);
       }
 
       let incomingImage = null;
@@ -363,70 +455,197 @@ async function startAgent() {
         clearTimeout(entry.timer);
         entry.texts.push(text.trim());
         if (incomingImage) entry.images.push(incomingImage);
+        incomingChatQueue.delay(entry.queueEntry);
       } else {
         debounceMap.set(jid, {
           pushName,
           texts: [text.trim()],
           images: incomingImage ? [incomingImage] : [],
+          senderNumber,
           timer: null
         });
       }
 
       const currentEntry = debounceMap.get(jid);
-      currentEntry.timer = setTimeout(async () => {
-        const aggregatedText = currentEntry.texts.join('\n');
-        debounceMap.delete(jid);
-
-        try {
-          // 1. Check if student has an active lesson and is submitting their homework/task!
-          if (lessonManager.hasActiveLesson(jid) && currentEntry.images.length === 0) {
-            await sock.sendPresenceUpdate('composing', jid);
-            const isHandled = await lessonManager.handleTaskSubmission(sock, jid, aggregatedText, pushName);
-            await sock.sendPresenceUpdate('paused', jid);
-            if (isHandled) {
-              return;
-            }
-          }
-
-          // 2. If the student has described their level/problem, start lesson 1 immediately
-          const detectedGrade = lessonManager.detectGrade(aggregatedText);
-          const student = lessonManager.getStudent(jid);
-          const studentStruggleSignals = /(ضعيف|خايف|مشكل|صعبة|قواعد|أزمنة|grammar|vocabulary|words|reading|writing|speaking|listening|سجل|درجة|درجه|max|grade|المرحلة|إنجليزي|انجليزي)/i.test(aggregatedText);
-          const gradeLessons = detectedGrade ? lessonManager.lessonsConfig[detectedGrade]?.lessons : null;
-          const shouldStartImmediately = detectedGrade && gradeLessons?.length > 0 &&
-            (!student || student.status === 'consulting' || student.grade !== detectedGrade);
-
-          if (currentEntry.images.length === 0 && shouldStartImmediately) {
-            const gradeKey = detectedGrade;
-            lessonManager.setStudentGrade(jid, gradeKey);
-            console.log(`[Lesson Auto-Start 🎓] ${pushName} is ready for ${gradeKey}. Delivering Lesson 1 immediately...`);
-            await sock.sendPresenceUpdate('composing', jid);
-            await lessonManager.deliverLesson(sock, jid, gradeKey, 0);
-            await sock.sendPresenceUpdate('paused', jid);
+      currentEntry.senderNumber = senderNumber;
+      if (!currentEntry.queueEntry) {
+        const queuedEntry = {
+          jid,
+          pushName: currentEntry.pushName,
+          texts: currentEntry.texts,
+          images: currentEntry.images,
+          senderNumber: currentEntry.senderNumber,
+          queuedAt: new Date().toISOString(),
+          process: null
+        };
+        queuedEntry.process = async () => {
+          const aggregatedText = queuedEntry.texts.join('\n');
+          const queuedSenderNumber = queuedEntry.senderNumber;
+          if (!config.shouldReplyTo(queuedSenderNumber)) {
+            console.log(`[Ignored - Blocked Number] ${queuedSenderNumber.slice(-4)}`);
             return;
           }
 
-          if (!detectedGrade && studentStruggleSignals) {
-            console.log(`[Lesson Setup] Could not determine the student's stage and grade from the message.`);
-          } else if (detectedGrade && !gradeLessons?.length) {
-            console.log(`[Lesson Setup] No lessons are configured yet for ${detectedGrade}. Continuing the conversation without sending a different grade's lesson.`);
+          const paidClaim = isExplicitPaidClaim(aggregatedText);
+          let paidLabel = null;
+          try {
+            if (paidClaim) {
+              contactPaymentLabels.markPaid(queuedSenderNumber, jid);
+            }
+          } catch (error) {
+            console.error('[Contact Labels] Could not save student-reported payment status:', error.message);
+          }
+          try {
+            paidLabel = contactPaymentLabels.get(queuedSenderNumber);
+          } catch (error) {
+            console.error('[Contact Labels] Could not read payment label status:', error.message);
+          }
+          if ((paidClaim || paidLabel) && !paidLabel?.whatsappAppliedAt) {
+            try {
+              await applyWhatsAppPaidLabel(sock, jid);
+              if (paidLabel) contactPaymentLabels.markWhatsAppApplied(queuedSenderNumber);
+              console.log(`[Contact Labels] Applied the paid label to ${queuedEntry.pushName}.`);
+            } catch (error) {
+              console.error(`[Contact Labels] Could not apply WhatsApp paid label to ${queuedEntry.pushName}:`, error.message);
+            }
           }
 
-          console.log(`[Agent] Generating response for ${pushName}...`);
+          try {
+            const grammarStudent = grammarTutor.getStudent(jid, phoneJid);
+            if (grammarStudent &&
+                (grammarTutor.isActive(jid, phoneJid) ||
+                  isGrammarCourseControlRequest(aggregatedText))) {
+              const grammarGrade = lessonManager.detectGrade(aggregatedText) || grammarStudent.gradeKey;
+              const grammarHandled = await grammarTutor.handleMessage(
+                sock, jid, aggregatedText, grammarGrade, phoneJid
+              );
+              if (grammarHandled) return;
+            }
 
-          // Generate response with Gemini
-          const reply = await generateClientResponse(jid, pushName, aggregatedText, currentEntry.images);
+            if (lessonManager.hasActiveLesson(jid) && queuedEntry.images.length === 0) {
+              if (lessonManager.isLessonVideoRequest(aggregatedText)) {
+                await sock.sendPresenceUpdate('composing', jid);
+                const resent = await lessonManager.resendCurrentLessonVideo(sock, jid);
+                await sock.sendPresenceUpdate('paused', jid);
+                if (resent) return;
+              }
 
-          await sendHumanizedMessage(sock, jid, reply, config.typingWordsPerMinute);
-          console.log(`[Agent -> ${pushName}]: "${reply}"`);
+              await sock.sendPresenceUpdate('composing', jid);
+              const isHandled = await lessonManager.handleTaskSubmission(
+                sock, jid, aggregatedText, queuedEntry.pushName
+              );
+              await sock.sendPresenceUpdate('paused', jid);
+              if (isHandled) return;
+            }
 
-          // Record sent reply in history
-          historyManager.addMessage(jid, 'agent', reply);
+            const detectedGrade = lessonManager.detectGrade(aggregatedText);
+            let student = lessonManager.getStudent(jid);
+            if (isGrammarCourseStartRequest(aggregatedText)) {
+              if (lessonManager.hasActiveLesson(jid)) {
+                await sendHumanizedMessage(
+                  sock,
+                  jid,
+                  'Finish the video lesson exercise you already have first. Then ask me to start the grammar course.',
+                  config.typingWordsPerMinute
+                );
+                return;
+              }
+              await grammarTutor.handleMessage(
+                sock,
+                jid,
+                aggregatedText,
+                detectedGrade ||
+                  [...(historyManager.history[jid] || [])]
+                    .reverse()
+                    .filter(message => message.role === 'client')
+                    .map(message => lessonManager.detectGrade(message.text))
+                    .find(Boolean) ||
+                  student?.grade,
+                phoneJid
+              );
+              return;
+            }
 
-        } catch (err) {
-          console.error(`[Error] Failed to reply to ${pushName}:`, err.message);
-          await sock.sendPresenceUpdate('paused', jid);
-        }
+            const chatHistory = historyManager.history[jid] || [];
+            const previousAgentMessage = [...chatHistory]
+              .reverse()
+              .find(message => message.role === 'agent')?.text || '';
+            const explicitLessonRequest = lessonManager.isLessonDeliveryRequest(aggregatedText);
+            if (isLessonDeliveryDecline(aggregatedText, previousAgentMessage)) {
+              historyManager.setLessonDeliveryConsent(false, jid, alternateJid);
+            } else if (explicitLessonRequest ||
+                hasLessonDeliveryConsent(aggregatedText, previousAgentMessage)) {
+              historyManager.setLessonDeliveryConsent(true, jid, alternateJid);
+            }
+            const hasLessonConsent = historyManager.hasLessonDeliveryConsent(jid, alternateJid);
+            const gradeFromHistory = [...chatHistory]
+              .reverse()
+              .filter(message => message.role === 'client')
+              .map(message => lessonManager.detectGrade(message.text))
+              .find(Boolean);
+            const requestedGrade = detectedGrade || gradeFromHistory || student?.grade;
+            const gradeLessons = requestedGrade ? lessonManager.lessonsConfig[requestedGrade]?.lessons : null;
+            const shouldStartAfterReply = requestedGrade && gradeLessons?.length > 0 &&
+              queuedEntry.images.length === 0 &&
+              !lessonManager.hasActiveLesson(jid) &&
+              hasLessonConsent &&
+              (!student || student.status === 'consulting' ||
+                (detectedGrade && student.grade !== detectedGrade));
+
+            if (detectedGrade && (!student || student.grade !== detectedGrade) &&
+                !lessonManager.hasActiveLesson(jid)) {
+              lessonManager.setStudentGrade(jid, detectedGrade);
+              student = lessonManager.getStudent(jid);
+            }
+
+            if (requestedGrade && !gradeLessons?.length) {
+              console.log(`[Lesson Setup] No lessons are configured yet for ${requestedGrade}. Continuing the conversation without sending a different grade's lesson.`);
+            }
+
+            console.log(`[Agent] Generating response for ${queuedEntry.pushName}...`);
+            const reply = await generateClientResponse(
+              jid,
+              queuedEntry.pushName,
+              aggregatedText,
+              queuedEntry.images,
+              requestedGrade || student?.grade || null,
+              Boolean(shouldStartAfterReply),
+              Boolean(hasLessonConsent),
+              phoneJid,
+              grammarStudent && grammarTutor.isActive(jid, phoneJid)
+                ? grammarTutor.getCurrentLesson(jid, phoneJid)?.title || null
+                : null
+            );
+            await sendHumanizedMessage(sock, jid, reply, config.typingWordsPerMinute);
+            console.log(`[Agent -> ${queuedEntry.pushName}]: "${reply}"`);
+            historyManager.addMessage(jid, 'agent', reply);
+            if (shouldStartAfterReply) {
+              console.log(`[Lesson Auto-Start 🎓] ${queuedEntry.pushName} received a solution. Delivering Lesson 1 for ${requestedGrade}...`);
+              await sock.sendPresenceUpdate('composing', jid);
+              const delivered = await lessonManager.deliverLesson(sock, jid, requestedGrade, 0);
+              await sock.sendPresenceUpdate('paused', jid);
+              if (delivered) historyManager.setLessonDeliveryConsent(false, jid, alternateJid);
+            } else if (hasLessonConsent && requestedGrade && !gradeLessons?.length) {
+              console.log(`[Lesson Setup] Lesson consent saved for ${queuedEntry.pushName}; waiting for configured content for ${requestedGrade}.`);
+            }
+          } catch (err) {
+            console.error(`[Error] Failed to reply to ${queuedEntry.pushName}:`, err.message);
+            await sock.sendPresenceUpdate('paused', jid);
+          }
+        };
+        currentEntry.queueEntry = incomingChatQueue.enqueue(queuedEntry);
+      }
+
+      const queuedEntry = currentEntry.queueEntry;
+      currentEntry.texts = queuedEntry.texts;
+      currentEntry.images = queuedEntry.images;
+      queuedEntry.pushName = currentEntry.pushName;
+      queuedEntry.senderNumber = currentEntry.senderNumber;
+      currentEntry.timer = setTimeout(() => {
+        debounceMap.delete(jid);
+        incomingChatQueue.markReady(queuedEntry);
+        processNextQueuedChat().catch(error =>
+          console.error('[Agent Queue] Could not process incoming chat queue:', error.message));
       }, config.debounceSeconds * 1000);
     }
   });

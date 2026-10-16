@@ -76,7 +76,13 @@ function promptUser() {
 
       // 4. Generate general autonomous response via Gemini
       console.log('\n⏳ [مستر مازن يكتب الآن...]');
-      const reply = await generateClientResponse(simJid, studentName, text);
+      const reply = await generateClientResponse(
+        simJid,
+        studentName,
+        text,
+        [],
+        detectedGrade || student?.grade || null
+      );
       historyManager.addMessage(simJid, 'agent', reply, Date.now());
 
       console.log(`\n🤖 [مستر مازن]:\n${reply}\n`);

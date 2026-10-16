@@ -1,12 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from './config.js';
+import { generateWithTransientRetry } from './ai.js';
+import { generateLocalResponse } from './local_ai.js';
 
-let genAI = null;
-function getGenAI() {
-  if (!genAI) {
-    genAI = new GoogleGenerativeAI(config.geminiApiKey);
+const genAIClients = new Map();
+function getGenAI(apiKey) {
+  if (!genAIClients.has(apiKey)) {
+    genAIClients.set(apiKey, new GoogleGenerativeAI(apiKey));
   }
-  return genAI;
+  return genAIClients.get(apiKey);
 }
 
 const MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
@@ -24,8 +26,6 @@ export async function evaluateStudentTask(lesson, studentSubmission, studentName
   if (!studentSubmission || studentSubmission.trim().length < 2) {
     return { isTaskSubmission: false, allCorrect: false, feedback: '' };
   }
-
-  const client = getGenAI();
 
   const prompt = `
 You are Mr. Mazen (مستر مازن), an encouraging English teacher from Sudan running the eShool educational platform.
@@ -72,32 +72,51 @@ Return ONLY a valid JSON object without markdown fences, matching this structure
 
   let lastError = null;
 
-  for (const modelName of MODELS) {
-    try {
-      const model = client.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          temperature: 0.3, // Low temperature for consistent grading
-          responseMimeType: 'application/json'
+  for (const [keyIndex, apiKey] of config.geminiApiKeys.entries()) {
+    for (const modelName of MODELS) {
+      try {
+        const model = getGenAI(apiKey).getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            temperature: 0.3, // Low temperature for consistent grading
+            responseMimeType: 'application/json'
+          }
+        });
+
+        const res = await generateWithTransientRetry(() => model.generateContent(prompt));
+        const rawText = res.response.text()?.trim();
+        const cleaned = rawText.replace(/^```json/i, '').replace(/```$/i, '').trim();
+        const parsed = JSON.parse(cleaned);
+
+        if (keyIndex > 0) {
+          console.log(`[Grader] Used API key ${keyIndex + 1} for task evaluation.`);
         }
-      });
-
-      const res = await model.generateContent(prompt);
-      const rawText = res.response.text()?.trim();
-      const cleaned = rawText.replace(/^```json/i, '').replace(/```$/i, '').trim();
-      const parsed = JSON.parse(cleaned);
-
-      return {
-        isTaskSubmission: !!parsed.isTaskSubmission,
-        allCorrect: !!parsed.allCorrect,
-        feedback: parsed.feedback || ''
-      };
-    } catch (err) {
-      lastError = err;
-      console.warn(`[Grader Warning] Model ${modelName} grading failed:`, err.message);
+        return {
+          isTaskSubmission: !!parsed.isTaskSubmission,
+          allCorrect: !!parsed.allCorrect,
+          feedback: parsed.feedback || ''
+        };
+      } catch (err) {
+        lastError = err;
+        console.warn(`[Grader Warning] Model ${modelName} with API key ${keyIndex + 1} grading failed:`, err.message);
+      }
     }
   }
 
-  console.error('[Grader Error] All models failed to evaluate task:', lastError?.message);
-  return { isTaskSubmission: false, allCorrect: false, feedback: '' };
+  try {
+    const rawText = await generateLocalResponse(prompt, {
+      systemInstruction: 'Evaluate the student answer using the provided rubric. Follow the requested JSON format exactly.',
+      format: 'json'
+    });
+    const parsed = JSON.parse(rawText);
+    console.log('[Grader] Task evaluated using local Ollama.');
+    return {
+      isTaskSubmission: !!parsed.isTaskSubmission,
+      allCorrect: !!parsed.allCorrect,
+      feedback: typeof parsed.feedback === 'string' ? parsed.feedback : ''
+    };
+  } catch (localError) {
+    console.error('[Grader Error] Gemini and local Ollama failed:', localError.message, lastError?.message || '');
+    return { isTaskSubmission: false, allCorrect: false, feedback: '' };
+  }
 }

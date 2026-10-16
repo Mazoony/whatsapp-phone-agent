@@ -135,8 +135,11 @@ class FollowUpManager {
     if (!config.followUpsEnabled) return;
     this.socket = sock;
     if (this.running) return;
+    const rescheduling = Boolean(this.timer);
     if (this.timer) clearTimeout(this.timer);
-    console.log(`[Follow-up] Enabled; initial/restart check in ${Math.ceil(delayMs / 1000)} seconds.`);
+    console.log(rescheduling
+      ? `[Follow-up] Initial/restart check rescheduled for ${Math.ceil(delayMs / 1000)} seconds.`
+      : `[Follow-up] Enabled; initial/restart check in ${Math.ceil(delayMs / 1000)} seconds.`);
     this.timer = setTimeout(() => {
       this.timer = null;
       this.runCampaign(sock).catch(err => {

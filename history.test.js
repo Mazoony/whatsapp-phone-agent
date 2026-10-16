@@ -23,6 +23,32 @@ test('saved-contact lookup recognizes either WhatsApp JID alias', () => {
   }
 });
 
+test('synced WhatsApp contacts preserve phone-number links for LID aliases', () => {
+  const phoneJid = '249000000009@s.whatsapp.net';
+  const lidJid = '100000000000009@lid';
+  const previousPhoneEntry = historyManager.contacts[phoneJid];
+  const previousLidEntry = historyManager.contacts[lidJid];
+
+  try {
+    historyManager.saveWhatsAppContact({
+      id: lidJid,
+      jid: phoneJid,
+      lid: lidJid,
+      name: 'New student Es'
+    });
+
+    assert.equal(historyManager.contacts[phoneJid].phoneJid, phoneJid);
+    assert.equal(historyManager.contacts[lidJid].phoneJid, phoneJid);
+    assert.equal(historyManager.contacts[lidJid].savedInAddressBook, true);
+    assert.equal(historyManager.contacts[lidJid].isEs, true);
+  } finally {
+    if (previousPhoneEntry) historyManager.contacts[phoneJid] = previousPhoneEntry;
+    else delete historyManager.contacts[phoneJid];
+    if (previousLidEntry) historyManager.contacts[lidJid] = previousLidEntry;
+    else delete historyManager.contacts[lidJid];
+  }
+});
+
 test('owner-blocked status is recognized across WhatsApp JID aliases', () => {
   const lidJid = '100000000000002@lid';
   const phoneJid = '249000000002@s.whatsapp.net';
@@ -60,6 +86,30 @@ test('owner allowlist is recognized across WhatsApp JID aliases', () => {
     assert.equal(historyManager.isOwnerAllowedContact('100000000000005@lid'), false);
     assert.equal(historyManager.isSavedContact(phoneJid), false);
   } finally {
+    if (previousLidEntry) historyManager.contacts[lidJid] = previousLidEntry;
+    else delete historyManager.contacts[lidJid];
+    if (previousPhoneEntry) historyManager.contacts[phoneJid] = previousPhoneEntry;
+    else delete historyManager.contacts[phoneJid];
+  }
+});
+
+test('lesson delivery consent is saved and recognized across WhatsApp JID aliases', () => {
+  const lidJid = '100000000000006@lid';
+  const phoneJid = '249000000006@s.whatsapp.net';
+  const previousLidEntry = historyManager.contacts[lidJid];
+  const previousPhoneEntry = historyManager.contacts[phoneJid];
+  const previousSave = historyManager.scheduleSaveContacts;
+  historyManager.scheduleSaveContacts = () => {};
+
+  try {
+    historyManager.setLessonDeliveryConsent(true, lidJid, phoneJid);
+    assert.equal(historyManager.hasLessonDeliveryConsent(lidJid), true);
+    assert.equal(historyManager.hasLessonDeliveryConsent(phoneJid), true);
+
+    historyManager.setLessonDeliveryConsent(false, lidJid, phoneJid);
+    assert.equal(historyManager.hasLessonDeliveryConsent(lidJid, phoneJid), false);
+  } finally {
+    historyManager.scheduleSaveContacts = previousSave;
     if (previousLidEntry) historyManager.contacts[lidJid] = previousLidEntry;
     else delete historyManager.contacts[lidJid];
     if (previousPhoneEntry) historyManager.contacts[phoneJid] = previousPhoneEntry;

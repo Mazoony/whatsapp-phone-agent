@@ -149,7 +149,13 @@ const server = http.createServer(async (req, res) => {
       }
 
       // C. Generate autonomous Sudanese Arabic response via Gemini
-      const reply = await generateClientResponse(WEB_STUDENT_JID, WEB_STUDENT_NAME, text);
+      const reply = await generateClientResponse(
+        WEB_STUDENT_JID,
+        WEB_STUDENT_NAME,
+        text,
+        [],
+        detectedGrade || student?.grade || null
+      );
       historyManager.addMessage(WEB_STUDENT_JID, 'agent', reply, Date.now());
 
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

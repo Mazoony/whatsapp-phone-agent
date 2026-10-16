@@ -6,6 +6,7 @@ import { sendHumanizedMessage } from './humanization.js';
 import { followUpManager } from './followup_manager.js';
 import { getEligibleBroadcastContacts } from './broadcast_utils.js';
 import { getPhoneJid } from './phonebook.js';
+import { BROADCAST_MEDIA_DIRECTORY, readBroadcastMedia } from './broadcast_media.js';
 
 const DATA_DIR = path.resolve('data');
 const REQUESTS_FILE = path.join(DATA_DIR, 'broadcast_requests.json');
@@ -41,6 +42,58 @@ function ownPhoneNumber(sock) {
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+export async function sendBroadcastContent(
+  sock,
+  jid,
+  text,
+  attachments = [],
+  mediaDirectory = BROADCAST_MEDIA_DIRECTORY,
+  wordsPerMinute = config.typingWordsPerMinute
+) {
+  if (!attachments.length) {
+    await sendHumanizedMessage(sock, jid, text, wordsPerMinute);
+    return;
+  }
+
+  const captionIndex = text
+    ? attachments.findIndex(attachment => !attachment.mimeType.startsWith('audio/'))
+    : -1;
+  if (text && captionIndex < 0) {
+    await sendHumanizedMessage(sock, jid, text, wordsPerMinute);
+  }
+
+  const canUpdatePresence = typeof sock.sendPresenceUpdate === 'function';
+  if (canUpdatePresence) await sock.sendPresenceUpdate('composing', jid);
+  try {
+    for (const [index, attachment] of attachments.entries()) {
+      const media = readBroadcastMedia(attachment.id, mediaDirectory);
+      const caption = index === captionIndex ? text : undefined;
+      let content;
+      if (media.mimeType.startsWith('audio/')) {
+        content = {
+          audio: media.buffer,
+          mimetype: media.mimeType,
+          ...(media.voiceNote ? { ptt: true } : {})
+        };
+      } else if (media.mimeType.startsWith('image/')) {
+        content = { image: media.buffer, mimetype: media.mimeType };
+      } else if (media.mimeType.startsWith('video/')) {
+        content = { video: media.buffer, mimetype: media.mimeType };
+      } else {
+        content = {
+          document: media.buffer,
+          mimetype: media.mimeType,
+          fileName: media.fileName
+        };
+      }
+      if (caption) content.caption = caption;
+      await sock.sendMessage(jid, content);
+    }
+  } finally {
+    if (canUpdatePresence) await sock.sendPresenceUpdate('paused', jid);
+  }
 }
 
 class BroadcastManager {
@@ -216,7 +269,7 @@ class BroadcastManager {
       const eligible = getEligibleBroadcastContacts({
         contacts: historyManager.contacts,
         history: historyManager.history
-      }, followUpManager.state.optedOutJids);
+      }, followUpManager.state.optedOutJids, job.recipientType || 'es');
       const contact = eligible.find(candidate => candidate.jid === jid);
       const ownNumber = ownPhoneNumber(sock);
       if (!contact || (ownNumber && contact.phoneNumber === ownNumber)) {
@@ -232,8 +285,16 @@ class BroadcastManager {
       this.saveState(state);
 
       try {
-        await sendHumanizedMessage(sock, jid, job.text, config.typingWordsPerMinute);
-        historyManager.addMessage(jid, 'agent', job.text);
+        const activityAt = job.activityAt?.[jid];
+        if (Number.isFinite(activityAt)) {
+          console.log(`[Broadcast] Sending to ${contact.phoneNumber.slice(-4)}; selected chat activity at ${new Date(activityAt).toISOString()} (${job.activityTimeZone || 'UTC'}, ${job.activityDate || 'date filter'}).`);
+        }
+        await sendBroadcastContent(sock, jid, job.text, job.attachments || []);
+        const historyText = [
+          job.text,
+          ...(job.attachments || []).map(attachment => `[Attachment: ${attachment.fileName}]`)
+        ].filter(Boolean).join('\n');
+        historyManager.addMessage(jid, 'agent', historyText);
         jobState.sent += 1;
       } catch (error) {
         jobState.uncertain += 1;
