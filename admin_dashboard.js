@@ -50,7 +50,9 @@ import {
   AGENT_QR_FILE,
   AGENT_STATUS_FILE,
   readAgentQr,
-  renderAgentQrSvg
+  renderAgentQrSvg,
+  requestAgentDisconnect,
+  requestAgentResponseMode
 } from './agent_status.js';
 import { AGENT_LOG_FILE, readRecentAgentLogs } from './agent_runtime.js';
 import {
@@ -157,13 +159,31 @@ function isDirectChat(jid) {
 }
 
 function timestampMs(timestamp) {
-  const value = Number(timestamp) || 0;
+  if (timestamp === null || timestamp === undefined || timestamp === '') return 0;
+  const numericTimestamp = Number(timestamp);
+  const value = Number.isFinite(numericTimestamp)
+    ? numericTimestamp
+    : Number.isFinite(Date.parse(timestamp))
+      ? Date.parse(timestamp)
+      : 0;
+  if (!Number.isFinite(value)) return 0;
   return value > 0 && value < 1e12 ? value * 1000 : value;
 }
 
+function median(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 function latestMessage(messages = []) {
-  return messages.reduce((latest, message) =>
-    timestampMs(message.timestamp) > timestampMs(latest?.timestamp) ? message : latest, null);
+  return messages.reduce((latest, message) => {
+    const currentTimestamp = timestampMs(message.timestamp);
+    const latestTimestamp = timestampMs(latest?.timestamp);
+    return currentTimestamp > latestTimestamp ? message : latest;
+  }, null);
 }
 
 function displayName(contact, jid) {
@@ -287,7 +307,7 @@ function lessonForStudent(student, lessons) {
   return lessons[student.grade]?.lessons?.[student.currentLessonIndex] || null;
 }
 
-export function listDashboardStudentProgress(data, now = Date.now()) {
+export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 'UTC') {
   const activityByPhone = new Map();
   const sevenDayCutoff = now - 7 * 24 * 60 * 60 * 1000;
   const thirtyDayCutoff = now - 30 * 24 * 60 * 60 * 1000;
@@ -343,10 +363,97 @@ export function listDashboardStudentProgress(data, now = Date.now()) {
       activeDaysLast30Days: activity?.activeDatesLast30Days.size || 0
     };
   });
+  const statusCounts = {
+    awaiting_task: 0,
+    awaiting_reattempt: 0,
+    completed: 0,
+    other: 0
+  };
+  const followUpStudents = [];
+  for (const student of students) {
+    const status = Object.hasOwn(statusCounts, student.status) ? student.status : 'other';
+    statusCounts[status] += 1;
+    if (!['awaiting_task', 'awaiting_reattempt'].includes(student.status)) continue;
+
+    const lastProgressActivityAt = Math.max(
+      student.lastStudentActivityAt || 0,
+      timestampMs(student.deliveredAt)
+    );
+    if (!lastProgressActivityAt || now - lastProgressActivityAt < 7 * 24 * 60 * 60 * 1000) continue;
+    followUpStudents.push({
+      jid: student.jid,
+      name: student.name,
+      gradeName: student.gradeName,
+      lessonTitle: student.lessonTitle,
+      status: student.status,
+      lastStudentActivityAt: student.lastStudentActivityAt,
+      daysSinceActivity: Math.floor((now - lastProgressActivityAt) / (24 * 60 * 60 * 1000))
+    });
+  }
+  followUpStudents.sort((left, right) =>
+    Number(right.status === 'awaiting_reattempt') - Number(left.status === 'awaiting_reattempt') ||
+    right.daysSinceActivity - left.daysSinceActivity);
+
+  const engagementByDate = new Map();
+  const trackedPhones = new Set(students.map(student => {
+    const contact = data.contacts[student.jid];
+    return getPhoneJid(student.jid, contact?.phoneJid, contact?.jid) || student.jid;
+  }));
+  const dateFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  for (const [historyJid, messages] of Object.entries(data.history || {})) {
+    if (!isDirectChat(historyJid) || !Array.isArray(messages)) continue;
+    const contact = data.contacts[historyJid];
+    const phoneJid = getPhoneJid(historyJid, contact?.phoneJid, contact?.jid) || historyJid;
+    if (!trackedPhones.has(phoneJid)) continue;
+    for (const message of messages) {
+      if (message.role !== 'client') continue;
+      const timestamp = timestampMs(message.timestamp);
+      if (!timestamp || timestamp > now || timestamp < now - 30 * 24 * 60 * 60 * 1000) continue;
+      const parts = Object.fromEntries(
+        dateFormatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
+      );
+      const date = `${parts.year}-${parts.month}-${parts.day}`;
+      let record = engagementByDate.get(date);
+      if (!record) {
+        record = { date, activePhones: new Set(), incomingMessages: 0 };
+        engagementByDate.set(date, record);
+      }
+      record.activePhones.add(phoneJid);
+      record.incomingMessages += 1;
+    }
+  }
+  const todayParts = Object.fromEntries(
+    dateFormatter.formatToParts(new Date(now)).map(part => [part.type, part.value])
+  );
+  const todayUtc = Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day));
+  const engagementTrend = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(todayUtc - (29 - index) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const record = engagementByDate.get(date);
+    return {
+      date,
+      activeStudents: record?.activePhones.size || 0,
+      incomingMessages: record?.incomingMessages || 0
+    };
+  });
   students.sort((left, right) =>
     (right.lastStudentActivityAt || timestampMs(right.deliveredAt)) -
     (left.lastStudentActivityAt || timestampMs(left.deliveredAt)));
-  return { total: students.length, students };
+  return {
+    total: students.length,
+    students,
+    insights: {
+      statusCounts,
+      followUpStudents,
+      activeStudentsLast7Days: new Set(engagementTrend.slice(-7)
+        .flatMap(day => [...(engagementByDate.get(day.date)?.activePhones || [])])).size,
+      engagementTrend
+    }
+  };
 }
 
 function getClientMessagesByPhone(data) {
@@ -388,6 +495,38 @@ function presenceForChat(data, presenceManager, jid) {
   };
 }
 
+function relatedPresenceJids(data, jid) {
+  const phoneJid = getPhoneJid(jid, data.contacts[jid]?.phoneJid, data.contacts[jid]?.jid);
+  const related = new Set([jid, phoneJid].filter(Boolean));
+  for (const candidate of new Set([
+    ...Object.keys(data.contacts || {}),
+    ...Object.keys(data.history || {})
+  ])) {
+    const contact = data.contacts[candidate];
+    if (candidate === jid ||
+        (phoneJid && getPhoneJid(candidate, contact?.phoneJid, contact?.jid) === phoneJid)) {
+      related.add(candidate);
+    }
+  }
+  return [...related];
+}
+
+function hasKnownPresenceChat(data, jid) {
+  if (data.history[jid] || data.contacts[jid]) return true;
+  const phoneJid = getPhoneJid(jid, data.contacts[jid]?.phoneJid, data.contacts[jid]?.jid);
+  if (!phoneJid) return false;
+  return [...new Set([
+    ...Object.keys(data.history || {}),
+    ...Object.keys(data.contacts || {})
+  ])].some(candidate =>
+    getPhoneJid(
+      candidate,
+      data.contacts[candidate]?.phoneJid,
+      data.contacts[candidate]?.jid
+    ) === phoneJid
+  );
+}
+
 function genderForContact(data, jid, messagesByPhone) {
   const phoneJid = getPhoneJid(
     jid,
@@ -406,10 +545,22 @@ export function listDashboardEsContacts(
   search = '',
   offset = 0,
   limit = DEFAULT_CONTACT_PAGE_SIZE,
-  messagesByPhone = getClientMessagesByPhone(data)
+  messagesByPhone = getClientMessagesByPhone(data),
+  {
+    readState = {},
+    sort = 'date-desc',
+    readFilter = 'all'
+  } = {}
 ) {
+  if (!['date-desc', 'date-asc', 'unread-first', 'read-first'].includes(sort)) {
+    throw new Error('Invalid Es contact sort option.');
+  }
+  if (!['all', 'read', 'unread'].includes(readFilter)) {
+    throw new Error('Invalid Es contact read filter.');
+  }
   const normalizedSearch = search.trim().toLocaleLowerCase().slice(0, MAX_SEARCH_LENGTH);
   const contactsByPhone = new Map();
+  const activityByPhone = contactActivityByPhone(data, readState);
   const messageEligibleJids = new Set(
     getEligibleBroadcastContacts(data, data.optedOutJids || []).map(contact => contact.jid)
   );
@@ -444,9 +595,30 @@ export function listDashboardEsContacts(
   const contacts = [...contactsByPhone.values()]
     .map(contact => ({
       ...contact,
-      canMessage: !contact.block && messageEligibleJids.has(contact.jid)
+      canMessage: !contact.block && messageEligibleJids.has(contact.jid),
+      ...(activityByPhone.get(contact.jid) || {
+        lastActivityAt: null,
+        lastIncomingAt: null,
+        unread: false
+      })
     }))
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .filter(contact =>
+      readFilter === 'all' ||
+      (readFilter === 'unread' ? contact.unread : !contact.unread))
+    .sort((left, right) => {
+      if (sort === 'date-asc') {
+        return (left.lastActivityAt || 0) - (right.lastActivityAt || 0) ||
+          left.name.localeCompare(right.name);
+      }
+      if (sort === 'unread-first' || sort === 'read-first') {
+        const readOrder = sort === 'unread-first'
+          ? Number(right.unread) - Number(left.unread)
+          : Number(left.unread) - Number(right.unread);
+        if (readOrder) return readOrder;
+      }
+      return (right.lastActivityAt || 0) - (left.lastActivityAt || 0) ||
+        left.name.localeCompare(right.name);
+    });
   const genderStatistics = {
     female: 0,
     male: 0,
@@ -467,8 +639,48 @@ export function listDashboardEsContacts(
     genderStatistics,
     offset: safeOffset,
     limit: safeLimit,
-    contacts: contacts.slice(safeOffset, safeOffset + safeLimit)
+    contacts: contacts
+      .slice(safeOffset, safeOffset + safeLimit)
+      .map(({ lastActivityAt, lastIncomingAt, unread, ...contact }) => contact)
   };
+}
+
+function contactActivityByPhone(data, readState = {}) {
+  const activity = new Map();
+  const getRecord = phoneJid => {
+    let record = activity.get(phoneJid);
+    if (!record) {
+      record = { lastActivityAt: 0, lastIncomingAt: 0, unread: false };
+      activity.set(phoneJid, record);
+    }
+    return record;
+  };
+  for (const [jid, messages] of Object.entries(data.history || {})) {
+    if (!isDirectChat(jid) || !Array.isArray(messages)) continue;
+    const phoneJid = getPhoneJid(jid, data.contacts[jid]?.phoneJid, data.contacts[jid]?.jid) || jid;
+    const record = getRecord(phoneJid);
+    const latest = latestMessage(messages);
+    const latestTimestamp = timestampMs(latest?.timestamp);
+    if (Number.isFinite(latestTimestamp) && latestTimestamp > 0) {
+      record.lastActivityAt = Math.max(record.lastActivityAt, latestTimestamp);
+    }
+    const readStatus = getChatReadStatus(messages, readState[jid]);
+    const incomingTimestamp = timestampMs(readStatus.lastIncomingAt);
+    if (Number.isFinite(incomingTimestamp) && incomingTimestamp > 0) {
+      record.lastIncomingAt = Math.max(record.lastIncomingAt, incomingTimestamp);
+    }
+    record.unread ||= readStatus.unread;
+  }
+  for (const [jid, timestamp] of Object.entries(data.whatsappChatActivity || {})) {
+    const phoneJid = getPhoneJid(jid, data.contacts[jid]?.phoneJid, data.contacts[jid]?.jid) || jid;
+    if (!phoneJid.endsWith('@s.whatsapp.net')) continue;
+    const record = getRecord(phoneJid);
+    const activityTimestamp = timestampMs(timestamp);
+    if (Number.isFinite(activityTimestamp) && activityTimestamp > 0) {
+      record.lastActivityAt = Math.max(record.lastActivityAt, activityTimestamp);
+    }
+  }
+  return activity;
 }
 
 export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Date.now()) {
@@ -586,6 +798,7 @@ export function getDashboardAgentStatus(status, handledChats, now = Date.now()) 
   return {
     connectionState,
     connected: connectionState === 'connected',
+    respondingEnabled: status?.respondingEnabled !== false,
     lastConnectedAt: status?.lastConnectedAt || null,
     lastHeartbeatAt: Number.isFinite(updatedAt) ? status.updatedAt : null,
     account: status?.account && typeof status.account === 'object'
@@ -770,36 +983,126 @@ export function getDashboardStudentActivity(data, jid, days, timeZone, now = Dat
   const aliases = Object.entries(data.contacts).filter(([contactJid, contact]) =>
     contactJid === jid ||
     (phoneJid && getPhoneJid(contactJid, contact.phoneJid, contact.jid) === phoneJid));
-  const historyJid = [jid, ...aliases.map(([contactJid]) => contactJid),
-    ...Object.keys(data.history).filter(historyId =>
-      phoneJid && getPhoneJid(historyId, data.contacts[historyId]?.phoneJid, data.contacts[historyId]?.jid) === phoneJid)]
-    .find(candidate => Array.isArray(data.history[candidate]));
-  const messages = historyJid ? data.history[historyJid] : null;
-  if (!messages && aliases.length === 0) return null;
+  const histories = Object.entries(data.history || {})
+    .filter(([historyJid, messages]) => Array.isArray(messages) &&
+      (historyJid === jid ||
+        (phoneJid && getPhoneJid(
+          historyJid,
+          data.contacts[historyJid]?.phoneJid,
+          data.contacts[historyJid]?.jid
+        ) === phoneJid)))
+    .flatMap(([historyJid, messages], historyOrder) =>
+      messages.map((message, messageOrder) => ({
+        ...message,
+        timestamp: timestampMs(message.timestamp),
+        historyOrder,
+        messageOrder
+      })))
+    .filter(message => Number.isFinite(message.timestamp) && message.timestamp > 0)
+    .sort((left, right) =>
+      left.timestamp - right.timestamp ||
+      left.historyOrder - right.historyOrder ||
+      left.messageOrder - right.messageOrder);
+  if (!histories.length && aliases.length === 0) return null;
   const cutoff = now - days * 24 * 60 * 60 * 1000;
   const counts = ACTIVITY_WEEKDAYS.map(day => ({ day, hours: Array(24).fill(0) }));
   const hourlyTotals = Array(24).fill(0);
   const activeDates = new Set();
   let totalMessages = 0;
-
-  for (const message of messages || []) {
-    if (message.role !== 'client') continue;
-    const timestamp = timestampMs(message.timestamp);
-    if (!Number.isFinite(timestamp) || timestamp < cutoff || timestamp > now) continue;
-
+  const dailyActivityByDate = new Map();
+  const responseTimesByDate = new Map();
+  const dailyFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const dateKey = timestamp => {
     const parts = Object.fromEntries(
-      formatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
+      dailyFormatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
     );
-    const weekday = ACTIVITY_WEEKDAYS.indexOf(parts.weekday);
-    const hour = Number(parts.hour);
-    if (weekday < 0 || hour < 0 || hour > 23) continue;
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  };
+  let pendingStudentMessageAt = null;
+  const responseTimes = [];
+  let unansweredIncomingCount = 0;
 
-    counts[weekday].hours[hour] += 1;
-    hourlyTotals[hour] += 1;
-    activeDates.add(`${parts.year}-${parts.month}-${parts.day}`);
-    totalMessages += 1;
+  for (const message of histories) {
+    const timestamp = message.timestamp;
+    if (timestamp > now) continue;
+    if (message.role === 'client' && timestamp >= cutoff) {
+      totalMessages += 1;
+      const key = dateKey(timestamp);
+      let daily = dailyActivityByDate.get(key);
+      if (!daily) {
+        daily = { incoming: 0, outgoing: 0 };
+        dailyActivityByDate.set(key, daily);
+      }
+      daily.incoming += 1;
+
+      const parts = Object.fromEntries(
+        formatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
+      );
+      const weekday = ACTIVITY_WEEKDAYS.indexOf(parts.weekday);
+      const hour = Number(parts.hour);
+      if (weekday >= 0 && hour >= 0 && hour <= 23) {
+        counts[weekday].hours[hour] += 1;
+        hourlyTotals[hour] += 1;
+        activeDates.add(key);
+      }
+
+      pendingStudentMessageAt = timestamp;
+      continue;
+    }
+    if (message.role === 'agent') {
+      if (timestamp >= cutoff) {
+        const key = dateKey(timestamp);
+        const daily = dailyActivityByDate.get(key) || { incoming: 0, outgoing: 0 };
+        daily.outgoing += 1;
+        dailyActivityByDate.set(key, daily);
+      }
+      if (pendingStudentMessageAt !== null) {
+        if (pendingStudentMessageAt >= cutoff) {
+          const delay = Math.max(0, timestamp - pendingStudentMessageAt);
+          responseTimes.push(delay);
+          const key = dateKey(pendingStudentMessageAt);
+          const delays = responseTimesByDate.get(key) || [];
+          delays.push(delay);
+          responseTimesByDate.set(key, delays);
+        }
+        pendingStudentMessageAt = null;
+      }
+    }
   }
 
+  if (pendingStudentMessageAt !== null && pendingStudentMessageAt >= cutoff) {
+    unansweredIncomingCount = 1;
+  }
+  const todayParts = Object.fromEntries(
+    dailyFormatter.formatToParts(new Date(now)).map(part => [part.type, part.value])
+  );
+  const todayUtc = Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day));
+  const dailyActivity = Array.from({ length: days }, (_, index) => {
+    const date = new Date(todayUtc - (days - 1 - index) * 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 10);
+    const delays = responseTimesByDate.get(date) || [];
+    return {
+      date,
+      incoming: dailyActivityByDate.get(date)?.incoming || 0,
+      outgoing: dailyActivityByDate.get(date)?.outgoing || 0,
+      responseCount: delays.length,
+      medianResponseMs: delays.length ? median(delays) : null
+    };
+  });
+  const student = data.progress[jid] || Object.entries(data.progress || {}).find(
+    ([progressJid]) => phoneJid &&
+      getPhoneJid(
+        progressJid,
+        data.contacts[progressJid]?.phoneJid,
+        data.contacts[progressJid]?.jid
+      ) === phoneJid
+  )?.[1];
+  const currentLesson = student ? lessonForStudent(student, data.lessons) : null;
   return {
     jid,
     days,
@@ -807,7 +1110,20 @@ export function getDashboardStudentActivity(data, jid, days, timeZone, now = Dat
     totalMessages,
     activeDays: activeDates.size,
     hourlyTotals,
-    weekdays: counts
+    weekdays: counts,
+    dailyActivity,
+    responseCount: responseTimes.length,
+    averageResponseMs: responseTimes.length
+      ? responseTimes.reduce((sum, delay) => sum + delay, 0) / responseTimes.length
+      : null,
+    medianResponseMs: responseTimes.length ? median(responseTimes) : null,
+    unansweredIncomingCount,
+    lessonProgress: student ? {
+      gradeName: data.lessons[student.grade]?.name || student.grade,
+      status: student.status,
+      lessonTitle: currentLesson?.title || student.currentLessonId || '',
+      deliveredAt: student.deliveredAt || null
+    } : null
   };
 }
 
@@ -990,6 +1306,7 @@ export function createAdminDashboardServer({
   messageRequestsFile = MESSAGE_REQUESTS_FILE,
   agentStatusFile = AGENT_STATUS_FILE,
   agentQrFile = AGENT_QR_FILE,
+  agentControlFile,
   agentLogFile = AGENT_LOG_FILE,
   agentMediaActivityFile = AGENT_MEDIA_ACTIVITY_FILE,
   chatReadStateFile = CHAT_READ_STATE_FILE,
@@ -1255,7 +1572,7 @@ export function createAdminDashboardServer({
           return;
         }
         const data = readDataWithBlockedContacts();
-        if (jids.some(jid => !data.history[jid])) {
+        if (jids.some(jid => !hasKnownPresenceChat(data, jid))) {
           sendJson(res, 404, { error: 'One or more chats were not found.' });
           return;
         }
@@ -1504,6 +1821,59 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/agent-disconnect') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Agent controls must come from this local dashboard.' });
+        return;
+      }
+      try {
+        const status = readJsonFileOr(agentStatusFile, null);
+        const heartbeatAt = Date.parse(status?.updatedAt || '');
+        if (!status || !['connected', 'connecting'].includes(status.connectionState) ||
+            !Number.isFinite(heartbeatAt) ||
+            Date.now() - heartbeatAt > AGENT_HEARTBEAT_MAX_AGE_MS) {
+          sendJson(res, 409, { error: 'The WhatsApp agent is not currently connected.' });
+          return;
+        }
+        const request = requestAgentDisconnect(agentControlFile);
+        sendJson(res, 202, { status: 'disconnecting', requestedAt: request.requestedAt });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not request WhatsApp agent disconnect:', error.message);
+        sendJson(res, 500, { error: 'Could not request WhatsApp agent disconnect.' });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/agent-replies') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Agent controls must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (typeof body.enabled !== 'boolean') {
+          sendJson(res, 400, { error: 'The enabled value must be true or false.' });
+          return;
+        }
+        const status = readJsonFileOr(agentStatusFile, null);
+        const heartbeatAt = Date.parse(status?.updatedAt || '');
+        if (!status || status.connectionState !== 'connected' ||
+            !Number.isFinite(heartbeatAt) ||
+            Date.now() - heartbeatAt > AGENT_HEARTBEAT_MAX_AGE_MS) {
+          sendJson(res, 409, { error: 'The WhatsApp agent must be connected to change its reply mode.' });
+          return;
+        }
+        const request = requestAgentResponseMode(body.enabled, agentControlFile);
+        sendJson(res, 202, {
+          status: body.enabled ? 'resuming_replies' : 'pausing_replies',
+          requestedAt: request.requestedAt
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not change WhatsApp agent reply mode:', error.message);
+        sendJson(res, 500, { error: 'Could not change WhatsApp agent reply mode.' });
+      });
+      return;
+    }
+
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/agent-logs') {
       try {
         const limitValue = requestUrl.searchParams.get('limit') || '250';
@@ -1667,12 +2037,23 @@ export function createAdminDashboardServer({
           sendJson(res, 400, { error: 'Invalid pagination parameters' });
           return;
         }
-        sendJson(res, 200, listDashboardEsContacts(
-          data,
-          requestUrl.searchParams.get('q') || '',
-          offset,
-          limit
-        ));
+        try {
+          const result = listDashboardEsContacts(
+            data,
+            requestUrl.searchParams.get('q') || '',
+            offset,
+            limit,
+            getClientMessagesByPhone(data),
+            {
+              readState: chatReadState.ensureInitialized(data.history),
+              sort: requestUrl.searchParams.get('sort') || 'date-desc',
+              readFilter: requestUrl.searchParams.get('read') || 'all'
+            }
+          );
+          sendJson(res, 200, result);
+        } catch (error) {
+          sendJson(res, 400, { error: error.message });
+        }
         return;
       }
 
@@ -1694,7 +2075,10 @@ export function createAdminDashboardServer({
             {
               date: requestUrl.searchParams.get('date') || '',
               timeZone: requestUrl.searchParams.get('timeZone') || 'UTC',
-              recipientType: requestUrl.searchParams.get('recipientType') || 'es'
+              recipientType: requestUrl.searchParams.get('recipientType') || 'es',
+              sort: requestUrl.searchParams.get('sort') || 'date-desc',
+              readFilter: requestUrl.searchParams.get('read') || 'all',
+              readState: chatReadState.ensureInitialized(data.history)
             }
           );
         } catch (error) {
@@ -1768,12 +2152,21 @@ export function createAdminDashboardServer({
           sendJson(res, 404, { error: 'Chat not found.' });
           return;
         }
+        activity.presence = whatsappPresence.getMetrics(
+          relatedPresenceJids(data, activity.jid),
+          Number(daysValue)
+        );
         sendJson(res, 200, activity);
         return;
       }
 
       if (requestUrl.pathname === '/api/admin/progress') {
-        sendJson(res, 200, listDashboardStudentProgress(data));
+        const timeZone = requestUrl.searchParams.get('timeZone') || 'UTC';
+        try {
+          sendJson(res, 200, listDashboardStudentProgress(data, Date.now(), timeZone));
+        } catch (error) {
+          sendJson(res, 400, { error: error.message });
+        }
         return;
       }
 

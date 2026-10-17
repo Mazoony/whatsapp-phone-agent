@@ -86,11 +86,12 @@ export async function generateClientResponse(
   lessonWillFollow = false,
   lessonConsentGiven = false,
   linkedPhoneJid = null,
-  grammarCourseLesson = null
+  grammarCourseLesson = null,
+  welcomeSampleMode = null
 ) {
   const isEs = historyManager.isEsContact(jid, contactName);
   const chatHistory = historyManager.history[jid] || [];
-  const useEnglishLessonOnboarding = !lessonConsentGiven &&
+  const useEnglishLessonOnboarding = !welcomeSampleMode &&
     shouldUseEnglishLessonOnboarding(chatHistory);
   const pastDialogue = historyManager.getDialogueForAgent(jid, contactName);
   const systemInstruction = config.getSystemPrompt();
@@ -156,21 +157,33 @@ ${pastDialogue}
 ${images.length ? `\nThe client also attached ${images.length} image(s). Inspect the image content and use it when responding.` : ''}
 
 ${useEnglishLessonOnboarding ? `=== FIRST-REPLY LESSON ONBOARDING ===
-This is your first reply to this student. Reply in English, even if they greeted you in Arabic. Briefly acknowledge their message, then ask these two questions and no others:
-1. "May I send you a lesson now?"
-2. "What is the biggest difficulty you face in English?"
-If the student already stated their difficulty in this message, acknowledge it instead of asking the second question again. Do not send or claim to have sent a lesson yet. This first-reply instruction overrides the usual Sudanese Arabic style and the one-follow-up-question limit.` : ''}
+This is your first reply to this student. Briefly greet them and acknowledge their message in the language they used: Sudanese Arabic if they wrote in Arabic, and English only if they wrote in English. If their school grade and stage are not known, ask only which grade and stage they are in, using that same language. If their grade is known, do not ask a question. Never ask permission to send lessons or ask about their English difficulties. Only say a lesson will follow when the app confirms it in the section below. This onboarding instruction does not override the rule to match the student's language.` : ''}
+
+${welcomeSampleMode === 'ask_grade' ? `=== NEW STUDENT WELCOME ===
+This is a new student, and their grade is not known yet. Warmly greet them and ask only which school grade and stage they are in. Do not promise or claim a lesson is ready.` : ''}
+
+${welcomeSampleMode === 'sample' ? `=== FREE WELCOME SAMPLE ===
+This is a new student, their grade has matching sample content, and the app will send the first lesson video and its exercise immediately after your reply. Warmly greet and acknowledge them. Do not ask permission, ask for their grade again, or claim the video has already been sent.` : ''}
+
+${welcomeSampleMode === 'unavailable' ? `=== NEW STUDENT, NO MATCHING SAMPLE ===
+This is a new student whose grade has no configured sample lesson. Reply normally and helpfully. Do not mention, offer, promise, or claim to send a sample lesson, and do not ask for lesson permission.` : ''}
+
+${welcomeSampleMode === 'deferred' ? `=== NEW STUDENT WELCOME, SAMPLE DEFERRED ===
+This is a new student with a matching sample lesson, but it will not be sent after this reply. Respond helpfully to their latest message and any image. Do not promise or claim that a lesson will follow, and do not ask for lesson permission.` : ''}
 
 ${lessonWillFollow ? `=== CONFIRMED LESSON FOLLOW-UP ===
-The student has agreed to receive a lesson, their grade is known, and the app will send the matching first lesson video and exercise immediately after your reply. First, answer the student's current English difficulty with one concise, useful solution or practical tip. Do not ask for permission again, add unrelated questions, or claim the video has already been sent.` : ''}
+The student's grade is known, and the app will send the matching lesson video and exercise immediately after your reply. Warmly greet and acknowledge the student. Do not ask about their English difficulties, ask for permission, add unrelated questions, or claim the video has already been sent.` : ''}
 
 ${grammarCourseLesson ? `=== ACTIVE GRAMMAR COURSE ===
 The student is currently working on "${grammarCourseLesson}". If they ask an unrelated question, answer it helpfully and briefly, then invite them to continue by sending their numbered answers. Do not restart or replace the current exercise.` : ''}
 
 === YOUR INSTRUCTION ===
 Draft a clear, friendly, and concise response to the client.
+- Match the language of the student's latest message. For an Arabic message, reply in natural Sudanese Arabic. Use English only when the student wrote in English. For mixed-language messages, reply in the dominant language and keep English only for necessary lesson terms or examples. This rule also applies to first replies and lesson greetings.
 - Keep ordinary WhatsApp replies to 1–3 short sentences, usually no more than 40 words. Respond directly to the student's latest point; do not retell their story, repeat encouragement, add generic promotional claims, or ask multiple questions.
-- Ask at most one brief follow-up question, and only if it is useful to continue. If the student asks for an explanation, exercise, or correction, provide the necessary detail without unrelated coaching.
+- Do not ask what problems or difficulties the student has, and do not ask permission before sending lessons. Ask for the student's grade and school stage only when they are not known. Do not ask unrelated follow-up questions.
+- If a matching lesson and exercise are confirmed to follow, greet the student briefly and do not add a question. If no lesson is confirmed to follow, do not promise that one will be sent.
+- If the student asks for an explanation, exercise, or correction, provide the necessary detail without unrelated coaching.
 - Use the business knowledge and course details above to answer accurately.
 - Apply the Year 3 Secondary English reference only when the student's confirmed grade is Year 3 Secondary.
 - For SPINE 6 or Treasure Island questions, distinguish supported general study help from edition-specific details. Ask for the relevant page or question instead of inventing textbook content.
@@ -179,6 +192,7 @@ Draft a clear, friendly, and concise response to the client.
 - Never initiate a conversation about fees, payment, bank transfers, or payment receipts. Never ask the student to pay, transfer money, or send proof of payment, and never make payment a prerequisite for lessons.
 - If an attached image appears to be a payment receipt, acknowledge receipt of the image briefly without evaluating or validating the payment, then keep the conversation focused on the student's learning and lessons.
 - If the student directly asks about fees or payment, answer that specific question briefly and return to the lesson; do not pressure them.
+- Absolutely NEVER output text placeholders or bracketed markers for videos or exercises, such as "[فيديو الشرح]" or "[يتم إرسال الفيديو]" or "[أرسل هنا التمارين]". The software automation sends the actual video file and exercise separately.
 - Do NOT include any meta-commentary like "Here is your response:". Only output the exact text to send to the client.
 `;
 
@@ -211,7 +225,8 @@ Draft a clear, friendly, and concise response to the client.
           if (keyIndex > 0) {
             console.log(`[AI] Response generated using API key ${keyIndex + 1}.`);
           }
-          return replyText;
+          const sanitized = sanitizeClientResponseText(replyText);
+          return sanitized || replyText;
         }
       } catch (err) {
         lastError = err;
@@ -226,15 +241,24 @@ Draft a clear, friendly, and concise response to the client.
   try {
     const reply = await generateLocalResponse(prompt, { systemInstruction });
     console.log('[AI] Response generated using local Ollama.');
-    return reply;
+    const sanitized = sanitizeClientResponseText(reply);
+    return sanitized || reply;
   } catch (localError) {
     console.error('[AI] Gemini and local Ollama failed:', localError.message);
     throw new Error(`Gemini generation failed (${lastError?.message || 'no Gemini key configured'}); local fallback failed (${localError.message}).`);
   }
 }
 
+export function sanitizeClientResponseText(text) {
+  if (typeof text !== 'string') return '';
+  const cleaned = text
+    .replace(/\[\s*(?:فيديو|مقطع|يتم إرسال|أرسل هنا|ارسل هنا|تم إرسال|فيديو الشرح|رابط|التمارين|تمرين)[^\]]*\]/gi, '')
+    .trim();
+  return cleaned || text.replace(/\[[^\]]*\]/g, '').trim();
+}
+
 /**
- * Draft a personal, history-aware check-in for a student who has opted in.
+ * Draft a brief, history-aware check-in for a student who has opted in.
  * @param {string} jid Contact ID
  * @param {string} contactName Contact display name
  * @param {boolean} includeOptOutNote Whether this is the first campaign message
@@ -251,9 +275,9 @@ ${pastDialogue}
 
 === YOUR TASK ===
 Write one short, warm WhatsApp check-in in natural Sudanese Arabic from Mr. Mazen to this student.
-- Use the history of THIS chat only. If it contains a past English-learning difficulty, exam result, goal, lesson, or question, refer to that detail naturally.
-- If there is no useful personal detail, write a simple friendly check-in about how the student's English study is going; do not invent facts.
-- Ask one thoughtful question that continues the conversation. Do not repeat a question already asked in the recent chat.
+- Use the history of THIS chat only. If it contains a recent lesson or exercise, refer to it briefly and naturally.
+- If there is no useful personal detail, write a simple friendly greeting; do not invent facts.
+- Do not ask questions or ask about the student's difficulties, problems, scores, goals, or permission to send lessons.
 - Keep it personal and supportive, not a generic advertisement or payment reminder.
 - Output only the message to send, with no labels or explanation.
 ${optOutInstruction}

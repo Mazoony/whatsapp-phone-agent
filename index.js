@@ -43,6 +43,7 @@ import {
 } from './contact_payment_labels.js';
 import {
   clearAgentQr,
+  consumeAgentControlRequest,
   readLastAgentAccount,
   readLastConnectedAt,
   writeAgentQr,
@@ -65,6 +66,8 @@ let agentConnectionState = 'starting';
 let lastConnectedAt;
 let agentAccount = null;
 let agentHeartbeatTimer = null;
+let dashboardDisconnectRequested = false;
+let agentRespondingEnabled = true;
 const contactPaymentLabels = createContactPaymentLabelsStore();
 const whatsappPresenceManager = new WhatsAppPresenceManager();
 
@@ -99,7 +102,7 @@ function updateAgentStatus(connectionState = agentConnectionState, account = age
   if (account) agentAccount = account;
   if (newlyConnected) lastConnectedAt = new Date().toISOString();
   try {
-    writeAgentStatus(agentConnectionState, lastConnectedAt, agentAccount);
+    writeAgentStatus(agentConnectionState, lastConnectedAt, agentAccount, undefined, agentRespondingEnabled);
   } catch (error) {
     console.error('[Agent Status] Could not save WhatsApp connection status:', error.message);
   }
@@ -164,6 +167,25 @@ async function startAgent() {
     options: { onUploadProgress: reportMediaUploadProgress }
   });
   wrapSocketWithMediaUploadProgress(sock);
+  const disconnectRequestTimer = setInterval(() => {
+    try {
+      const action = consumeAgentControlRequest();
+      if (!action) return;
+      if (action === 'disconnect') {
+        dashboardDisconnectRequested = true;
+        updateAgentStatus('disconnecting');
+        console.log('[Connection] Dashboard requested an agent disconnect; keeping the WhatsApp device linked.');
+        sock.end(new Error('Agent disconnected from the dashboard.'));
+        return;
+      }
+      agentRespondingEnabled = action === 'resume_replies';
+      updateAgentStatus();
+      console.log(`[Agent Control] Automatic replies ${agentRespondingEnabled ? 'resumed' : 'paused'}; incoming messages will still be recorded.`);
+    } catch (error) {
+      console.error('[Agent Control] Could not process the dashboard disconnect request:', error.message);
+    }
+  }, 1000);
+  disconnectRequestTimer.unref?.();
   const incomingChatQueue = new IncomingChatQueue();
   let processingChatQueue = false;
   const processNextQueuedChat = async () => {
@@ -227,8 +249,10 @@ async function startAgent() {
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      const shouldReconnect = !dashboardDisconnectRequested &&
+        statusCode !== DisconnectReason.loggedOut;
 
+      clearInterval(disconnectRequestTimer);
       followUpManager.stop(sock);
       broadcastManager.stop(sock);
       contactSyncManager.stop(sock);
@@ -246,7 +270,9 @@ async function startAgent() {
         console.log('[Connection] Reconnecting in 5 seconds...');
         setTimeout(() => startAgent(), 5000);
       } else {
-        console.log('[Connection] Session logged out. Delete "auth_info_baileys" folder and restart to re-link.');
+        console.log(dashboardDisconnectRequested
+          ? '[Connection] Agent stopped by dashboard. Restart it with npm start to reconnect.'
+          : '[Connection] Session logged out. Delete "auth_info_baileys" folder and restart to re-link.');
       }
     } else if (connection === 'open') {
       try {
@@ -364,8 +390,16 @@ async function startAgent() {
       if (!text.trim()) continue;
 
       const pushName = msg.pushName || phoneJid?.split('@')[0] || senderNumber;
+      const hadPriorConversation = historyManager.hasConversation(jid, alternateJid, phoneJid);
+      const existingWelcomeState = historyManager.getWelcomeSampleState(jid, alternateJid, phoneJid);
+      const isFirstWelcomeMessage = !hadPriorConversation && !existingWelcomeState;
       historyManager.saveContact(jid, pushName);
       historyManager.addMessage(jid, 'client', text.trim(), undefined, pushName);
+
+      if (!agentRespondingEnabled) {
+        console.log(`[Agent Control] Recorded incoming message from ${pushName}; automatic replies are paused.`);
+        continue;
+      }
 
       if (historyManager.isOwnerBlockedContact(jid, alternateJid)) {
         console.log(`[Ignored - Owner Block] ${pushName} (${senderNumber})`);
@@ -396,6 +430,10 @@ async function startAgent() {
         console.log(`[Enabled - New Unsaved Contact] ${pushName} (${senderNumber})`);
       } else if (isOwnerAllowed) {
         console.log(`[Enabled - Owner Allowlist] ${pushName} (${senderNumber})`);
+      }
+
+      if (isFirstWelcomeMessage) {
+        historyManager.setWelcomeSampleState('pending_grade', jid, alternateJid, phoneJid);
       }
 
       try {
@@ -479,7 +517,11 @@ async function startAgent() {
           process: null
         };
         queuedEntry.process = async () => {
-          const aggregatedText = queuedEntry.texts.join('\n');
+            if (!agentRespondingEnabled) {
+              console.log(`[Agent Control] Recorded incoming message from ${queuedEntry.pushName}; automatic replies are paused.`);
+              return;
+            }
+            const aggregatedText = queuedEntry.texts.join('\n');
           const queuedSenderNumber = queuedEntry.senderNumber;
           if (!config.shouldReplyTo(queuedSenderNumber)) {
             console.log(`[Ignored - Blocked Number] ${queuedSenderNumber.slice(-4)}`);
@@ -522,26 +564,26 @@ async function startAgent() {
               if (grammarHandled) return;
             }
 
-            if (lessonManager.hasActiveLesson(jid) && queuedEntry.images.length === 0) {
-              if (lessonManager.isLessonVideoRequest(aggregatedText)) {
-                await sock.sendPresenceUpdate('composing', jid);
-                const resent = await lessonManager.resendCurrentLessonVideo(sock, jid);
-                await sock.sendPresenceUpdate('paused', jid);
-                if (resent) return;
-              }
+            if (queuedEntry.images.length === 0 && lessonManager.isLessonVideoRequest(aggregatedText)) {
+              await sock.sendPresenceUpdate('composing', jid);
+              const resent = await lessonManager.resendCurrentLessonVideo(sock, jid, phoneJid);
+              await sock.sendPresenceUpdate('paused', jid);
+              if (resent) return;
+            }
 
+            if (lessonManager.hasActiveLesson(jid, phoneJid) && queuedEntry.images.length === 0) {
               await sock.sendPresenceUpdate('composing', jid);
               const isHandled = await lessonManager.handleTaskSubmission(
-                sock, jid, aggregatedText, queuedEntry.pushName
+                sock, jid, aggregatedText, queuedEntry.pushName, phoneJid
               );
               await sock.sendPresenceUpdate('paused', jid);
               if (isHandled) return;
             }
 
             const detectedGrade = lessonManager.detectGrade(aggregatedText);
-            let student = lessonManager.getStudent(jid);
+            let student = lessonManager.getStudent(jid, phoneJid);
             if (isGrammarCourseStartRequest(aggregatedText)) {
-              if (lessonManager.hasActiveLesson(jid)) {
+              if (lessonManager.hasActiveLesson(jid, phoneJid)) {
                 await sendHumanizedMessage(
                   sock,
                   jid,
@@ -572,12 +614,12 @@ async function startAgent() {
               .find(message => message.role === 'agent')?.text || '';
             const explicitLessonRequest = lessonManager.isLessonDeliveryRequest(aggregatedText);
             if (isLessonDeliveryDecline(aggregatedText, previousAgentMessage)) {
-              historyManager.setLessonDeliveryConsent(false, jid, alternateJid);
+              historyManager.setLessonDeliveryConsent(false, jid, alternateJid, phoneJid);
             } else if (explicitLessonRequest ||
                 hasLessonDeliveryConsent(aggregatedText, previousAgentMessage)) {
-              historyManager.setLessonDeliveryConsent(true, jid, alternateJid);
+              historyManager.setLessonDeliveryConsent(true, jid, alternateJid, phoneJid);
             }
-            const hasLessonConsent = historyManager.hasLessonDeliveryConsent(jid, alternateJid);
+            const hasLessonConsent = historyManager.hasLessonDeliveryConsent(jid, alternateJid, phoneJid);
             const gradeFromHistory = [...chatHistory]
               .reverse()
               .filter(message => message.role === 'client')
@@ -585,17 +627,65 @@ async function startAgent() {
               .find(Boolean);
             const requestedGrade = detectedGrade || gradeFromHistory || student?.grade;
             const gradeLessons = requestedGrade ? lessonManager.lessonsConfig[requestedGrade]?.lessons : null;
-            const shouldStartAfterReply = requestedGrade && gradeLessons?.length > 0 &&
+            const firstConfiguredLesson = requestedGrade
+              ? lessonManager.getWelcomeSampleLesson(requestedGrade)
+              : null;
+            const nextConfiguredLesson = student?.status === 'awaiting_content' &&
+              student.grade === requestedGrade && requestedGrade
+              ? lessonManager.getNextSequentialLesson(
+                requestedGrade,
+                student.currentLessonId || gradeLessons?.[student.currentLessonIndex]?.id
+              )
+              : null;
+            const welcomeState = historyManager.getWelcomeSampleState(jid, alternateJid, phoneJid);
+            let welcomeSampleMode = null;
+            let shouldSendWelcomeSample = false;
+            if (welcomeState === 'pending_grade') {
+              if (!requestedGrade) {
+                welcomeSampleMode = 'ask_grade';
+              } else {
+                const canStartFreshSequence = !student || student.status === 'consulting' ||
+                  (detectedGrade && student.grade !== detectedGrade);
+                if (firstConfiguredLesson) {
+                  if (canStartFreshSequence && !lessonManager.hasActiveLesson(jid, phoneJid) &&
+                      queuedEntry.images.length === 0) {
+                    welcomeSampleMode = 'sample';
+                    shouldSendWelcomeSample = true;
+                  } else {
+                    if (lessonManager.hasActiveLesson(jid, phoneJid) || queuedEntry.images.length > 0) {
+                      welcomeSampleMode = 'deferred';
+                    }
+                    historyManager.setWelcomeSampleState('deferred', jid, alternateJid, phoneJid);
+                  }
+                } else {
+                  if (canStartFreshSequence) {
+                    welcomeSampleMode = 'unavailable';
+                  }
+                  historyManager.setWelcomeSampleState(
+                    canStartFreshSequence ? 'unavailable' : 'deferred',
+                    jid,
+                    alternateJid,
+                    phoneJid
+                  );
+                }
+              }
+            }
+            const wantsLessonNow = explicitLessonRequest || hasLessonConsent;
+            const shouldStartAfterReply = !shouldSendWelcomeSample &&
+              requestedGrade &&
               queuedEntry.images.length === 0 &&
-              !lessonManager.hasActiveLesson(jid) &&
-              hasLessonConsent &&
-              (!student || student.status === 'consulting' ||
-                (detectedGrade && student.grade !== detectedGrade));
+              !lessonManager.hasActiveLesson(jid, phoneJid) &&
+              ((firstConfiguredLesson && (!student || student.status === 'consulting' || wantsLessonNow ||
+                (detectedGrade && student.grade !== detectedGrade))) ||
+                nextConfiguredLesson?.status === 'ready');
+            const lessonIndexToStart = nextConfiguredLesson?.status === 'ready'
+              ? nextConfiguredLesson.lessonIndex
+              : 0;
 
             if (detectedGrade && (!student || student.grade !== detectedGrade) &&
-                !lessonManager.hasActiveLesson(jid)) {
-              lessonManager.setStudentGrade(jid, detectedGrade);
-              student = lessonManager.getStudent(jid);
+                !lessonManager.hasActiveLesson(jid, phoneJid)) {
+              lessonManager.setStudentGrade(jid, detectedGrade, phoneJid);
+              student = lessonManager.getStudent(jid, phoneJid);
             }
 
             if (requestedGrade && !gradeLessons?.length) {
@@ -609,22 +699,49 @@ async function startAgent() {
               aggregatedText,
               queuedEntry.images,
               requestedGrade || student?.grade || null,
-              Boolean(shouldStartAfterReply),
+              Boolean(shouldStartAfterReply || shouldSendWelcomeSample),
               Boolean(hasLessonConsent),
               phoneJid,
               grammarStudent && grammarTutor.isActive(jid, phoneJid)
                 ? grammarTutor.getCurrentLesson(jid, phoneJid)?.title || null
-                : null
+                : null,
+              welcomeSampleMode
             );
+            if (!agentRespondingEnabled) {
+              console.log(`[Agent Control] Skipped generated reply to ${queuedEntry.pushName}; automatic replies were paused.`);
+              return;
+            }
             await sendHumanizedMessage(sock, jid, reply, config.typingWordsPerMinute);
             console.log(`[Agent -> ${queuedEntry.pushName}]: "${reply}"`);
             historyManager.addMessage(jid, 'agent', reply);
-            if (shouldStartAfterReply) {
-              console.log(`[Lesson Auto-Start 🎓] ${queuedEntry.pushName} received a solution. Delivering Lesson 1 for ${requestedGrade}...`);
+            if (shouldSendWelcomeSample) {
+              historyManager.setWelcomeSampleState('delivering', jid, alternateJid, phoneJid);
+              try {
+                await sock.sendPresenceUpdate('composing', jid);
+                const delivered = await lessonManager.deliverLesson(sock, jid, requestedGrade, 0, phoneJid);
+                await sock.sendPresenceUpdate('paused', jid);
+                historyManager.setWelcomeSampleState(
+                  delivered ? 'sent' : 'failed',
+                  jid,
+                  alternateJid,
+                  phoneJid
+                );
+                if (delivered) {
+                  historyManager.setLessonDeliveryConsent(false, jid, alternateJid, phoneJid);
+                  console.log(`[Welcome Sample] Delivered the first lesson to ${queuedEntry.pushName} for ${requestedGrade}.`);
+                }
+              } catch (error) {
+                historyManager.setWelcomeSampleState('failed', jid, alternateJid, phoneJid);
+                throw error;
+              }
+            } else if (shouldStartAfterReply) {
+              console.log(`[Lesson Auto-Start 🎓] Greeting ${queuedEntry.pushName} and delivering the next configured lesson for ${requestedGrade}...`);
               await sock.sendPresenceUpdate('composing', jid);
-              const delivered = await lessonManager.deliverLesson(sock, jid, requestedGrade, 0);
+              const delivered = await lessonManager.deliverLesson(
+                sock, jid, requestedGrade, lessonIndexToStart, phoneJid
+              );
               await sock.sendPresenceUpdate('paused', jid);
-              if (delivered) historyManager.setLessonDeliveryConsent(false, jid, alternateJid);
+              if (delivered) historyManager.setLessonDeliveryConsent(false, jid, alternateJid, phoneJid);
             } else if (hasLessonConsent && requestedGrade && !gradeLessons?.length) {
               console.log(`[Lesson Setup] Lesson consent saved for ${queuedEntry.pushName}; waiting for configured content for ${requestedGrade}.`);
             }

@@ -5,10 +5,14 @@ import path from 'node:path';
 import test from 'node:test';
 import {
   clearAgentQr,
+  consumeAgentControlRequest,
+  consumeAgentDisconnectRequest,
   readAgentQr,
   readLastAgentAccount,
   readLastConnectedAt,
   renderAgentQrSvg,
+  requestAgentDisconnect,
+  requestAgentResponseMode,
   writeAgentQr,
   writeAgentStatus
 } from './agent_status.js';
@@ -33,6 +37,36 @@ test('agent status retains a valid last-connection timestamp', () => {
       account: { name: 'Invalid', phoneNumber: 'not-a-number' }
     }));
     assert.equal(readLastAgentAccount(statusFile), null);
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard disconnect request can be consumed once by the agent', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-control-test-'));
+  const controlFile = path.join(temporaryDirectory, 'agent_control.json');
+
+  try {
+    assert.equal(consumeAgentDisconnectRequest(controlFile), false);
+    const request = requestAgentDisconnect(controlFile);
+    assert.deepEqual(JSON.parse(fs.readFileSync(controlFile, 'utf8')), request);
+    assert.equal(consumeAgentDisconnectRequest(controlFile), true);
+    assert.equal(consumeAgentDisconnectRequest(controlFile), false);
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard reply-mode requests are validated and can be consumed once', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-reply-mode-test-'));
+  const controlFile = path.join(temporaryDirectory, 'agent_control.json');
+
+  try {
+    assert.throws(() => requestAgentResponseMode('yes', controlFile), TypeError);
+    assert.equal(requestAgentResponseMode(false, controlFile).action, 'pause_replies');
+    assert.equal(consumeAgentControlRequest(controlFile), 'pause_replies');
+    assert.equal(requestAgentResponseMode(true, controlFile).action, 'resume_replies');
+    assert.equal(consumeAgentControlRequest(controlFile), 'resume_replies');
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }

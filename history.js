@@ -118,8 +118,57 @@ class ChatHistoryManager {
     return jids.some(jid => jid && this.contacts[jid]?.savedInAddressBook === true);
   }
 
+  hasConversation(...jids) {
+    const requestedJids = new Set(jids.filter(jid => typeof jid === 'string' && jid));
+    const phoneJids = new Set([...requestedJids].map(jid =>
+      getPhoneJid(jid, this.contacts[jid]?.phoneJid, this.contacts[jid]?.jid)
+    ).filter(Boolean));
+    return Object.entries(this.history).some(([historyJid, messages]) => {
+      if (!Array.isArray(messages) || messages.length === 0) return false;
+      if (requestedJids.has(historyJid)) return true;
+      const phoneJid = getPhoneJid(
+        historyJid,
+        this.contacts[historyJid]?.phoneJid,
+        this.contacts[historyJid]?.jid
+      );
+      return phoneJid && phoneJids.has(phoneJid);
+    });
+  }
+
   hasContactSavePrompted(...jids) {
     return jids.some(jid => jid && this.contacts[jid]?.contactSavePromptedAt);
+  }
+
+  getWelcomeSampleState(...jids) {
+    const requestedJids = new Set(jids.filter(jid => typeof jid === 'string' && jid));
+    const phoneJids = new Set([...requestedJids].map(jid =>
+      getPhoneJid(jid, this.contacts[jid]?.phoneJid, this.contacts[jid]?.jid)
+    ).filter(Boolean));
+    for (const [contactJid, contact] of Object.entries(this.contacts)) {
+      const phoneJid = getPhoneJid(contactJid, contact?.phoneJid, contact?.jid);
+      if (requestedJids.has(contactJid) || (phoneJid && phoneJids.has(phoneJid))) {
+        if (typeof contact.welcomeSampleState === 'string') return contact.welcomeSampleState;
+      }
+    }
+    return null;
+  }
+
+  setWelcomeSampleState(state, ...jids) {
+    const targets = new Set(jids.filter(jid => typeof jid === 'string' && jid));
+    const phoneJids = new Set([...targets].map(jid =>
+      getPhoneJid(jid, this.contacts[jid]?.phoneJid, this.contacts[jid]?.jid)
+    ).filter(Boolean));
+    for (const [contactJid, contact] of Object.entries(this.contacts)) {
+      const phoneJid = getPhoneJid(contactJid, contact?.phoneJid, contact?.jid);
+      if (phoneJid && phoneJids.has(phoneJid)) targets.add(contactJid);
+    }
+    for (const jid of targets) {
+      const contact = this.contacts[jid] || { jid, name: '' };
+      if (state) contact.welcomeSampleState = state;
+      else delete contact.welcomeSampleState;
+      this.contacts[jid] = contact;
+    }
+    this.scheduleSaveContacts();
   }
 
   hasLessonDeliveryConsent(...jids) {

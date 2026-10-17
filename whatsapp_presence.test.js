@@ -40,6 +40,58 @@ test('WhatsApp presence records online and last-seen updates for direct chat IDs
     const presence = manager.getPresence('249123456789@s.whatsapp.net');
     assert.equal(presence.status, 'offline');
     assert.equal(Date.parse(presence.lastSeenAt), Math.floor((updatedAt - 60_000) / 1000) * 1000);
+    const stored = JSON.parse(fs.readFileSync(path.join(directory, 'presence.json'), 'utf8'));
+    assert.deepEqual(stored.history['249123456789@s.whatsapp.net'].map(event => event.status), [
+      'online',
+      'offline'
+    ]);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('presence metrics report observed online and offline intervals and stale-status gaps', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'whatsapp-presence-metrics-'));
+  try {
+    const manager = createManager(directory, { maxAgeMs: 2 * 60 * 1000 });
+    const start = Date.now() - 20 * 60 * 1000;
+    const jid = '249123456789@s.whatsapp.net';
+    const record = (status, at) => manager.recordPresenceUpdate({
+      id: jid,
+      presences: {
+        [jid]: { lastKnownPresence: status }
+      }
+    }, at);
+
+    record('available', start);
+    manager.recordPresenceUpdate({
+      id: jid,
+      presences: {
+        '100000000000001@lid': { lastKnownPresence: 'available' }
+      }
+    }, start);
+    record('unavailable', start + 10 * 60 * 1000);
+    record('available', start + 15 * 60 * 1000);
+
+    const metrics = manager.getMetrics([jid, '100000000000001@lid'], 30, start + 20 * 60 * 1000);
+    assert.equal(metrics.currentStatus, 'unknown');
+    assert.equal(metrics.transitions, 3);
+    assert.equal(metrics.onlineDurationMs, 12 * 60 * 1000);
+    assert.equal(metrics.offlineDurationMs, 5 * 60 * 1000);
+    assert.equal(metrics.unknownDurationMs, 3 * 60 * 1000);
+    assert.equal(metrics.untrackedDurationMs, 30 * 24 * 60 * 60 * 1000 - 20 * 60 * 1000);
+    assert.deepEqual(metrics.sessions.map(session => session.status), [
+      'online',
+      'offline',
+      'online'
+    ]);
+    assert.deepEqual(metrics.sessions.map(session => session.durationMs), [
+      2 * 60 * 1000,
+      5 * 60 * 1000,
+      10 * 60 * 1000
+    ]);
+    assert.equal(metrics.sessions[2].endedAt, new Date(start + 10 * 60 * 1000).toISOString());
+    assert.equal(metrics.sessions[0].ongoing, true);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }

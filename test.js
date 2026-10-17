@@ -32,6 +32,9 @@ console.log('\n--- Testing Permanent History Retention ---');
 const nonEsJid = '99990001@s.whatsapp.net';
 const esJid = '99990002@s.whatsapp.net';
 
+historyManager.history[nonEsJid] = [];
+historyManager.history[esJid] = [];
+
 // Add 30 messages to non-Es contact
 for (let i = 1; i <= 30; i++) {
   historyManager.addMessage(nonEsJid, 'client', `Regular message ${i}`, Date.now() + i, 'Ali');

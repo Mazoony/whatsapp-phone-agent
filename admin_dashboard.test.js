@@ -289,6 +289,68 @@ test('student progress shows incoming-message volume and frequency across linked
   assert.equal(result.students[0].activeDaysLast30Days, 3);
 });
 
+test('student progress insights show calendar-day engagement and stale lesson follow-ups', () => {
+  const now = Date.UTC(2026, 9, 16, 12);
+  const day = 24 * 60 * 60 * 1000;
+  const result = listDashboardStudentProgress({
+    ...sampleData,
+    contacts: {
+      ...sampleData.contacts,
+      '1001@lid': {
+        jid: '1001@s.whatsapp.net',
+        phoneJid: '1001@s.whatsapp.net',
+        name: 'Ali LID'
+      },
+      '2001@s.whatsapp.net': { name: 'Needs support' },
+      '2002@s.whatsapp.net': { name: 'Recently delivered' },
+      '2003@s.whatsapp.net': { name: 'Recently replied' }
+    },
+    progress: {
+      ...sampleData.progress,
+      '2001@s.whatsapp.net': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        status: 'awaiting_task',
+        deliveredAt: new Date(now - 9 * day).toISOString()
+      },
+      '2002@s.whatsapp.net': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        status: 'awaiting_task',
+        deliveredAt: new Date(now - 6 * day).toISOString()
+      },
+      '2003@s.whatsapp.net': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        status: 'awaiting_reattempt',
+        deliveredAt: new Date(now - 10 * day).toISOString()
+      }
+    },
+    history: {
+      ...sampleData.history,
+      '1001@lid': [
+        { role: 'client', text: 'Yesterday', timestamp: (now - day) / 1000 },
+        { role: 'client', text: 'Another message today', timestamp: now / 1000 }
+      ],
+      '2003@s.whatsapp.net': [
+        { role: 'client', text: 'I tried again', timestamp: (now - 5 * day) / 1000 }
+      ]
+    }
+  }, now, 'UTC');
+
+  assert.equal(result.insights.activeStudentsLast7Days, 2);
+  const today = result.insights.engagementTrend.at(-1);
+  assert.deepEqual(today, {
+    date: '2026-10-16',
+    activeStudents: 1,
+    incomingMessages: 1
+  });
+  assert.deepEqual(result.insights.followUpStudents.map(student => ({
+    jid: student.jid,
+    daysSinceActivity: student.daysSinceActivity
+  })), [{ jid: '2001@s.whatsapp.net', daysSinceActivity: 9 }]);
+});
+
 test('chat list and conversation show the manually selected contact gender', () => {
   const data = {
     ...sampleData,
@@ -980,6 +1042,11 @@ test('agent status only reports connected when its heartbeat is fresh', () => {
   assert.equal(connected.handledChats, 12);
   assert.equal(connected.lastConnectedAt, freshStatus.lastConnectedAt);
   assert.deepEqual(connected.account, freshStatus.account);
+  assert.equal(connected.respondingEnabled, true);
+  assert.equal(getDashboardAgentStatus({
+    ...freshStatus,
+    respondingEnabled: false
+  }, 12, now).respondingEnabled, false);
   assert.equal(getDashboardAgentStatus({
     ...freshStatus,
     account: { name: 'WhatsApp User', phoneNumber: 'not-a-number' }
@@ -1019,11 +1086,92 @@ test('agent status API reports live connection heartbeat and handled chat total'
     assert.deepEqual(await response.json(), {
       connectionState: 'connected',
       connected: true,
+      respondingEnabled: true,
       lastConnectedAt: '2026-10-15T10:00:00.000Z',
       lastHeartbeatAt: JSON.parse(fs.readFileSync(agentStatusFile, 'utf8')).updatedAt,
       account: { name: 'WhatsApp User', phoneNumber: '249123456789' },
       handledChats: 1
     });
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard reply-mode endpoint queues pause and resume for a connected agent', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-agent-replies-test-'));
+  const agentStatusFile = path.join(temporaryDirectory, 'agent_status.json');
+  const agentControlFile = path.join(temporaryDirectory, 'agent_control.json');
+  fs.writeFileSync(agentStatusFile, JSON.stringify({
+    connectionState: 'connected',
+    updatedAt: new Date().toISOString()
+  }));
+  const server = createAdminDashboardServer({ agentStatusFile, agentControlFile });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const requestMode = enabled => fetch(`${origin}/api/admin/agent-replies`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+
+    const pauseResponse = await requestMode(false);
+    assert.equal(pauseResponse.status, 202);
+    assert.equal((await pauseResponse.json()).status, 'pausing_replies');
+    assert.equal(JSON.parse(fs.readFileSync(agentControlFile, 'utf8')).action, 'pause_replies');
+
+    const resumeResponse = await requestMode(true);
+    assert.equal(resumeResponse.status, 202);
+    assert.equal((await resumeResponse.json()).status, 'resuming_replies');
+    assert.equal(JSON.parse(fs.readFileSync(agentControlFile, 'utf8')).action, 'resume_replies');
+
+    const invalidResponse = await fetch(`${origin}/api/admin/agent-replies`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: 'false' })
+    });
+    assert.equal(invalidResponse.status, 400);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard disconnect endpoint queues a stop request only for a live agent', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-agent-disconnect-test-'));
+  const agentStatusFile = path.join(temporaryDirectory, 'agent_status.json');
+  const agentControlFile = path.join(temporaryDirectory, 'agent_control.json');
+  fs.writeFileSync(agentStatusFile, JSON.stringify({
+    connectionState: 'connected',
+    updatedAt: new Date().toISOString()
+  }));
+  const server = createAdminDashboardServer({
+    agentStatusFile,
+    agentControlFile
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${origin}/api/admin/agent-disconnect`, {
+      method: 'POST',
+      headers: { Origin: origin }
+    });
+    assert.equal(response.status, 202);
+    assert.equal((await response.json()).status, 'disconnecting');
+    assert.deepEqual(JSON.parse(fs.readFileSync(agentControlFile, 'utf8')).action, 'disconnect');
+
+    fs.writeFileSync(agentStatusFile, JSON.stringify({
+      connectionState: 'disconnected',
+      updatedAt: new Date().toISOString()
+    }));
+    const disconnectedResponse = await fetch(`${origin}/api/admin/agent-disconnect`, {
+      method: 'POST',
+      headers: { Origin: origin }
+    });
+    assert.equal(disconnectedResponse.status, 409);
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });

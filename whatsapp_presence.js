@@ -123,6 +123,10 @@ export class WhatsAppPresenceManager {
     if (!state || typeof state.presences !== 'object' || Array.isArray(state.presences)) {
       throw new Error('WhatsApp presence data file is invalid.');
     }
+    if (!state.history) state.history = {};
+    if (typeof state.history !== 'object' || Array.isArray(state.history)) {
+      throw new Error('WhatsApp presence history file is invalid.');
+    }
     let updated = 0;
     for (const [participant, presence] of Object.entries(update.presences)) {
       const status = presence?.lastKnownPresence;
@@ -130,8 +134,22 @@ export class WhatsAppPresenceManager {
       const identifiers = new Set([update.id, participant].filter(isPresenceJid));
       if (!identifiers.size) continue;
       for (const jid of identifiers) {
+        const normalizedStatus = status === 'available' ? 'online' : 'offline';
+        if (!Array.isArray(state.history[jid])) state.history[jid] = [];
+        if (!state.history[jid].length) {
+          state.history[jid].push({
+            status: normalizedStatus,
+            at: new Date(now).toISOString()
+          });
+        } else if (state.presences[jid]?.status !== normalizedStatus &&
+            state.history[jid].at(-1)?.status !== normalizedStatus) {
+          state.history[jid].push({
+            status: normalizedStatus,
+            at: new Date(now).toISOString()
+          });
+        }
         state.presences[jid] = {
-          status: status === 'available' ? 'online' : 'offline',
+          status: normalizedStatus,
           updatedAt: new Date(now).toISOString(),
           lastSeenAt: presenceTimestamp(presence.lastSeen) ||
             state.presences[jid]?.lastSeenAt ||
@@ -149,6 +167,104 @@ export class WhatsAppPresenceManager {
       writeJsonFile(this.presenceFile, state);
     }
     return updated;
+  }
+
+  getMetrics(jids, days, now = Date.now()) {
+    if (!Array.isArray(jids) || ![30, 90].includes(days)) {
+      throw new Error('Presence metrics require direct chat IDs and a 30- or 90-day range.');
+    }
+    const state = readJsonFile(this.presenceFile, { presences: {}, history: {} });
+    if (!state || typeof state.presences !== 'object' || Array.isArray(state.presences) ||
+        (state.history && (typeof state.history !== 'object' || Array.isArray(state.history)))) {
+      throw new Error('WhatsApp presence history file is invalid.');
+    }
+    const uniqueJids = [...new Set(jids.filter(isPresenceJid))];
+    const cutoff = now - days * 24 * 60 * 60 * 1000;
+    const allEvents = uniqueJids.flatMap(jid => {
+      const history = Array.isArray(state.history?.[jid]) ? state.history[jid] : [];
+      return history
+        .filter(event => event && ['online', 'offline'].includes(event.status) &&
+          typeof event.at === 'string' && Number.isFinite(Date.parse(event.at)))
+        .map(event => ({ status: event.status, at: Date.parse(event.at) }));
+    }).sort((left, right) => left.at - right.at);
+    const events = allEvents.filter((event, index) =>
+      index === 0 || event.at !== allEvents[index - 1].at ||
+      event.status !== allEvents[index - 1].status
+    );
+    const precedingEvent = [...events].reverse().find(event => event.at < cutoff);
+    const rangedEvents = events.filter(event => event.at >= cutoff && event.at <= now);
+    const timelineEvents = [
+      ...(precedingEvent ? [precedingEvent] : []),
+      ...rangedEvents
+    ];
+    const currentPresence = uniqueJids
+      .map(jid => state.presences[jid])
+      .filter(entry => entry && ['online', 'offline'].includes(entry.status) &&
+        typeof entry.updatedAt === 'string' && Number.isFinite(Date.parse(entry.updatedAt)))
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0] || null;
+    const lastTransition = events.filter(event => event.at <= now).at(-1) || null;
+    const lastObservedAt = currentPresence
+      ? Date.parse(currentPresence.updatedAt)
+      : lastTransition?.at || null;
+    const isCurrentFresh = lastObservedAt !== null &&
+      lastObservedAt <= now && now - lastObservedAt <= this.maxAgeMs;
+    const summary = {
+      days,
+      currentStatus: isCurrentFresh && currentPresence ? currentPresence.status : 'unknown',
+      lastObservedStatus: currentPresence?.status || lastTransition?.status || 'unknown',
+      lastObservedAt: lastObservedAt ? new Date(lastObservedAt).toISOString() : null,
+      lastSeenAt: typeof currentPresence?.lastSeenAt === 'string' &&
+        Number.isFinite(Date.parse(currentPresence.lastSeenAt))
+        ? currentPresence.lastSeenAt
+        : null,
+      historyStartedAt: events[0] ? new Date(events[0].at).toISOString() : null,
+      transitions: 0,
+      onlineDurationMs: 0,
+      offlineDurationMs: 0,
+      unknownDurationMs: 0,
+      untrackedDurationMs: 0,
+      sessions: []
+    };
+    const periodStartEvent = events.find(event => event.at <= now);
+    if (!periodStartEvent || periodStartEvent.at > cutoff) {
+      summary.untrackedDurationMs = periodStartEvent
+        ? Math.max(0, periodStartEvent.at - cutoff)
+        : days * 24 * 60 * 60 * 1000;
+    }
+
+    for (let index = 0; index < timelineEvents.length; index += 1) {
+      const event = timelineEvents[index];
+      const nextEvent = timelineEvents[index + 1];
+      const start = Math.max(event.at, cutoff);
+      let end = nextEvent?.at ?? now;
+      if (!nextEvent && !isCurrentFresh) {
+        end = Math.min(end, (lastObservedAt || event.at) + this.maxAgeMs);
+      }
+      end = Math.min(end, now);
+      const durationMs = Math.max(0, end - start);
+      if (event.at >= cutoff) summary.transitions += 1;
+      if (event.status === 'online') summary.onlineDurationMs += durationMs;
+      else summary.offlineDurationMs += durationMs;
+      if (durationMs > 0 || (!nextEvent && event.at <= now)) {
+        summary.sessions.push({
+          status: event.status,
+          startedAt: new Date(start).toISOString(),
+          endedAt: nextEvent && nextEvent.at <= now && nextEvent.at >= cutoff
+            ? new Date(nextEvent.at).toISOString()
+            : null,
+          durationMs,
+          ongoing: !nextEvent
+        });
+      }
+    }
+
+    const latestEvent = timelineEvents.at(-1);
+    if (latestEvent && !isCurrentFresh) {
+      const gapStart = Math.max(cutoff, (lastObservedAt || latestEvent.at) + this.maxAgeMs);
+      summary.unknownDurationMs += Math.max(0, now - gapStart);
+    }
+    summary.sessions = summary.sessions.slice(-30).reverse();
+    return summary;
   }
 
   getPresence(...jids) {

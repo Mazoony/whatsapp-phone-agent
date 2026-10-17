@@ -2,6 +2,7 @@ import { config } from './config.js';
 import { getPhoneJid } from './phonebook.js';
 import { MAX_BROADCAST_ATTACHMENTS } from './broadcast_media.js';
 import { timestampToMilliseconds } from './whatsapp_chat_activity.js';
+import { getChatReadStatus } from './chat_read_state.js';
 
 function phoneNumberFromJid(jid) {
   return jid?.endsWith('@s.whatsapp.net')
@@ -162,41 +163,90 @@ function getWhatsAppActivityByPhone(data) {
   return latestByPhone;
 }
 
+function getReadActivityByPhone(data, readState) {
+  const activityByPhone = new Map();
+  for (const [jid, messages] of Object.entries(data.history || {})) {
+    if ((!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) ||
+        !Array.isArray(messages)) continue;
+    const phoneJid = getPhoneJid(
+      jid,
+      data.contacts?.[jid]?.phoneJid,
+      data.contacts?.[jid]?.jid
+    ) || jid;
+    const record = activityByPhone.get(phoneJid) || {
+      lastActivityAt: 0,
+      lastIncomingAt: 0,
+      unread: false
+    };
+    const lastActivityAt = messages.reduce((latest, message) =>
+      Math.max(latest, timestampToMilliseconds(message.timestamp) || 0), 0);
+    const readStatus = getChatReadStatus(messages, readState[jid]);
+    record.lastActivityAt = Math.max(record.lastActivityAt, lastActivityAt);
+    record.lastIncomingAt = Math.max(
+      record.lastIncomingAt,
+      timestampToMilliseconds(readStatus.lastIncomingAt) || 0
+    );
+    record.unread ||= readStatus.unread;
+    activityByPhone.set(phoneJid, record);
+  }
+  return activityByPhone;
+}
+
 export function listEligibleBroadcastContacts(
   data,
   optedOutJids = [],
   search = '',
   offset = 0,
   limit = 50,
-  { date = '', timeZone = 'UTC', recipientType = 'es' } = {}
+  {
+    date = '',
+    timeZone = 'UTC',
+    recipientType = 'es',
+    sort = 'name',
+    readFilter = 'all',
+    readState = {}
+  } = {}
 ) {
   validateDateFilter(date, timeZone);
   if (recipientType !== 'es' && recipientType !== 'non-es') {
     throw new Error('Recipient type must be "es" or "non-es".');
   }
+  if (!['name', 'date-desc', 'date-asc', 'unread-first', 'read-first'].includes(sort)) {
+    throw new Error('Invalid recipient sort option.');
+  }
+  if (!['all', 'read', 'unread'].includes(readFilter)) {
+    throw new Error('Invalid recipient read filter.');
+  }
   const normalizedSearch = search.trim().toLocaleLowerCase().slice(0, 120);
   const { latestByPhone: latestIncomingByPhone, messagesOnDateByPhone } =
     getIncomingMessagesByPhone(data, date, timeZone);
   const activityByPhone = getWhatsAppActivityByPhone(data);
+  const readActivityByPhone = getReadActivityByPhone(data, readState);
   const contacts = getEligibleBroadcastContacts(data, optedOutJids, recipientType)
     .filter(contact =>
       (!normalizedSearch ||
         contact.name.toLocaleLowerCase().includes(normalizedSearch) ||
         contact.phoneNumber.includes(normalizedSearch)) &&
-      (!date ||
-        messagesOnDateByPhone.has(contact.jid) ||
-        dateInTimeZone(activityByPhone.get(contact.jid), timeZone) === date))
+      (!date || messagesOnDateByPhone.has(contact.jid)))
     .map(contact => {
       const incomingMessage = messagesOnDateByPhone.get(contact.jid);
       const whatsappActivityAt = activityByPhone.get(contact.jid) || 0;
       const latestIncomingAt = latestIncomingByPhone.get(contact.jid) || 0;
-      const lastActivityAt = Math.max(whatsappActivityAt, latestIncomingAt) || null;
+      const readActivity = readActivityByPhone.get(contact.jid);
+      const lastIncomingAt = readActivity?.lastIncomingAt || latestIncomingAt || null;
+      const lastActivityAt = Math.max(
+        whatsappActivityAt,
+        lastIncomingAt || 0,
+        readActivity?.lastIncomingAt || 0
+      ) || null;
       return {
         ...contact,
         lastActivityAt,
+        lastIncomingAt: (date && incomingMessage ? incomingMessage.timestamp : lastIncomingAt),
+        unread: readActivity?.unread || false,
         activitySource: !lastActivityAt
           ? null
-          : whatsappActivityAt >= latestIncomingAt
+          : whatsappActivityAt >= (lastIncomingAt || 0)
             ? 'whatsapp'
             : 'history',
         ...(date && incomingMessage ? {
@@ -204,6 +254,24 @@ export function listEligibleBroadcastContacts(
           lastIncomingAt: incomingMessage.timestamp
         } : {})
       };
+    })
+    .filter(contact =>
+      readFilter === 'all' ||
+      (readFilter === 'unread' ? contact.unread : !contact.unread))
+    .sort((left, right) => {
+      if (sort === 'name') return left.name.localeCompare(right.name);
+      if (sort === 'date-asc') {
+        return (left.lastActivityAt || 0) - (right.lastActivityAt || 0) ||
+          left.name.localeCompare(right.name);
+      }
+      if (sort === 'unread-first' || sort === 'read-first') {
+        const readOrder = sort === 'unread-first'
+          ? Number(right.unread) - Number(left.unread)
+          : Number(left.unread) - Number(right.unread);
+        if (readOrder) return readOrder;
+      }
+      return (right.lastActivityAt || 0) - (left.lastActivityAt || 0) ||
+        left.name.localeCompare(right.name);
     });
   const safeOffset = Math.max(0, Math.floor(offset));
   const safeLimit = Math.min(5000, Math.max(1, Math.floor(limit)));

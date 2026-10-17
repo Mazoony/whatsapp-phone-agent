@@ -23,6 +23,31 @@ test('saved-contact lookup recognizes either WhatsApp JID alias', () => {
   }
 });
 
+test('conversation lookup recognizes linked WhatsApp IDs and ignores empty history', () => {
+  const phoneJid = '249000000010@s.whatsapp.net';
+  const lidJid = '100000000000010@lid';
+  const previousPhoneContact = historyManager.contacts[phoneJid];
+  const previousLidContact = historyManager.contacts[lidJid];
+  const previousPhoneHistory = historyManager.history[phoneJid];
+
+  try {
+    historyManager.contacts[phoneJid] = { jid: phoneJid, phoneJid };
+    historyManager.contacts[lidJid] = { jid: lidJid, phoneJid };
+    historyManager.history[phoneJid] = [{ role: 'client', text: 'Existing chat' }];
+
+    assert.equal(historyManager.hasConversation(lidJid), true);
+    historyManager.history[phoneJid] = [];
+    assert.equal(historyManager.hasConversation(lidJid), false);
+  } finally {
+    if (previousPhoneContact) historyManager.contacts[phoneJid] = previousPhoneContact;
+    else delete historyManager.contacts[phoneJid];
+    if (previousLidContact) historyManager.contacts[lidJid] = previousLidContact;
+    else delete historyManager.contacts[lidJid];
+    if (previousPhoneHistory) historyManager.history[phoneJid] = previousPhoneHistory;
+    else delete historyManager.history[phoneJid];
+  }
+});
+
 test('synced WhatsApp contacts preserve phone-number links for LID aliases', () => {
   const phoneJid = '249000000009@s.whatsapp.net';
   const lidJid = '100000000000009@lid';
@@ -108,6 +133,31 @@ test('lesson delivery consent is saved and recognized across WhatsApp JID aliase
 
     historyManager.setLessonDeliveryConsent(false, lidJid, phoneJid);
     assert.equal(historyManager.hasLessonDeliveryConsent(lidJid, phoneJid), false);
+  } finally {
+    historyManager.scheduleSaveContacts = previousSave;
+    if (previousLidEntry) historyManager.contacts[lidJid] = previousLidEntry;
+    else delete historyManager.contacts[lidJid];
+    if (previousPhoneEntry) historyManager.contacts[phoneJid] = previousPhoneEntry;
+    else delete historyManager.contacts[phoneJid];
+  }
+});
+
+test('welcome sample state is stored and recognized across WhatsApp aliases', () => {
+  const lidJid = '100000000000011@lid';
+  const phoneJid = '249000000011@s.whatsapp.net';
+  const previousLidEntry = historyManager.contacts[lidJid];
+  const previousPhoneEntry = historyManager.contacts[phoneJid];
+  const previousSave = historyManager.scheduleSaveContacts;
+  historyManager.scheduleSaveContacts = () => {};
+
+  try {
+    historyManager.contacts[lidJid] = { jid: lidJid, phoneJid };
+    historyManager.setWelcomeSampleState('pending_grade', lidJid, phoneJid);
+    assert.equal(historyManager.getWelcomeSampleState(phoneJid), 'pending_grade');
+    historyManager.setWelcomeSampleState('sent', phoneJid);
+    assert.equal(historyManager.getWelcomeSampleState(lidJid), 'sent');
+    historyManager.setWelcomeSampleState(null, lidJid, phoneJid);
+    assert.equal(historyManager.getWelcomeSampleState(lidJid, phoneJid), null);
   } finally {
     historyManager.scheduleSaveContacts = previousSave;
     if (previousLidEntry) historyManager.contacts[lidJid] = previousLidEntry;

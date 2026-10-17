@@ -232,7 +232,78 @@ test('eligible broadcast contacts can be filtered by incoming-message date and t
   }
 });
 
-test('WhatsApp chat timestamps are exposed for every eligible recipient and support date filtering', () => {
+test('eligible Es recipients sort and filter aggregated read state across linked IDs', () => {
+  const previousAllowedNumbers = config.allowedNumbers;
+  const previousBlockedNumbers = config.blockedNumbers;
+  config.allowedNumbers = 'all';
+  config.blockedNumbers = [];
+  const firstPhoneJid = '249111111111@s.whatsapp.net';
+  const firstLidJid = '249111111111@lid';
+  const secondPhoneJid = '249222222222@s.whatsapp.net';
+  const firstIncomingAt = 1_800_000_000_000;
+  const linkedIncomingAt = firstIncomingAt + 10_000;
+  const secondIncomingAt = firstIncomingAt + 20_000;
+  const data = {
+    contacts: {
+      [firstPhoneJid]: { name: 'First', isEs: true, savedInAddressBook: true },
+      [firstLidJid]: { jid: firstPhoneJid, name: 'First linked', isEs: true },
+      [secondPhoneJid]: { name: 'Second', isEs: true, savedInAddressBook: true }
+    },
+    history: {
+      [firstPhoneJid]: [{
+        role: 'client',
+        text: 'Read on phone ID',
+        timestamp: firstIncomingAt
+      }],
+      [firstLidJid]: [{
+        role: 'client',
+        text: 'Unread on linked ID',
+        timestamp: linkedIncomingAt
+      }],
+      [secondPhoneJid]: [{
+        role: 'client',
+        text: 'Read second chat',
+        timestamp: secondIncomingAt
+      }]
+    }
+  };
+  const readState = {
+    [firstPhoneJid]: firstIncomingAt,
+    [firstLidJid]: firstIncomingAt,
+    [secondPhoneJid]: secondIncomingAt
+  };
+
+  try {
+    const options = { readState };
+    const unreadRecipients = listEligibleBroadcastContacts(data, [], '', 0, 50, {
+      ...options,
+      readFilter: 'unread'
+    });
+    assert.deepEqual(unreadRecipients.contacts.map(contact => contact.jid), [firstPhoneJid]);
+    assert.equal(unreadRecipients.contacts[0].unread, true);
+    assert.equal(unreadRecipients.contacts[0].lastIncomingAt, linkedIncomingAt);
+    assert.deepEqual(
+      listEligibleBroadcastContacts(data, [], '', 0, 50, {
+        ...options,
+        sort: 'date-asc'
+      }).contacts.map(contact => contact.jid),
+      [firstPhoneJid, secondPhoneJid]
+    );
+    assert.deepEqual(
+      listEligibleBroadcastContacts(data, [], '', 0, 50, {
+        ...options,
+        readFilter: 'read',
+        sort: 'unread-first'
+      }).contacts.map(contact => contact.jid),
+      [secondPhoneJid]
+    );
+  } finally {
+    config.allowedNumbers = previousAllowedNumbers;
+    config.blockedNumbers = previousBlockedNumbers;
+  }
+});
+
+test('date filtering counts incoming messages only, not WhatsApp chat activity timestamps', () => {
   const previousAllowedNumbers = config.allowedNumbers;
   const previousBlockedNumbers = config.blockedNumbers;
   config.allowedNumbers = 'all';
@@ -242,7 +313,7 @@ test('WhatsApp chat timestamps are exposed for every eligible recipient and supp
   const unavailableJid = '249222222222@s.whatsapp.net';
   const localHistoryJid = '249333333333@s.whatsapp.net';
   const timestamp = Date.parse('2026-10-16T09:45:00.000Z');
-  const localHistoryTimestamp = Date.parse('2026-10-15T11:00:00.000Z');
+  const localHistoryTimestamp = Date.parse('2026-10-16T11:00:00.000Z');
   const data = {
     contacts: {
       [phoneJid]: { name: 'Es Student', isEs: true, savedInAddressBook: true },
@@ -294,9 +365,9 @@ test('WhatsApp chat timestamps are exposed for every eligible recipient and supp
       date: '2026-10-16',
       timeZone: 'UTC'
     });
-    assert.deepEqual(datedRecipients.contacts.map(contact => contact.jid), [phoneJid]);
-    assert.equal(datedRecipients.contacts[0].lastActivityAt, timestamp);
-    assert.equal(datedRecipients.contacts[0].lastIncomingAt, undefined);
+    assert.deepEqual(datedRecipients.contacts.map(contact => contact.jid), [localHistoryJid]);
+    assert.equal(datedRecipients.contacts[0].lastIncomingMessage, 'Earlier message');
+    assert.equal(datedRecipients.contacts[0].lastIncomingAt, localHistoryTimestamp);
   } finally {
     config.allowedNumbers = previousAllowedNumbers;
     config.blockedNumbers = previousBlockedNumbers;

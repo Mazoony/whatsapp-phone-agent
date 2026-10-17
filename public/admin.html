@@ -43,7 +43,7 @@
     .auth-error { min-height: 18px; margin: 0; color: var(--red); font-size: 11px; }
     .auth-help { margin-top: 15px; color: var(--muted); font-size: 10px; }
     .layout { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); }
-    aside { background: #17362e; color: white; padding: 26px 18px; display: flex; flex-direction: column; gap: 30px; }
+    aside { position: fixed; inset: 0 auto 0 0; width: 244px; overflow-y: auto; background: #17362e; color: white; padding: 26px 18px; display: flex; flex-direction: column; gap: 30px; }
     .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
     .brand-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: #d8f3e2; color: #12563f; font-weight: 850; }
     .brand strong { display: block; font-size: 16px; letter-spacing: -.3px; }
@@ -55,7 +55,7 @@
     .nav-icon { width: 19px; text-align: center; opacity: .9; }
     .side-note { margin-top: auto; border: 1px solid #376354; background: #20483b; color: #c7ded2; border-radius: 12px; padding: 13px; font-size: 11px; }
     .side-note b { display: block; color: white; margin-bottom: 5px; }
-    main { min-width: 0; padding: 30px clamp(18px, 4vw, 54px) 54px; max-width: 1600px; width: 100%; margin: 0 auto; }
+    main { grid-column: 2; min-width: 0; padding: 30px clamp(18px, 4vw, 54px) 54px; max-width: 1600px; width: 100%; margin: 0 auto; }
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 27px; }
     h1 { font-size: clamp(23px, 3vw, 30px); letter-spacing: -1px; margin: 0 0 4px; }
     .subheading { margin: 0; color: var(--muted); }
@@ -127,7 +127,15 @@
     .agent-status-dot { width: 9px; height: 9px; border-radius: 50%; background: #9ba8a1; }
     .agent-status-dot.connected { background: #2eaa71; box-shadow: 0 0 0 3px #2eaa711c; }
     .agent-status-dot.connecting { background: #d4932d; }
+    .agent-status-dot.disconnecting { background: #d4932d; }
     .agent-status-dot.disconnected { background: #b94747; }
+    .agent-control-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .agent-control-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 7px; }
+    .agent-disconnect-button { border: 1px solid #e6bcbc; border-radius: 7px; padding: 7px 10px; color: #a3423c; background: #fff8f7; font: inherit; font-size: 11px; font-weight: 700; }
+    .agent-disconnect-button:disabled { cursor: not-allowed; opacity: .5; }
+    .agent-response-button { border: 1px solid #c8d9cd; border-radius: 7px; padding: 7px 10px; color: #326a4f; background: #f7fcf8; font: inherit; font-size: 11px; font-weight: 700; }
+    .agent-response-button:disabled { cursor: not-allowed; opacity: .5; }
+    .agent-control-message { min-height: 1em; }
     .columns { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: 14px; }
     .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 13px; box-shadow: var(--shadow); overflow: hidden; }
     .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 17px; border-bottom: 1px solid var(--line); }
@@ -208,6 +216,11 @@
     .broadcast-attachments { display: grid; gap: 7px; margin-top: 9px; }
     .broadcast-attachment { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 8px 10px; background: #f7faf8; border: 1px solid var(--line); border-radius: 8px; font-size: 11px; }
     .broadcast-attachment-name { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+    .broadcast-upload-progress { display: grid; flex: 0 0 100%; grid-template-columns: minmax(80px, 1fr) auto; align-items: center; gap: 6px 10px; }
+    .broadcast-upload-progress[hidden] { display: none; }
+    .broadcast-upload-track { height: 7px; overflow: hidden; border-radius: 10px; background: #e8efeb; }
+    .broadcast-upload-track > span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--green); transition: width .12s linear; }
+    .broadcast-upload-percent { min-width: 34px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
     .broadcast-attachment audio { width: min(300px, 100%); height: 34px; }
     .broadcast-attachment-remove { border: 0; color: #a13535; background: transparent; font: inherit; font-weight: 700; }
     .composer textarea:disabled { background: #f4f6f5; }
@@ -256,7 +269,42 @@
     .student-activity-head label { color: var(--muted); font-size: 10px; }
     .student-activity-head select { margin-left: 4px; border: 1px solid var(--line); border-radius: 6px; background: white; padding: 4px; color: var(--ink); font: inherit; }
     .activity-note, .activity-summary { margin: 6px 0; color: var(--muted); font-size: 10px; }
+    .presence-metrics { margin: 10px 0; padding: 10px; border: 1px solid #e5ece7; border-radius: 8px; background: #fbfdfb; }
+    .presence-metrics[hidden] { display: none; }
+    .presence-metric-summary { display: flex; flex-wrap: wrap; gap: 6px; }
+    .presence-metric { min-width: 110px; flex: 1; padding: 7px 9px; border-radius: 6px; background: #f0f5f1; }
+    .presence-metric strong { display: block; color: var(--ink); font-size: 11px; }
+    .presence-metric small { color: var(--muted); font-size: 9px; }
+    .presence-timeline { max-height: 190px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; }
+    .presence-timeline li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 5px 2px; border-top: 1px solid #edf1ee; color: #53645a; font-size: 9px; }
+    .presence-timeline .online-label { color: #16804b; font-weight: 700; }
     .activity-chart-title { margin: 12px 0 0; font-size: 10px; color: #52635a; font-weight: 700; }
+    .student-insight-chart { display: grid; grid-template-columns: repeat(30, minmax(3px, 1fr)); align-items: end; gap: 3px; min-height: 64px; margin-top: 7px; }
+    .student-insight-day { display: flex; min-width: 0; height: 58px; align-items: end; justify-content: center; }
+    .student-insight-bar { display: block; width: min(100%, 12px); min-height: 2px; border-radius: 3px 3px 0 0; background: #23875a; }
+    .student-insight-bars { display: flex; width: 100%; height: 54px; align-items: end; justify-content: center; gap: 1px; }
+    .student-insight-bars .student-insight-bar { width: min(40%, 6px); }
+    .student-insight-stack { display: flex; width: 100%; max-width: 12px; height: 54px; flex-direction: column-reverse; justify-content: flex-start; }
+    .student-insight-bar.incoming { background: #23875a; }
+    .student-insight-bar.outgoing { background: #79a8cf; }
+    .student-insight-bar.messages { background: #79a8cf; }
+    .student-insight-bar.response { background: #d29a35; }
+    .student-insight-legend { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 5px; color: var(--muted); font-size: 9px; }
+    .student-insight-legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .student-insight-legend i { width: 8px; height: 8px; border-radius: 2px; background: #23875a; }
+    .student-insight-legend .outgoing-key { background: #79a8cf; }
+    .student-insight-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; color: var(--muted); font-size: 10px; }
+    .student-insight-summary strong { color: var(--ink); }
+    .lesson-follow-through { margin-top: 10px; padding: 10px; border: 1px solid #e5ece7; border-radius: 8px; background: #fbfdfb; font-size: 10px; }
+    .lesson-follow-through strong { color: var(--ink); }
+    .roster-insights { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(240px, .8fr); gap: 13px; margin-top: 14px; }
+    .roster-insight-panel { min-width: 0; padding: 15px 17px; }
+    .roster-insight-panel h3 { margin: 0; font-size: 12px; }
+    .roster-follow-up-list { display: grid; gap: 6px; max-height: 260px; overflow: auto; margin-top: 8px; }
+    .roster-follow-up-item { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); text-align: left; font-size: 10px; }
+    .roster-follow-up-item:hover { background: #f2f8f4; }
+    .roster-follow-up-item small { color: var(--muted); white-space: nowrap; }
+    .roster-follow-up-item .status { flex: 0 0 auto; }
     .activity-hourly-chart { overflow-x: auto; }
     .activity-hourly-chart svg { display: block; width: 100%; min-width: 600px; height: auto; }
     .activity-hourly-chart text { fill: var(--muted); font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
@@ -309,18 +357,19 @@
     .status { display: inline-flex; padding: 3px 8px; border-radius: 20px; background: #eef3ef; color: #56675d; font-size: 9px; }
     .status.awaiting_task { background: #fff4df; color: #986113; }
     .status.awaiting_reattempt { background: #fce9e7; color: #a3423c; }
+    .status.awaiting_content { background: #fff4df; color: #986113; }
     .status.completed { background: var(--green-soft); color: var(--green); }
     .pagination { display: flex; justify-content: center; align-items: center; gap: 11px; padding: 12px; color: var(--muted); font-size: 11px; }
     .pagination button { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 5px 9px; }
     .error { margin: 14px 0; padding: 11px 13px; border: 1px solid #f1cccc; background: #fff5f4; border-radius: 9px; color: var(--red); font-size: 12px; }
     @media (max-width: 950px) { .metrics { grid-template-columns: repeat(2, 1fr); } .columns { grid-template-columns: 1fr; } .agent-runtime-grid { grid-template-columns: 1fr; } }
     @media (max-width: 700px) {
-      .layout { grid-template-columns: 1fr; }
-      aside { position: sticky; top: 0; z-index: 5; padding: 10px 13px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+      .layout { grid-template-columns: 1fr; padding-top: 60px; }
+      aside { inset: 0 0 auto; z-index: 5; width: auto; height: 60px; overflow-x: auto; overflow-y: hidden; padding: 10px 13px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
       .brand { padding: 0; } .brand-icon { width: 32px; height: 32px; } .brand strong { font-size: 13px; }
       .nav-label, .side-note { display: none; } nav { display: flex; gap: 4px; }
       .nav-item { width: auto; padding: 8px 9px; font-size: 11px; gap: 5px; }
-      main { padding: 19px 13px 34px; }
+      main { grid-column: 1; padding: 19px 13px 34px; }
       .topbar { margin-bottom: 18px; } .local-tag { font-size: 0; padding: 9px; } .local-dot { width: 8px; height: 8px; }
       .chat-layout { grid-template-columns: 1fr; }
       .chat-list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 255px; }
@@ -459,6 +508,19 @@
             </div>
           </article>
         </div>
+        <div class="roster-insights">
+          <article class="panel roster-insight-panel">
+            <h3>Student engagement · last 30 days</h3>
+            <p class="activity-summary" id="progress-engagement-summary" aria-live="polite">Loading student engagement…</p>
+            <div id="progress-engagement-chart"></div>
+            <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span></div>
+          </article>
+          <article class="panel roster-insight-panel">
+            <h3>Students to check in with</h3>
+            <p class="activity-summary" id="progress-follow-up-summary">Loading follow-up priorities…</p>
+            <div class="roster-follow-up-list" id="progress-follow-up-list" aria-live="polite"></div>
+          </article>
+        </div>
         <div class="section-heading"><div><h2>Recent chats</h2><p>Most recently active direct conversations.</p></div><button class="refresh" data-go="chats" title="Open chats">→</button></div>
         <div class="panel"><div id="recent-list"></div></div>
       </section>
@@ -480,7 +542,14 @@
         </article>
         <div class="agent-runtime-grid" id="agent-runtime-panel" hidden>
           <article class="panel agent-qr-panel">
-            <h3>Reconnect WhatsApp</h3>
+            <div class="agent-control-head">
+              <h3>Reconnect WhatsApp</h3>
+              <div class="agent-control-actions">
+                <button class="agent-response-button" id="agent-replies" type="button" disabled>Pause replies</button>
+                <button class="agent-disconnect-button" id="agent-disconnect" type="button" disabled>Disconnect agent</button>
+              </div>
+            </div>
+            <p class="agent-control-message" id="agent-control-message" role="status" aria-live="polite"></p>
             <p id="agent-qr-message">Start the agent to request a fresh pairing QR code.</p>
             <div class="agent-qr-wrap" id="agent-qr-wrap" hidden><img id="agent-qr-image" alt="WhatsApp device-linking QR code"></div>
           </article>
@@ -533,6 +602,13 @@
                 </div>
                 <p class="activity-note">Based on the times this student sent messages, shown in your browser timezone. This is historical activity, not live availability; fewer than 3 active days is only an early estimate.</p>
                 <p class="activity-summary" id="activity-summary" aria-live="polite">Select a chat to view activity.</p>
+                <div class="presence-metrics" id="activity-presence-metrics" aria-live="polite" hidden></div>
+                <div class="lesson-follow-through" id="activity-lesson-follow-through"></div>
+                <h4 class="activity-chart-title">Student and agent messages · daily</h4>
+                <div id="activity-message-trend"></div>
+                <h4 class="activity-chart-title">Agent reply time</h4>
+                <p class="activity-summary" id="activity-response-summary" aria-live="polite"></p>
+                <div id="activity-response-trend"></div>
                 <h4 class="activity-chart-title">Incoming messages by hour · 24-hour clock</h4>
                 <div class="activity-hourly-chart" id="activity-hourly-chart"></div>
                 <div class="activity-grid-wrap" id="activity-grid-wrap"></div>
@@ -552,7 +628,22 @@
         <div class="section-heading"><div><h2 id="broadcast-recipient-heading">Es phone-book contacts</h2><p id="broadcast-recipient-description">Ban a number to stop all agent replies and follow-ups. Delete removes its local contact record and also blocks it; WhatsApp may sync its contact record again, but the number remains excluded.</p></div></div>
         <div class="toolbar">
           <label class="search"><span class="search-icon">⌕</span><input id="contact-search" type="search" placeholder="Search names or phone numbers…" autocomplete="off"></label>
-          <div class="top-actions"><span class="result-count" id="contact-count">— contacts</span><button class="pagination button" id="update-es-contacts" type="button">Update from WhatsApp</button><button class="pagination button" id="refresh-es-contacts" type="button">Reload list</button><button class="pagination button" id="toggle-contact-view" type="button">Show all phone-book contacts</button></div>
+          <div class="top-actions"><span class="result-count" id="contact-count">— contacts</span><div class="chat-sort-controls" id="es-contact-filter-controls"><label for="es-contact-sort">Sort
+              <select id="es-contact-sort">
+                <option value="date-desc">Newest activity</option>
+                <option value="date-asc">Oldest activity</option>
+                <option value="unread-first">Unread first</option>
+                <option value="read-first">Read first</option>
+              </select>
+            </label>
+            <label for="es-contact-read-filter">Show
+              <select id="es-contact-read-filter">
+                <option value="all">All contacts</option>
+                <option value="unread">Unread</option>
+                <option value="read">Read</option>
+              </select>
+            </label>
+          </div><button class="pagination button" id="update-es-contacts" type="button">Update from WhatsApp</button><button class="pagination button" id="refresh-es-contacts" type="button">Reload list</button><button class="pagination button" id="toggle-contact-view" type="button">Show all phone-book contacts</button></div>
         </div>
         <label class="activity-note" for="broadcast-recipient-type">Bulk message recipient group
           <select id="broadcast-recipient-type">
@@ -562,19 +653,21 @@
         </label>
         <p class="activity-note" id="contact-refresh-status" aria-live="polite">Use Update from WhatsApp to request a fresh contact sync from the connected phone. New contacts must be saved in WhatsApp and have “Es” in the contact name.</p>
         <div class="chat-date-filter" id="chat-date-filter">
-          <label for="contact-activity-date">Show eligible chats active on
+          <label for="contact-activity-date">Show eligible chats that messaged you on
             <input id="contact-activity-date" type="date">
           </label>
           <button id="clear-contact-activity-date" type="button">Clear date</button>
-          <span class="result-count" id="contact-date-help">Choose a date to find eligible chats with WhatsApp activity that day.</span>
+          <span class="result-count" id="contact-date-help">Counts chats with a saved incoming student message on that date, in your browser timezone.</span>
         </div>
         <form class="ban-number-form" id="ban-number-form">
           <label>Ban a number not shown in the list<input id="ban-number-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="International phone number" required></label>
           <button class="primary-button" id="ban-number-submit" type="submit">Ban number</button>
         </form>
+        <p class="activity-note" id="contact-action-status" role="status" aria-live="polite" hidden></p>
         <div class="panel table-wrap">
           <div class="broadcast-toolbar">
             <label class="selection-label"><input id="select-all-contacts" type="checkbox"><span id="select-all-label">Select all eligible contacts</span></label>
+            <button id="select-contact-page" class="pagination button" type="button" disabled>Select this page</button>
             <button id="select-next-broadcast-batch" class="pagination button" type="button" hidden>Select next batch</button>
             <span class="selection-count" id="selection-count">0 selected</span>
           </div>
@@ -601,6 +694,13 @@
           </div>
           <p class="activity-note">Based on the times this student sent messages, shown in your browser timezone. This is historical activity, not live availability; fewer than 3 active days is only an early estimate.</p>
           <p class="activity-summary" id="es-activity-summary" aria-live="polite"></p>
+          <div class="presence-metrics" id="es-activity-presence-metrics" aria-live="polite" hidden></div>
+          <div class="lesson-follow-through" id="es-activity-lesson-follow-through"></div>
+          <h4 class="activity-chart-title">Student and agent messages · daily</h4>
+          <div id="es-activity-message-trend"></div>
+          <h4 class="activity-chart-title">Agent reply time</h4>
+          <p class="activity-summary" id="es-activity-response-summary" aria-live="polite"></p>
+          <div id="es-activity-response-trend"></div>
           <h4 class="activity-chart-title">Incoming messages by hour · 24-hour clock</h4>
           <div class="activity-hourly-chart" id="es-activity-hourly-chart"></div>
           <div class="activity-grid-wrap" id="es-activity-grid"></div>
@@ -650,6 +750,19 @@
           </div>
           <a class="primary-button workbook-download" id="workbook-download" href="/api/admin/student-workbook.xlsx" download="students.xlsx" aria-disabled="true">Download Excel</a>
         </article>
+        <div class="roster-insights">
+          <article class="panel roster-insight-panel">
+            <h3>Student engagement · last 30 days</h3>
+            <p class="activity-summary" id="progress-engagement-summary-page" aria-live="polite">Loading student engagement…</p>
+            <div id="progress-engagement-chart-page"></div>
+            <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span></div>
+          </article>
+          <article class="panel roster-insight-panel">
+            <h3>Students to check in with</h3>
+            <p class="activity-summary" id="progress-follow-up-summary-page">Loading follow-up priorities…</p>
+            <div class="roster-follow-up-list" id="progress-follow-up-list-page" aria-live="polite"></div>
+          </article>
+        </div>
         <div class="panel table-wrap">
           <table><thead><tr><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Last student message</th><th>Texts received</th><th>Active days (30d)</th><th>Last delivery</th></tr></thead><tbody id="progress-rows"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody></table>
         </div>
@@ -680,6 +793,7 @@
     let searchTimer;
     let contactSearchTimer;
     let pendingBroadcastAttachments = [];
+    let broadcastAttachmentUploadId = 0;
     let activeBroadcastRecorder = null;
     let broadcastRecordingStream = null;
     let broadcastRecordingChunks = [];
@@ -691,12 +805,19 @@
     let dashboardEvents = null;
     let dashboardPollTimer = null;
     let agentPollTimer = null;
+    let pendingAgentReplyMode = null;
     const $ = selector => document.querySelector(selector);
 
     function showError(message) {
       const error = $('#error');
       error.textContent = message;
       error.hidden = !message;
+    }
+
+    function setContactActionStatus(message) {
+      const status = $('#contact-action-status');
+      status.textContent = message;
+      status.hidden = !message;
     }
 
     $('#contact-rows').addEventListener('change', async event => {
@@ -847,9 +968,12 @@
 
     function renderBroadcastAttachments() {
       $('#broadcast-attachments').innerHTML = pendingBroadcastAttachments.map((attachment, index) => `
-        <div class="broadcast-attachment">
+        <div class="broadcast-attachment" ${attachment.uploading ? `data-upload-id="${attachment.uploadId}"` : ''}>
           <span class="broadcast-attachment-name">${escapeHtml(attachment.fileName)} · ${attachment.size < 1024 * 1024 ? `${attachment.size.toLocaleString()} B` : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`}${attachment.voiceNote ? ' · voice note' : ''}</span>
-          ${attachment.uploading ? '<span>Uploading…</span>' : ''}
+          <div class="broadcast-upload-progress" ${attachment.uploading ? '' : 'hidden'}>
+            <div class="broadcast-upload-track" role="progressbar" aria-label="Uploading ${escapeHtml(attachment.fileName)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${attachment.uploadProgress || 0}"><span style="width:${attachment.uploadProgress || 0}%"></span></div>
+            <span class="broadcast-upload-percent">${attachment.uploading ? `${attachment.uploadProgress}%` : ''}</span>
+          </div>
           ${attachment.previewUrl && attachment.mimeType.startsWith('audio/')
             ? `<audio controls preload="metadata" src="${escapeHtml(attachment.previewUrl)}"></audio>`
             : ''}
@@ -900,29 +1024,63 @@
       const mimeType = getFileMimeType(file);
       const previewUrl = previewBlob ? URL.createObjectURL(previewBlob) : '';
       const pendingAttachment = {
+        uploadId: ++broadcastAttachmentUploadId,
         fileName: file.name,
         size: file.size,
         mimeType,
         voiceNote,
         uploading: true,
+        uploadProgress: 0,
         previewUrl
       };
       pendingBroadcastAttachments.push(pendingAttachment);
       renderBroadcastAttachments();
       try {
-        const response = await fetch('/api/admin/broadcast-media', {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': mimeType,
-            'X-File-Name': encodeURIComponent(file.name),
-            'X-Voice-Note': String(voiceNote)
-          },
-          body: file,
-          cache: 'no-store'
+        const attachment = await new Promise((resolve, reject) => {
+          const request = new XMLHttpRequest();
+          request.open('POST', '/api/admin/broadcast-media');
+          request.setRequestHeader('Accept', 'application/json');
+          request.setRequestHeader('Content-Type', mimeType);
+          request.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+          request.setRequestHeader('X-Voice-Note', String(voiceNote));
+          request.upload.addEventListener('progress', event => {
+            if (!event.lengthComputable) return;
+            pendingAttachment.uploadProgress = Math.min(
+              100,
+              Math.round(event.loaded / event.total * 100)
+            );
+            const row = $('#broadcast-attachments').querySelector(
+              `[data-upload-id="${pendingAttachment.uploadId}"]`
+            );
+            if (!row) return;
+            const progressBar = row.querySelector('[role="progressbar"]');
+            const percent = row.querySelector('.broadcast-upload-percent');
+            progressBar.setAttribute('aria-valuenow', String(pendingAttachment.uploadProgress));
+            progressBar.firstElementChild.style.width = `${pendingAttachment.uploadProgress}%`;
+            percent.textContent = `${pendingAttachment.uploadProgress}%`;
+          });
+          request.addEventListener('load', () => {
+            let result;
+            try {
+              result = JSON.parse(request.responseText);
+            } catch {
+              reject(new Error('The server returned an invalid response while uploading the attachment.'));
+              return;
+            }
+            if (request.status < 200 || request.status >= 300) {
+              reject(new Error(result.error || `Upload failed (${request.status})`));
+              return;
+            }
+            resolve(result);
+          }, { once: true });
+          request.addEventListener('error', () => {
+            reject(new Error('Network error while uploading the attachment.'));
+          }, { once: true });
+          request.addEventListener('abort', () => {
+            reject(new Error('Attachment upload was cancelled.'));
+          }, { once: true });
+          request.send(file);
         });
-        const attachment = await response.json();
-        if (!response.ok) throw new Error(attachment.error || `Upload failed (${response.status})`);
         Object.assign(pendingAttachment, attachment, { uploading: false, previewUrl });
         renderBroadcastAttachments();
       } catch (error) {
@@ -1301,8 +1459,163 @@
       const estimatePrefix = activity.activeDays < 3 ? 'Early estimate · ' : '';
       $('#activity-summary').textContent =
         `${estimatePrefix}${activity.totalMessages.toLocaleString()} incoming messages across ${activity.activeDays.toLocaleString()} active days in the last ${activity.days} days · ${activity.timeZone}`;
+      renderPresenceMetrics(activity.presence, '#activity-presence-metrics');
+      renderLessonFollowThrough(activity.lessonProgress, '#activity-lesson-follow-through');
+      renderStudentMessageTrend(activity.dailyActivity, '#activity-message-trend');
+      renderStudentResponseTrend(activity, '#activity-response-summary', '#activity-response-trend');
       renderActivityHeatmap(activity, '#activity-grid-wrap');
       renderHourlyActivityChart(activity, '#activity-hourly-chart');
+    }
+
+    function formatPresenceDuration(durationMs) {
+      const totalMinutes = Math.max(0, Math.floor(durationMs / 60_000));
+      const days = Math.floor(totalMinutes / (24 * 60));
+      const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+      const minutes = totalMinutes % 60;
+      if (days) return `${days}d ${hours}h`;
+      if (hours) return `${hours}h ${minutes}m`;
+      return `${minutes}m`;
+    }
+
+    function formatResponseDelay(durationMs) {
+      const seconds = Math.max(0, Math.round(durationMs / 1000));
+      if (seconds < 60) return `${seconds}s`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`;
+      return `${Math.floor(seconds / 86400)}d ${Math.floor(seconds % 86400 / 3600)}h`;
+    }
+
+    function renderStudentMessageTrend(dailyActivity, selector) {
+      const container = $(selector);
+      const days = Array.isArray(dailyActivity) ? dailyActivity : [];
+      const maximum = Math.max(1, ...days.map(day => day.incoming + day.outgoing));
+      container.innerHTML = days.length ? `
+        <div class="student-insight-chart" role="img" aria-label="Daily student messages and agent replies over the selected period">
+          ${days.map(day => {
+            const incomingHeight = day.incoming / maximum * 54;
+            const outgoingHeight = day.outgoing / maximum * 54;
+            const title = `${day.date}: ${day.incoming} student messages, ${day.outgoing} agent replies`;
+            return `<div class="student-insight-day" title="${escapeHtml(title)}"><span class="student-insight-stack"><i class="student-insight-bar incoming" style="height:${incomingHeight}%"></i><i class="student-insight-bar outgoing" style="height:${outgoingHeight}%"></i></span></div>`;
+          }).join('')}
+        </div>
+        <div class="student-insight-legend"><span><i></i>Student messages</span><span><i class="outgoing-key"></i>Agent replies</span></div>` :
+        '<div class="empty">No daily activity data for this period.</div>';
+    }
+
+    function renderStudentResponseTrend(activity, summarySelector, chartSelector) {
+      const summary = $(summarySelector);
+      const chart = $(chartSelector);
+      if (activity.responseCount) {
+        summary.innerHTML = `Median <strong>${formatResponseDelay(activity.medianResponseMs)}</strong> · average <strong>${formatResponseDelay(activity.averageResponseMs)}</strong> · ${activity.responseCount.toLocaleString()} answered student turns${activity.unansweredIncomingCount ? ` · <strong>${activity.unansweredIncomingCount}</strong> latest turn without a recorded reply` : ''}.`;
+        const responseDays = activity.dailyActivity.filter(day => day.medianResponseMs !== null);
+        const maximum = Math.max(1, ...responseDays.map(day => day.medianResponseMs));
+        chart.innerHTML = `
+          <div class="student-insight-chart" role="img" aria-label="Median response time by day">
+            ${activity.dailyActivity.map(day => {
+              const height = day.medianResponseMs === null
+                ? 0
+                : Math.max(2, day.medianResponseMs / maximum * 54);
+              return `<div class="student-insight-day" title="${escapeHtml(day.date)}: ${day.medianResponseMs === null ? 'no recorded replies' : `median reply time ${formatResponseDelay(day.medianResponseMs)}`}"><i class="student-insight-bar response" style="height:${height}px"></i></div>`;
+            }).join('')}
+          </div>`;
+      } else {
+        summary.textContent = activity.unansweredIncomingCount
+          ? 'No agent replies recorded after the latest student message.'
+          : 'No answered student turns are available to estimate reply time.';
+        chart.innerHTML = activity.unansweredIncomingCount
+          ? `<div class="activity-note">${activity.unansweredIncomingCount} student turn has no recorded agent reply yet.</div>`
+          : '<div class="empty">No response-time data for this period.</div>';
+      }
+    }
+
+    function renderLessonFollowThrough(lessonProgress, selector) {
+      const container = $(selector);
+      if (!lessonProgress) {
+        container.innerHTML = '<strong>Lesson progress</strong><div>No saved lesson progress for this student.</div>';
+        return;
+      }
+      const labels = {
+        awaiting_task: 'Awaiting exercise',
+        awaiting_reattempt: 'Needs another try',
+        awaiting_content: 'Waiting for next lesson content',
+        completed: 'Completed',
+        consulting: 'Consulting'
+      };
+      container.innerHTML = `<strong>Lesson follow-through</strong><div>${escapeHtml(lessonProgress.gradeName)} · ${escapeHtml(lessonProgress.lessonTitle || 'No current lesson')} · ${escapeHtml(labels[lessonProgress.status] || lessonProgress.status)}</div><small>Last lesson delivery: ${escapeHtml(formatDate(lessonProgress.deliveredAt))}</small>`;
+    }
+
+    function renderRosterInsights(insights, summarySelector, chartSelector, followUpSummarySelector, followUpListSelector, timeZone) {
+      const summary = $(summarySelector);
+      const chart = $(chartSelector);
+      const followUpSummary = $(followUpSummarySelector);
+      const followUpList = $(followUpListSelector);
+      const trend = insights?.engagementTrend || [];
+      const maximumActive = Math.max(1, ...trend.map(day => day.activeStudents));
+      const maximumMessages = Math.max(1, ...trend.map(day => day.incomingMessages));
+      const activeStudents = insights?.activeStudentsLast7Days || 0;
+      const messagesLast7Days = trend.slice(-7).reduce((total, day) => total + day.incomingMessages, 0);
+      summary.textContent = `${activeStudents.toLocaleString()} tracked students · ${messagesLast7Days.toLocaleString()} messages in the last 7 calendar days · 30-day daily trend (${timeZone}).`;
+      chart.innerHTML = trend.length ? `
+        <div class="student-insight-chart" role="img" aria-label="Daily active tracked students and incoming student messages over the last 30 days">
+          ${trend.map(day => {
+            const activeHeight = day.activeStudents ? Math.max(2, day.activeStudents / maximumActive * 54) : 0;
+            const messageHeight = day.incomingMessages ? Math.max(2, day.incomingMessages / maximumMessages * 54) : 0;
+            return `<div class="student-insight-day" title="${escapeHtml(day.date)}: ${day.activeStudents} active students · ${day.incomingMessages} messages"><span class="student-insight-bars"><i class="student-insight-bar" style="height:${activeHeight}px"></i><i class="student-insight-bar messages" style="height:${messageHeight}px"></i></span></div>`;
+          }).join('')}
+        </div>` : '<div class="empty">No tracked student engagement data.</div>';
+      const followUps = insights?.followUpStudents || [];
+      followUpSummary.textContent = `${followUps.length.toLocaleString()} students are awaiting a task or reattempt with no recorded student message or lesson delivery for at least 7 days.`;
+      followUpList.innerHTML = followUps.length ? followUps.slice(0, 10).map(student => `
+        <button class="roster-follow-up-item" data-open-chat="${escapeHtml(student.jid)}">
+          <span><strong>${escapeHtml(student.name)}</strong><br><small>${escapeHtml(student.gradeName)} · ${escapeHtml(student.lessonTitle || 'Lesson pending')}</small></span>
+          <span><span class="status ${escapeHtml(student.status)}">${student.status === 'awaiting_reattempt' ? 'Reattempt' : 'Awaiting exercise'}</span><br><small>${student.daysSinceActivity}d since activity</small></span>
+        </button>`).join('') : '<div class="empty">No overdue lesson follow-ups right now.</div>';
+    }
+
+    function renderPresenceMetrics(presence, containerSelector) {
+      const container = $(containerSelector);
+      if (!presence) {
+        container.hidden = true;
+        return;
+      }
+      const statusLabels = {
+        online: 'Online',
+        offline: 'Offline',
+        unknown: 'Unknown'
+      };
+      const sessions = presence.sessions || [];
+      const timeline = sessions.length
+        ? `<ul class="presence-timeline">${sessions.map(session => {
+          const label = session.status === 'online' ? 'Online' : 'Offline';
+          const ending = session.endedAt
+            ? `Ended ${formatDate(session.endedAt)}`
+            : presence.currentStatus === session.status
+              ? 'Still current'
+              : 'Last status reported';
+          return `<li><span class="${session.status === 'online' ? 'online-label' : ''}">${label}</span><span>${formatDate(session.startedAt)} → ${ending} · ${formatPresenceDuration(session.durationMs)}</span></li>`;
+        }).join('')}</ul>`
+        : '<p class="activity-note">No online/offline transitions have been recorded yet.</p>';
+      const lastStatus = statusLabels[presence.lastObservedStatus] || 'Unknown';
+      const statusDetail = presence.lastObservedAt
+        ? `${lastStatus} · ${formatDate(presence.lastObservedAt)}${presence.lastSeenAt ? ` · WhatsApp last seen ${formatDate(presence.lastSeenAt)}` : ''}`
+        : 'No WhatsApp presence update recorded';
+      const startedDetail = presence.historyStartedAt
+        ? `Tracking has recorded presence since ${formatDate(presence.historyStartedAt)}.`
+        : presence.lastObservedAt
+          ? 'Presence history starts with new updates; earlier status changes are unavailable.'
+          : 'Waiting for the first WhatsApp presence update.';
+      container.innerHTML = `
+        <strong>WhatsApp presence · last ${presence.days} days</strong>
+        <p class="activity-note">Current status: ${statusLabels[presence.currentStatus] || 'Unknown'} · Latest observation: ${statusDetail}. ${startedDetail} Durations are estimates from recorded presence updates; time before tracking began or without a fresh update is not assigned to online or offline.</p>
+        <div class="presence-metric-summary">
+          <div class="presence-metric"><strong>${formatPresenceDuration(presence.onlineDurationMs)}</strong><small>Observed online</small></div>
+          <div class="presence-metric"><strong>${formatPresenceDuration(presence.offlineDurationMs)}</strong><small>Observed offline</small></div>
+          <div class="presence-metric"><strong>${formatPresenceDuration(presence.unknownDurationMs)}</strong><small>Unknown gaps</small></div>
+          <div class="presence-metric"><strong>${formatPresenceDuration(presence.untrackedDurationMs)}</strong><small>Before tracking</small></div>
+          <div class="presence-metric"><strong>${presence.transitions.toLocaleString()}</strong><small>Recorded status events</small></div>
+        </div>
+        ${timeline}`;
+      container.hidden = false;
     }
 
     function renderActivityHeatmap(activity, gridSelector) {
@@ -1378,6 +1691,11 @@
 
     async function loadEsStudentActivity() {
       if (!esActivityJid) return;
+      api('/api/admin/presence-subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jid: esActivityJid })
+      }).catch(error => console.error('[Dashboard] Could not request student presence:', error.message));
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const query = new URLSearchParams({
         jid: esActivityJid,
@@ -1393,6 +1711,10 @@
       const estimatePrefix = activity.activeDays < 3 ? 'Early estimate · ' : '';
       $('#es-activity-summary').textContent =
         `${estimatePrefix}${activity.totalMessages.toLocaleString()} incoming messages across ${activity.activeDays.toLocaleString()} active days in the last ${activity.days} days · ${activity.timeZone}`;
+      renderPresenceMetrics(activity.presence, '#es-activity-presence-metrics');
+      renderLessonFollowThrough(activity.lessonProgress, '#es-activity-lesson-follow-through');
+      renderStudentMessageTrend(activity.dailyActivity, '#es-activity-message-trend');
+      renderStudentResponseTrend(activity, '#es-activity-response-summary', '#es-activity-response-trend');
       renderActivityHeatmap(activity, '#es-activity-grid');
       renderHourlyActivityChart(activity, '#es-activity-hourly-chart');
     }
@@ -1416,7 +1738,24 @@
     }
 
     async function loadProgress() {
-      const { students } = await api('/api/admin/progress');
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const { students, insights } = await api(`/api/admin/progress?${new URLSearchParams({ timeZone })}`);
+      renderRosterInsights(
+        insights,
+        '#progress-engagement-summary',
+        '#progress-engagement-chart',
+        '#progress-follow-up-summary',
+        '#progress-follow-up-list',
+        timeZone
+      );
+      renderRosterInsights(
+        insights,
+        '#progress-engagement-summary-page',
+        '#progress-engagement-chart-page',
+        '#progress-follow-up-summary-page',
+        '#progress-follow-up-list-page',
+        timeZone
+      );
       $('#progress-rows').innerHTML = students.length ? students.map(student => `
         <tr><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${formatDate(student.deliveredAt)}</td></tr>`).join('') : '<tr><td colspan="8" class="empty">No student progress recorded yet.</td></tr>';
     }
@@ -1442,11 +1781,25 @@
       const statusLabels = {
         connected: 'Connected',
         connecting: 'Connecting',
+        disconnecting: 'Disconnecting',
         disconnected: 'Disconnected',
         unknown: 'Unknown'
       };
       $('#agent-status-value').textContent = statusLabels[status.connectionState] || 'Unknown';
       $('#agent-status-dot').className = `agent-status-dot ${status.connectionState}`;
+      $('#agent-disconnect').disabled =
+        !['connected', 'connecting'].includes(status.connectionState);
+      const repliesButton = $('#agent-replies');
+      if (pendingAgentReplyMode !== null &&
+          (status.connectionState !== 'connected' || status.respondingEnabled === pendingAgentReplyMode)) {
+        pendingAgentReplyMode = null;
+      }
+      const respondingEnabled = pendingAgentReplyMode ?? status.respondingEnabled;
+      repliesButton.disabled = status.connectionState !== 'connected' || pendingAgentReplyMode !== null;
+      repliesButton.textContent = respondingEnabled ? 'Pause replies' : 'Resume replies';
+      repliesButton.setAttribute('aria-label', respondingEnabled
+        ? 'Pause automatic replies while continuing to record incoming messages'
+        : 'Resume automatic replies to incoming messages');
       const statusDetail = status.connectionState === 'connected'
         ? `Last connected ${formatDate(status.lastConnectedAt)} · live updates every 10 seconds`
         : status.connectionState === 'connecting'
@@ -1657,6 +2010,10 @@
         offset: String(contactOffset),
         limit: String(CONTACT_PAGE_SIZE)
       });
+      if (broadcastRecipientType === 'es') {
+        query.set('sort', $('#es-contact-sort').value);
+        query.set('read', $('#es-contact-read-filter').value);
+      }
       if (showingEligibleOnly) query.set('recipientType', broadcastRecipientType);
       if (showingEligibleOnly && contactActivityDate) {
         query.set('date', contactActivityDate);
@@ -1665,7 +2022,7 @@
       const data = await api(`/api/admin/${showingEligibleOnly ? 'broadcast-recipients' : 'es-contacts'}?${query}`);
       totalEsContacts = data.total;
       $('#contact-count').textContent = contactActivityDate && showingEligibleOnly
-        ? `${data.total.toLocaleString()} ${broadcastRecipientType === 'es' ? 'eligible Es chats' : 'eligible non-Es chats'} on ${contactActivityDate}`
+        ? `${data.total.toLocaleString()} ${broadcastRecipientType === 'es' ? 'eligible Es chats' : 'eligible non-Es chats'} who messaged on ${contactActivityDate}`
         : `${data.total.toLocaleString()} ${showingEligibleOnly ? broadcastRecipientType === 'es' ? 'eligible Es recipients' : 'eligible non-Es chats' : 'contacts'}`;
       const refreshedAt = new Intl.DateTimeFormat(undefined, {
         hour: 'numeric',
@@ -1673,13 +2030,14 @@
         second: '2-digit'
       }).format(new Date());
       $('#contact-refresh-status').textContent =
-        `Showing ${showingEligibleOnly ? broadcastRecipientType === 'es' ? 'eligible saved Es contacts' : 'all tracked non-Es direct chats' : 'saved Es phone-book contacts'}${contactActivityDate && showingEligibleOnly ? ` active on ${contactActivityDate}` : ''} · refreshed ${refreshedAt}.`;
+        `Showing ${showingEligibleOnly ? broadcastRecipientType === 'es' ? 'eligible saved Es contacts' : 'all tracked non-Es direct chats' : 'saved Es phone-book contacts'}${contactActivityDate && showingEligibleOnly ? ` who messaged on ${contactActivityDate}` : ''} · refreshed ${refreshedAt}.`;
       $('#chat-date-filter').hidden = !showingEligibleOnly || broadcastRecipientType !== 'es';
+      $('#es-contact-filter-controls').hidden = broadcastRecipientType !== 'es';
       $('#contact-activity-date').value = contactActivityDate;
       $('#contact-date-help').textContent = broadcastRecipientType !== 'es'
         ? 'Non-Es recipients include unsaved direct chats; blocked numbers, opted-out contacts, and numbers outside your allowlist are excluded.'
         : contactActivityDate
-          ? 'Uses your browser timezone and WhatsApp chat timestamps where available; incoming message history is also checked.'
+          ? 'Counts saved incoming student messages only, using your browser timezone. WhatsApp chat activity timestamps do not count.'
           : 'Each eligible chat shows its latest WhatsApp date and time when available.';
       $('#broadcast-recipient-heading').textContent = showingEligibleOnly
         ? broadcastRecipientType === 'es' ? 'Eligible Es contacts' : 'Tracked non-Es chats'
@@ -1703,6 +2061,10 @@
         limit: '1',
         recipientType: broadcastRecipientType
       });
+      if (broadcastRecipientType === 'es') {
+        eligibleQuery.set('sort', $('#es-contact-sort').value);
+        eligibleQuery.set('read', $('#es-contact-read-filter').value);
+      }
       if (showingEligibleOnly && broadcastRecipientType === 'es' && contactActivityDate) {
         eligibleQuery.set('date', contactActivityDate);
         eligibleQuery.set('timeZone', Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
@@ -1711,9 +2073,11 @@
       totalEligibleContacts = eligibleData.total;
       const selectedEligibleCount = selectedJids.size;
       $('#select-all-label').textContent = totalEligibleContacts > 5000
-        ? `Select first 5,000 of ${totalEligibleContacts.toLocaleString()} ${broadcastRecipientType === 'es' ? 'eligible Es contacts' : 'eligible non-Es chats'}${contactActivityDate ? ` on ${contactActivityDate}` : ''} · 5,000 per broadcast`
+        ? contactActivityDate
+          ? `Select first 5,000 of ${totalEligibleContacts.toLocaleString()} eligible chats who messaged on ${contactActivityDate} · 5,000 per broadcast`
+          : `Select first 5,000 of ${totalEligibleContacts.toLocaleString()} ${broadcastRecipientType === 'es' ? 'eligible Es contacts' : 'eligible non-Es chats'} · 5,000 per broadcast`
         : showingEligibleOnly && contactActivityDate
-          ? `Select all ${totalEligibleContacts.toLocaleString()} eligible chats on ${contactActivityDate}`
+          ? `Select all ${totalEligibleContacts.toLocaleString()} eligible chats who messaged on ${contactActivityDate}`
           : `Select all ${totalEligibleContacts.toLocaleString()} ${broadcastRecipientType === 'es' ? 'eligible Es contacts' : 'eligible non-Es chats'}`;
       $('#select-all-contacts').checked =
         totalEligibleContacts > 0 && selectedEligibleCount === totalEligibleContacts;
@@ -1735,7 +2099,7 @@
             : broadcastRecipientType === 'es' && contact.canMessage
               ? `<input type="checkbox" data-broadcast-jid="${escapeHtml(contact.jid)}" aria-label="Select ${escapeHtml(contact.name)}" ${selectedJids.has(contact.jid) ? 'checked' : ''} ${!selectedJids.has(contact.jid) && selectedJids.size >= 5000 ? 'disabled' : ''}>`
               : '<span class="not-eligible" title="Requires an incoming chat and no opt-out">—</span>'}</td>
-          <td><button class="contact-name-button" type="button" data-student-activity="${escapeHtml(contact.jid)}" data-student-name="${escapeHtml(contact.name)}">${escapeHtml(contact.name)}</button>${contact.paid ? `<span class="badge paid" title="Payment status is not independently verified">Paid · ${contact.paid.source === 'manual' ? 'manual' : 'student-reported'}</span>` : ''}${showingEligibleOnly ? `<small class="date-chat-preview">${contact.lastActivityAt ? `${contact.activitySource === 'whatsapp' ? 'WhatsApp activity' : 'Saved incoming message'}: ${formatDate(contact.lastActivityAt)}` : 'WhatsApp activity: Unavailable'}${contactActivityDate && contact.lastIncomingAt ? ` · message: ${formatDate(contact.lastIncomingAt)}${contact.lastIncomingMessage ? ` · ${escapeHtml(contact.lastIncomingMessage)}` : ''}` : ''}</small>` : ''}</td><td dir="ltr">${escapeHtml(contact.phoneNumber)}</td>
+          <td><button class="contact-name-button" type="button" data-student-activity="${escapeHtml(contact.jid)}" data-student-name="${escapeHtml(contact.name)}">${escapeHtml(contact.name)}</button>${contact.paid ? `<span class="badge paid" title="Payment status is not independently verified">Paid · ${contact.paid.source === 'manual' ? 'manual' : 'student-reported'}</span>` : ''}${contact.unread ? '<span class="badge unread">Unread</span>' : ''}<small class="date-chat-preview">${contact.lastActivityAt ? `${contact.activitySource === 'whatsapp' ? 'WhatsApp activity' : 'Last activity'}: ${formatDate(contact.lastActivityAt)}` : 'Activity: Unavailable'}${contactActivityDate && contact.lastIncomingAt ? ` · message: ${formatDate(contact.lastIncomingAt)}${contact.lastIncomingMessage ? ` · ${escapeHtml(contact.lastIncomingMessage)}` : ''}` : ''}</small></td><td dir="ltr">${escapeHtml(contact.phoneNumber)}</td>
           <td><select class="contact-gender" data-contact-gender="${escapeHtml(contact.phoneNumber)}" data-saved-gender="${contact.gender.source === 'manual' ? escapeHtml(contact.gender.value) : 'auto'}" aria-label="Gender for ${escapeHtml(contact.name)}">
             <option value="auto" ${contact.gender.source !== 'manual' ? 'selected' : ''}>Auto: ${contact.gender.value === 'unknown' ? 'Not identified' : `${contact.gender.value === 'female' ? 'Female' : 'Male'} (inferred)`}</option>
             <option value="female" ${contact.gender.source === 'manual' && contact.gender.value === 'female' ? 'selected' : ''}>Female · manual</option>
@@ -1748,6 +2112,15 @@
             <button type="button" data-contact-action="delete" data-phone-number="${escapeHtml(contact.phoneNumber)}">Delete</button></td>
         </tr>`).join('') :
         `<tr><td colspan="5" class="empty">${showingEligibleOnly ? `No eligible ${broadcastRecipientType === 'es' ? 'Es contacts' : 'non-Es direct chats'} found.` : 'No saved Es phone-book contacts found.'}</td></tr>`;
+      const pageJids = [...$('#contact-rows').querySelectorAll('[data-broadcast-jid]')]
+        .map(checkbox => checkbox.dataset.broadcastJid);
+      const selectedPageCount = pageJids.filter(jid => selectedJids.has(jid)).length;
+      const selectPageButton = $('#select-contact-page');
+      selectPageButton.disabled = pageJids.length === 0 ||
+        (selectedPageCount === 0 && selectedJids.size >= 5000);
+      selectPageButton.textContent = selectedPageCount > 0
+        ? `Deselect this page (${pageJids.length})`
+        : `Select this page (${pageJids.length})`;
     }
 
     async function loadBlockedContacts() {
@@ -1816,6 +2189,8 @@
         if (has('whatsapp_presence.json')) {
           tasks.push(loadChats());
           if (selectedJid) tasks.push(loadConversation(selectedJid));
+          if (selectedJid) tasks.push(loadStudentActivity(selectedJid));
+          if (esActivityJid) tasks.push(loadEsStudentActivity());
         }
         if (has('contacts.json', 'followup_state.json', 'blocked_contacts.json', 'contact_gender.json', 'contact_payment_labels.json')) {
           tasks.push(loadOverview(), loadEsContacts(), loadBlockedContacts());
@@ -1968,6 +2343,18 @@
       contactOffset = 0;
       contactSearchTimer = setTimeout(() => loadEsContacts().catch(error => showError(error.message)), 220);
     });
+    $('#es-contact-sort').addEventListener('change', () => {
+      contactOffset = 0;
+      selectedJids.clear();
+      broadcastBatchOffset = 0;
+      loadEsContacts().catch(error => showError(error.message));
+    });
+    $('#es-contact-read-filter').addEventListener('change', () => {
+      contactOffset = 0;
+      selectedJids.clear();
+      broadcastBatchOffset = 0;
+      loadEsContacts().catch(error => showError(error.message));
+    });
     $('#contact-rows').addEventListener('click', async event => {
       const paymentButton = event.target.closest('[data-payment-label]');
       if (paymentButton) {
@@ -2011,14 +2398,20 @@
           ? `Ban ${phoneNumber}? The agent will stop replying and sending follow-ups.`
           : `Allow the agent to interact with ${phoneNumber} again?`;
       if (!window.confirm(confirmation)) return;
+      showError('');
+      setContactActionStatus(`${action === 'unblock' ? 'Allowing' : action === 'delete' ? 'Deleting and blocking' : 'Banning'} ${phoneNumber}…`);
       button.disabled = true;
       try {
         await api(`/api/admin/contacts/${encodeURIComponent(phoneNumber)}${action === 'delete' ? '' : `/${action}`}`, {
           method: action === 'delete' ? 'DELETE' : 'POST'
         });
         await Promise.all([loadEsContacts(), loadBlockedContacts()]);
+        setContactActionStatus(action === 'unblock'
+          ? `${phoneNumber} is allowed again.`
+          : `${phoneNumber} is blocked and listed under “Banned or deleted numbers”.`);
       } catch (error) {
-        showError(error.message);
+        setContactActionStatus('');
+        showError(`Could not ${action === 'unblock' ? 'unblock' : action === 'delete' ? 'delete and block' : 'ban'} ${phoneNumber}: ${error.message}`);
         button.disabled = false;
       }
     });
@@ -2030,14 +2423,18 @@
         return;
       }
       if (!window.confirm(`Ban ${phoneNumber}? The agent will stop replying and sending follow-ups.`)) return;
+      showError('');
+      setContactActionStatus(`Banning ${phoneNumber}…`);
       const button = $('#ban-number-submit');
       button.disabled = true;
       try {
         await api(`/api/admin/contacts/${encodeURIComponent(phoneNumber)}/ban`, { method: 'POST' });
         $('#ban-number-input').value = '';
         await Promise.all([loadEsContacts(), loadBlockedContacts()]);
+        setContactActionStatus(`${phoneNumber} is blocked and listed under “Banned or deleted numbers”.`);
       } catch (error) {
-        showError(error.message);
+        setContactActionStatus('');
+        showError(`Could not ban ${phoneNumber}: ${error.message}`);
       } finally {
         button.disabled = false;
       }
@@ -2115,6 +2512,23 @@
         showError(error.message);
         await loadEsContacts();
       }
+    });
+    $('#select-contact-page').addEventListener('click', async () => {
+      const pageJids = [...$('#contact-rows').querySelectorAll('[data-broadcast-jid]')]
+        .map(checkbox => checkbox.dataset.broadcastJid);
+      if (!pageJids.length) return;
+      const selectedPageCount = pageJids.filter(jid => selectedJids.has(jid)).length;
+      if (selectedPageCount > 0) {
+        pageJids.forEach(jid => selectedJids.delete(jid));
+      } else {
+        const availableSlots = Math.max(0, 5000 - selectedJids.size);
+        if (pageJids.length > availableSlots) {
+          showError('A bulk message can include up to 5,000 recipients. Remove some selected contacts before selecting this page.');
+          return;
+        }
+        pageJids.forEach(jid => selectedJids.add(jid));
+      }
+      await loadEsContacts();
     });
     $('#select-next-broadcast-batch').addEventListener('click', async () => {
       const query = new URLSearchParams({
@@ -2352,7 +2766,7 @@
           ? 'eligible saved Es contacts'
           : 'tracked non-Es direct chats (including unsaved contacts)';
         const confirmed = window.confirm(
-          `Queue this message${pendingBroadcastAttachments.length ? ` with ${pendingBroadcastAttachments.length} attachment(s)` : ''} for ${jids.length.toLocaleString()} ${recipientLabel}${contactActivityDate ? ` active on ${contactActivityDate}` : ''}? It will be sent individually with a 5-second gap after the WhatsApp agent is connected. Faster sending may increase the risk of WhatsApp rate limits or account restrictions.`
+          `Queue this message${pendingBroadcastAttachments.length ? ` with ${pendingBroadcastAttachments.length} attachment(s)` : ''} for ${jids.length.toLocaleString()} ${recipientLabel}${contactActivityDate ? ` who messaged you on ${contactActivityDate}` : ''}? It will be sent individually with a 5-second gap after the WhatsApp agent is connected. Faster sending may increase the risk of WhatsApp rate limits or account restrictions.`
         );
         if (!confirmed) return;
 
@@ -2443,6 +2857,47 @@
         showAuthenticationScreen(false);
       } catch (error) {
         showError(error.message);
+      }
+    });
+    $('#agent-disconnect').addEventListener('click', async event => {
+      if (!window.confirm('Disconnect the WhatsApp agent now? The device will remain linked, but the agent will stop replying until it is restarted.')) {
+        return;
+      }
+      const button = event.currentTarget;
+      const message = $('#agent-control-message');
+      button.disabled = true;
+      message.textContent = 'Requesting agent disconnect…';
+      try {
+        await api('/api/admin/agent-disconnect', { method: 'POST', body: JSON.stringify({}) });
+        message.textContent = 'Disconnect requested. The WhatsApp device remains linked; restart the agent to reconnect.';
+      } catch (error) {
+        button.disabled = false;
+        message.textContent = `Could not disconnect the agent: ${error.message}`;
+      }
+    });
+    $('#agent-replies').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const enabled = button.textContent === 'Resume replies';
+      pendingAgentReplyMode = enabled;
+      button.disabled = true;
+      const message = $('#agent-control-message');
+      message.textContent = enabled
+        ? 'Requesting automatic replies to resume…'
+        : 'Requesting automatic replies to pause… Incoming messages will still be recorded.';
+      try {
+        await api('/api/admin/agent-replies', {
+          method: 'POST',
+          body: JSON.stringify({ enabled })
+        });
+        message.textContent = enabled
+          ? 'Automatic replies resumed.'
+          : 'Automatic replies paused. Incoming messages continue to be recorded.';
+        await loadAgentStatus();
+      } catch (error) {
+        pendingAgentReplyMode = null;
+        message.textContent = `Could not change reply mode: ${error.message}`;
+        button.disabled = false;
+        await loadAgentStatus().catch(() => {});
       }
     });
     async function initializeDashboardAuth() {

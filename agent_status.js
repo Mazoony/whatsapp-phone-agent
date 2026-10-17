@@ -9,6 +9,7 @@ const QRCode = require('qrcode-terminal/vendor/QRCode');
 const QRErrorCorrectLevel = require('qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel');
 export const AGENT_STATUS_FILE = path.join(DATA_DIR, 'agent_status.json');
 export const AGENT_QR_FILE = path.join(DATA_DIR, 'agent_qr.json');
+export const AGENT_CONTROL_FILE = path.join(DATA_DIR, 'agent_control.json');
 const AGENT_QR_MAX_AGE_MS = 60_000;
 
 export function readLastConnectedAt(filePath = AGENT_STATUS_FILE) {
@@ -41,12 +42,14 @@ export function writeAgentStatus(
   connectionState,
   lastConnectedAt = null,
   account = null,
-  filePath = AGENT_STATUS_FILE
+  filePath = AGENT_STATUS_FILE,
+  respondingEnabled = true
 ) {
   const status = {
     connectionState,
     lastConnectedAt,
     account,
+    respondingEnabled,
     updatedAt: new Date().toISOString()
   };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -83,6 +86,47 @@ export function clearAgentQr(filePath = AGENT_QR_FILE) {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
+}
+
+export function requestAgentDisconnect(filePath = AGENT_CONTROL_FILE) {
+  return writeAgentControlRequest('disconnect', filePath);
+}
+
+export function requestAgentResponseMode(respondingEnabled, filePath = AGENT_CONTROL_FILE) {
+  if (typeof respondingEnabled !== 'boolean') {
+    throw new TypeError('Agent response mode must be a boolean.');
+  }
+  return writeAgentControlRequest(respondingEnabled ? 'resume_replies' : 'pause_replies', filePath);
+}
+
+function writeAgentControlRequest(action, filePath) {
+  const request = { action, requestedAt: new Date().toISOString() };
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const temporaryPath = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(request), 'utf8');
+  fs.renameSync(temporaryPath, filePath);
+  return request;
+}
+
+export function consumeAgentControlRequest(filePath = AGENT_CONTROL_FILE) {
+  let request;
+  try {
+    request = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+  if (!request || !['disconnect', 'pause_replies', 'resume_replies'].includes(request.action) ||
+      typeof request.requestedAt !== 'string' ||
+      !Number.isFinite(Date.parse(request.requestedAt))) {
+    throw new Error('Agent control request is invalid.');
+  }
+  fs.unlinkSync(filePath);
+  return request.action;
+}
+
+export function consumeAgentDisconnectRequest(filePath = AGENT_CONTROL_FILE) {
+  return consumeAgentControlRequest(filePath) === 'disconnect';
 }
 
 export function renderAgentQrSvg(value) {
