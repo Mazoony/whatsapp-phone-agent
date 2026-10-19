@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +29,17 @@ import {
   createBlockedContactsStore,
   normalizePhoneNumber
 } from './blocked_contacts.js';
-import { AGENT_MEDIA_ACTIVITY_FILE, readAgentMediaActivities } from './agent_media_activity.js';
+import {
+  AGENT_MEDIA_ACTIVITY_FILE,
+  readAgentMediaActivities,
+  writeAgentMediaActivity
+} from './agent_media_activity.js';
+import {
+  AGENT_MEDIA_RETRY_REQUESTS_FILE,
+  enqueueAgentMediaRetry
+} from './agent_media_retry.js';
+import { findLessonForMediaActivity } from './lesson_media_retry.js';
+import { getInactiveEligibleEsContacts } from './broadcast_utils.js';
 import {
   CHAT_READ_STATE_FILE,
   ChatReadStateStore,
@@ -52,6 +63,8 @@ import {
   readAgentQr,
   renderAgentQrSvg,
   requestAgentDisconnect,
+  requestAgentQueueCancellation,
+  requestAgentQueueMode,
   requestAgentResponseMode
 } from './agent_status.js';
 import { AGENT_LOG_FILE, readRecentAgentLogs } from './agent_runtime.js';
@@ -65,6 +78,18 @@ import {
   STUDENT_WORKBOOK_FILE,
   STUDENT_WORKBOOK_SOURCE_FILES
 } from './student_workbook.js';
+import { createScheduledLessonStore, SCHEDULED_LESSONS_FILE } from './scheduled_lessons.js';
+import {
+  LESSON_MEDIA_DIR,
+  MAX_LESSON_VIDEO_BYTES,
+  listCurriculumOverview,
+  getGradeCurriculum,
+  saveLesson,
+  deleteLesson,
+  reorderLessons,
+  saveGradeMetadata,
+  saveLessonVideo
+} from './curriculum_manager.js';
 
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const HISTORY_FILE = path.join(ROOT_DIR, 'data', 'chat_history.json');
@@ -86,6 +111,7 @@ const DASHBOARD_WATCHED_FILES = new Set([
   BROADCAST_REQUESTS_FILE,
   BROADCAST_STATE_FILE,
   MESSAGE_REQUESTS_FILE,
+  SCHEDULED_LESSONS_FILE,
   AGENT_STATUS_FILE,
   AGENT_QR_FILE,
   AGENT_MEDIA_ACTIVITY_FILE,
@@ -93,6 +119,17 @@ const DASHBOARD_WATCHED_FILES = new Set([
   BLOCKED_NUMBERS_FILE,
   CONTACT_PAYMENT_LABELS_FILE
 ].map(filePath => path.resolve(filePath)));
+const DASHBOARD_DATA_SOURCE_FILES = [
+  HISTORY_FILE,
+  CONTACTS_FILE,
+  PROGRESS_FILE,
+  LESSONS_FILE,
+  FOLLOWUP_STATE_FILE,
+  WHATSAPP_CHAT_ACTIVITY_FILE,
+  BLOCKED_NUMBERS_FILE,
+  CONTACT_PAYMENT_LABELS_FILE,
+  CONTACT_GENDER_OVERRIDES_FILE
+];
 const AGENT_HEARTBEAT_MAX_AGE_MS = 30_000;
 const DEFAULT_PAGE_SIZE = 30;
 const MAX_PAGE_SIZE = 100;
@@ -121,7 +158,7 @@ function readBinaryRequestBody(req, maxBytes) {
     });
     req.on('end', () => {
       if (tooLarge) {
-        reject(new Error('Attachment exceeds the 20 MB size limit.'));
+        reject(new Error(`Attachment exceeds the ${Math.round(maxBytes / (1024 * 1024))} MB size limit.`));
         return;
       }
       resolve(Buffer.concat(chunks));
@@ -140,7 +177,37 @@ function writeJsonFile(filePath, value) {
   fs.renameSync(temporaryPath, filePath);
 }
 
-export function readDashboardData() {
+function fileSignature(filePath) {
+  try {
+    const stats = fs.statSync(filePath);
+    return `${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}`;
+  } catch (error) {
+    if (error.code === 'ENOENT') return 'missing';
+    throw error;
+  }
+}
+
+export function createDashboardDataCache(loader, sourceFiles) {
+  let cachedSignature = null;
+  let cachedData = null;
+  return () => {
+    const signature = sourceFiles.map(fileSignature).join('|');
+    if (cachedData && signature === cachedSignature) return cachedData;
+
+    const data = loader();
+    const loadedSignature = sourceFiles.map(fileSignature).join('|');
+    if (signature === loadedSignature) {
+      cachedData = data;
+      cachedSignature = signature;
+    } else {
+      cachedData = null;
+      cachedSignature = null;
+    }
+    return data;
+  };
+}
+
+function loadDashboardDataFromDisk() {
   return {
     history: readJsonFile(HISTORY_FILE),
     contacts: readJsonFile(CONTACTS_FILE),
@@ -152,6 +219,31 @@ export function readDashboardData() {
     blockedNumbers: createBlockedContactsStore().list(),
     genderOverrides: createContactGenderStore().list()
   };
+}
+
+export const readDashboardData = createDashboardDataCache(
+  loadDashboardDataFromDisk,
+  DASHBOARD_DATA_SOURCE_FILES
+);
+
+const dashboardQueryCache = new WeakMap();
+
+function memoizeDashboardQuery(data, key, compute) {
+  let queries = dashboardQueryCache.get(data);
+  if (!queries) {
+    queries = new Map();
+    dashboardQueryCache.set(data, queries);
+  }
+  if (queries.has(key)) {
+    const cached = queries.get(key);
+    queries.delete(key);
+    queries.set(key, cached);
+    return cached;
+  }
+  const result = compute();
+  queries.set(key, result);
+  while (queries.size > 32) queries.delete(queries.keys().next().value);
+  return result;
 }
 
 function isDirectChat(jid) {
@@ -240,6 +332,19 @@ function removeLocalContactAliases(contacts, phoneNumber) {
   return removed;
 }
 
+function contactNameForPhoneNumber(contacts, phoneNumber) {
+  for (const [jid, contact] of Object.entries(contacts || {})) {
+    const phoneJid = getPhoneJid(jid, contact?.phoneJid, contact?.jid);
+    if (phoneJid?.slice(0, -'@s.whatsapp.net'.length).split(':')[0] !== phoneNumber) {
+      continue;
+    }
+    const name = [contact?.name, contact?.notify, contact?.verifiedName]
+      .find(value => typeof value === 'string' && value.trim());
+    if (name) return name.trim().slice(0, 200);
+  }
+  return '';
+}
+
 function handleBlockedContactMutation(req, res, {
   blockedContacts,
   contactsFile,
@@ -262,15 +367,22 @@ function handleBlockedContactMutation(req, res, {
     if (action === 'unblock') {
       response = { unblocked: blockedContacts.unblock(normalizedNumber) };
     } else {
+      const contacts = readJsonFileOr(contactsFile, {});
+      const name = contactNameForPhoneNumber(contacts, normalizedNumber);
       const reason = action === 'delete' ? 'deleted' : 'banned';
-      const record = blockedContacts.block(normalizedNumber, reason);
+      const record = blockedContacts.block(normalizedNumber, reason, name);
       let removed = 0;
       if (action === 'delete') {
-        const contacts = readJsonFile(contactsFile);
         removed = removeLocalContactAliases(contacts, normalizedNumber);
         writeJsonFile(contactsFile, contacts);
       }
-      response = { blocked: true, reason, removedContacts: removed, blockedAt: record.blockedAt };
+      response = {
+        blocked: true,
+        name: record.name || normalizedNumber,
+        reason,
+        removedContacts: removed,
+        blockedAt: record.blockedAt
+      };
     }
     sendJson(res, 200, response);
   } catch (error) {
@@ -457,18 +569,20 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
 }
 
 function getClientMessagesByPhone(data) {
-  const messagesByPhone = new Map();
-  for (const [historyJid, messages] of Object.entries(data.history)) {
-    const linkedPhoneJid = getPhoneJid(
-      historyJid,
-      data.contacts[historyJid]?.phoneJid,
-      data.contacts[historyJid]?.jid
-    );
-    const phoneJid = linkedPhoneJid || historyJid;
-    if (!messagesByPhone.has(phoneJid)) messagesByPhone.set(phoneJid, []);
-    messagesByPhone.get(phoneJid).push(...messages);
-  }
-  return messagesByPhone;
+  return memoizeDashboardQuery(data, 'client-messages-by-phone', () => {
+    const messagesByPhone = new Map();
+    for (const [historyJid, messages] of Object.entries(data.history)) {
+      const linkedPhoneJid = getPhoneJid(
+        historyJid,
+        data.contacts[historyJid]?.phoneJid,
+        data.contacts[historyJid]?.jid
+      );
+      const phoneJid = linkedPhoneJid || historyJid;
+      if (!messagesByPhone.has(phoneJid)) messagesByPhone.set(phoneJid, []);
+      messagesByPhone.get(phoneJid).push(...messages);
+    }
+    return messagesByPhone;
+  });
 }
 
 function contactGender(data, phoneNumber, messages) {
@@ -712,12 +826,14 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
         weekday: 'short',
         timeZone: 'UTC'
       }).format(date),
-      conversations: new Set()
+      conversations: new Set(),
+      newConversations: 0
     });
   }
 
+  const firstIncomingByChat = new Map();
   for (const [jid, messages] of Object.entries(data.history)) {
-    if (!isDirectChat(jid)) continue;
+    if (!isDirectChat(jid) || !Array.isArray(messages)) continue;
     const canonicalJid = getPhoneJid(
       jid,
       data.contacts[jid]?.phoneJid,
@@ -727,6 +843,10 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
       if (message.role !== 'client') continue;
       const timestamp = timestampMs(message.timestamp);
       if (!Number.isFinite(timestamp) || timestamp < 0 || timestamp > nowTimestamp) continue;
+      const firstIncomingAt = firstIncomingByChat.get(canonicalJid);
+      if (firstIncomingAt === undefined || timestamp < firstIncomingAt) {
+        firstIncomingByChat.set(canonicalJid, timestamp);
+      }
       const parts = Object.fromEntries(
         formatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
       );
@@ -735,12 +855,21 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
     }
   }
 
+  for (const timestamp of firstIncomingByChat.values()) {
+    const parts = Object.fromEntries(
+      formatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
+    );
+    const day = daysByDate.get(`${parts.year}-${parts.month}-${parts.day}`);
+    if (day) day.newConversations += 1;
+  }
+
   return {
     timeZone,
-    days: [...daysByDate.values()].map(({ date, day, conversations }) => ({
+    days: [...daysByDate.values()].map(({ date, day, conversations, newConversations }) => ({
       date,
       day,
-      chats: conversations.size
+      chats: conversations.size,
+      newChats: newConversations
     }))
   };
 }
@@ -799,6 +928,7 @@ export function getDashboardAgentStatus(status, handledChats, now = Date.now()) 
     connectionState,
     connected: connectionState === 'connected',
     respondingEnabled: status?.respondingEnabled !== false,
+    queuePaused: status?.queuePaused === true,
     lastConnectedAt: status?.lastConnectedAt || null,
     lastHeartbeatAt: Number.isFinite(updatedAt) ? status.updatedAt : null,
     account: status?.account && typeof status.account === 'object'
@@ -1309,6 +1439,7 @@ export function createAdminDashboardServer({
   agentControlFile,
   agentLogFile = AGENT_LOG_FILE,
   agentMediaActivityFile = AGENT_MEDIA_ACTIVITY_FILE,
+  agentMediaRetryRequestsFile = AGENT_MEDIA_RETRY_REQUESTS_FILE,
   chatReadStateFile = CHAT_READ_STATE_FILE,
   incomingChatQueueFile = INCOMING_CHAT_QUEUE_FILE,
   whatsappChatActivityFile = WHATSAPP_CHAT_ACTIVITY_FILE,
@@ -1320,14 +1451,140 @@ export function createAdminDashboardServer({
   blockedContactsFile = BLOCKED_NUMBERS_FILE,
   contactGenderFile = CONTACT_GENDER_OVERRIDES_FILE,
   paymentLabelsFile = CONTACT_PAYMENT_LABELS_FILE,
+  readContacts = null,
   whatsappPresenceFile = WHATSAPP_PRESENCE_FILE,
   whatsappPresenceRequestsFile = WHATSAPP_PRESENCE_REQUESTS_FILE,
   contactsFile = CONTACTS_FILE,
-  studentWorkbookFile = readData === readDashboardData ? STUDENT_WORKBOOK_FILE : null
+  followUpStateFile = FOLLOWUP_STATE_FILE,
+  studentWorkbookFile = readData === readDashboardData ? STUDENT_WORKBOOK_FILE : null,
+  lessonsFile = LESSONS_FILE,
+  lessonMediaDirectory = LESSON_MEDIA_DIR,
+  scheduledLessonsFile = SCHEDULED_LESSONS_FILE,
+  progressFile = PROGRESS_FILE
 } = {}) {
   const blockedContacts = createBlockedContactsStore(blockedContactsFile);
   const contactGenders = createContactGenderStore(contactGenderFile);
   const paymentLabels = createContactPaymentLabelsStore(paymentLabelsFile);
+  const scheduledLessons = createScheduledLessonStore({ filePath: scheduledLessonsFile });
+  const getManualScheduleOptions = () => {
+    const contacts = readContactsFile();
+    const progress = readJsonFileOr(progressFile, {});
+    const studentsByPhone = new Map();
+    for (const jid of new Set([...Object.keys(contacts), ...Object.keys(progress)])) {
+      if (!isDirectChat(jid)) continue;
+      const contact = contacts[jid] || {};
+      const studentProgress = progress[jid] || {};
+      const phoneJid = getPhoneJid(jid, contact.phoneJid, contact.jid, studentProgress.phoneJid);
+      const key = phoneJid || jid;
+      const previous = studentsByPhone.get(key);
+      const gradeProgress = studentProgress.grade
+        ? studentProgress
+        : previous?.progress || {};
+      const displayContact = contact.name ? contact : previous?.contact || contact;
+      studentsByPhone.set(key, {
+        jid: phoneJid || jid,
+        phoneJid,
+        name: displayName(displayContact, phoneJid || jid),
+        gradeKey: gradeProgress.grade || '',
+        progress: gradeProgress,
+        contact: displayContact
+      });
+    }
+    const students = [...studentsByPhone.values()]
+      .filter(student => student.phoneJid && /^\d+@s\.whatsapp\.net$/.test(student.phoneJid))
+      .map(({ jid, phoneJid, name, gradeKey }) => ({ jid, phoneJid, name, gradeKey }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    const lessonsConfig = readJsonFile(lessonsFile);
+    const mediaRoot = fs.realpathSync(lessonMediaDirectory);
+    const lessons = Object.entries(lessonsConfig).flatMap(([gradeKey, grade]) =>
+      (Array.isArray(grade.lessons) ? grade.lessons : []).flatMap(lesson => {
+        if (!lesson.videoFile || !lesson.taskMessage?.trim() ||
+            !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0) return [];
+        const candidatePath = path.resolve(ROOT_DIR, lesson.videoFile);
+        const relativePath = path.relative(mediaRoot, candidatePath);
+        if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) return [];
+        let videoPath;
+        try {
+          videoPath = fs.realpathSync(candidatePath);
+        } catch (error) {
+          if (error.code === 'ENOENT') return [];
+          throw error;
+        }
+        const realRelativePath = path.relative(mediaRoot, videoPath);
+        if (!realRelativePath || realRelativePath.startsWith('..') || path.isAbsolute(realRelativePath)) return [];
+        const stats = fs.statSync(videoPath);
+        if (!stats.isFile() || stats.size === 0) return [];
+        return [{
+          gradeKey,
+          gradeName: grade.name || gradeKey,
+          lessonId: lesson.id,
+          title: lesson.title || lesson.id
+        }];
+      })
+    );
+    return { students, lessons };
+  };
+  const readContactsFile = () => readContacts
+    ? readContacts()
+    : readJsonFile(contactsFile);
+  const blockedContactsWithNames = () => {
+    const contacts = readContacts
+      ? readContacts()
+      : readJsonFileOr(contactsFile, {});
+    return blockedContacts.list().map(record => ({
+      ...record,
+      name: record.name || contactNameForPhoneNumber(contacts, record.number) || record.number
+    }));
+  };
+  const getInactiveLessonRecipients = now => {
+    const followUpState = readJsonFileOr(followUpStateFile, { optedOutJids: [] });
+    return getInactiveEligibleEsContacts({
+      contacts: readContactsFile(),
+      history: {},
+      whatsappChatActivity: readJsonFileOr(whatsappChatActivityFile, {}),
+      blockedNumbers: blockedContacts.list()
+    }, Array.isArray(followUpState.optedOutJids) ? followUpState.optedOutJids : [], {
+      inactiveDays: 10,
+      now
+    });
+  };
+  const getLessonForBroadcast = (gradeKey, lessonId, isStandalone) => {
+    const lessonsConfig = readJsonFile(lessonsFile);
+    const grade = lessonsConfig[gradeKey];
+    const collection = isStandalone ? grade?.standaloneLessons : grade?.lessons;
+    const lesson = Array.isArray(collection)
+      ? collection.find(item => item.id === lessonId)
+      : null;
+    if (!lesson || typeof lesson.videoFile !== 'string' || !lesson.videoFile.trim()) {
+      throw new Error('The selected lesson or its video file is no longer available.');
+    }
+    const mediaRoot = path.resolve(lessonMediaDirectory);
+    const candidatePath = path.resolve(ROOT_DIR, lesson.videoFile);
+    const relativePath = path.relative(mediaRoot, candidatePath);
+    if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      throw new Error('The lesson video must be inside the lesson media folder.');
+    }
+    const videoPath = fs.realpathSync(candidatePath);
+    const realRelativePath = path.relative(fs.realpathSync(mediaRoot), videoPath);
+    if (!realRelativePath || realRelativePath.startsWith('..') || path.isAbsolute(realRelativePath)) {
+      throw new Error('The lesson video must be inside the lesson media folder.');
+    }
+    const stats = fs.statSync(videoPath);
+    if (!stats.isFile() || stats.size === 0) {
+      throw new Error('The lesson video file is missing or empty.');
+    }
+    return {
+      title: lesson.title || lessonId,
+      caption: lesson.caption || lesson.title || '',
+      videoFile: realRelativePath
+    };
+  };
+  const lessonBroadcastPreviews = new Map();
+  const pruneLessonBroadcastPreviews = now => {
+    for (const [token, preview] of lessonBroadcastPreviews) {
+      if (preview.expiresAt <= now) lessonBroadcastPreviews.delete(token);
+    }
+  };
   const whatsappPresence = new WhatsAppPresenceManager({
     presenceFile: whatsappPresenceFile,
     requestsFile: whatsappPresenceRequestsFile
@@ -1337,12 +1594,21 @@ export function createAdminDashboardServer({
     requestsFile: contactSyncRequestsFile,
     statusFile: contactSyncStatusFile
   });
-  const readDataWithBlockedContacts = () => ({
-    ...readData(),
-    blockedNumbers: blockedContacts.list(),
-    genderOverrides: contactGenders.list(),
-    paymentLabels: paymentLabels.list()
-  });
+  const cacheDataSnapshots = readData === readDashboardData;
+  let lastBaseData = null;
+  let cachedDashboardData = null;
+  const readDataWithBlockedContacts = () => {
+    const data = readData();
+    if (cacheDataSnapshots && data === lastBaseData) return cachedDashboardData;
+    lastBaseData = data;
+    cachedDashboardData = {
+      ...data,
+      blockedNumbers: blockedContacts.list(),
+      genderOverrides: contactGenders.list(),
+      paymentLabels: paymentLabels.list()
+    };
+    return cachedDashboardData;
+  };
   const eventClients = new Set();
   const pendingChanges = new Set();
   const watchedFiles = new Set([
@@ -1361,7 +1627,9 @@ export function createAdminDashboardServer({
     blockedContactsFile,
     contactGenderFile,
     contactsFile,
+    lessonsFile,
     messageRequestsFile,
+    scheduledLessonsFile,
     broadcastFiles.requests,
     broadcastFiles.state
   ].map(filePath => path.resolve(filePath)));
@@ -1525,6 +1793,42 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/chat-queue-cancel') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Chat queue controls must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (typeof body?.jid !== 'string' || !isDirectChat(body.jid)) {
+          sendJson(res, 400, { error: 'A valid direct chat ID is required.' });
+          return;
+        }
+        const status = readJsonFile(agentStatusFile);
+        if (status.connectionState !== 'connected') {
+          sendJson(res, 409, { error: 'Connect the WhatsApp agent before cancelling a queued chat.' });
+          return;
+        }
+        const queue = readIncomingChatQueue(incomingChatQueueFile);
+        if (!queue.waiting.some(entry => entry.jid === body.jid)) {
+          const message = queue.active?.jid === body.jid
+            ? 'This student is already being handled and cannot be cancelled from the waiting queue.'
+            : 'This student is no longer waiting in the chat queue.';
+          sendJson(res, 409, { error: message });
+          return;
+        }
+        const request = requestAgentQueueCancellation(body.jid, agentControlFile);
+        sendJson(res, 202, {
+          status: 'cancellation_requested',
+          jid: body.jid,
+          requestedAt: request.requestedAt
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not cancel queued chat handling:', error.message);
+        sendJson(res, 500, { error: 'Could not cancel queued chat handling.' });
+      });
+      return;
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/api/admin/chat-read') {
       if (!isSameOriginLoopbackRequest(req)) {
         sendJson(res, 403, { error: 'Chat read updates must come from this local dashboard.' });
@@ -1535,7 +1839,7 @@ export function createAdminDashboardServer({
           sendJson(res, 400, { error: 'A valid direct chat ID is required.' });
           return;
         }
-        const data = readData();
+        const data = readDataWithBlockedContacts();
         const messages = data.history[body.jid];
         if (!messages) {
           sendJson(res, 404, { error: 'Chat not found.' });
@@ -1640,7 +1944,9 @@ export function createAdminDashboardServer({
       }
       const contentLength = Number(req.headers['content-length']);
       if (Number.isFinite(contentLength) && contentLength > MAX_BROADCAST_MEDIA_BYTES) {
-        sendJson(res, 413, { error: 'Attachment exceeds the 20 MB size limit.' });
+        sendJson(res, 413, {
+          error: `Attachment exceeds the ${Math.round(MAX_BROADCAST_MEDIA_BYTES / (1024 * 1024))} MB size limit.`
+        });
         return;
       }
       let fileName;
@@ -1658,16 +1964,148 @@ export function createAdminDashboardServer({
         }, broadcastMediaDirectory);
         sendJson(res, 201, attachment);
       }).catch(error => {
-        const status = /20 MB/.test(error.message) ? 413 : 400;
+        const status = /exceeds the \d+ MB size limit/.test(error.message) ? 413 : 400;
         console.error('[Admin Dashboard] Could not store bulk-message attachment:', error.message);
         sendJson(res, status, { error: error.message });
       });
       return;
     }
 
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/curriculum/video') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Media can only be uploaded from this local dashboard.' });
+        return;
+      }
+      const contentLength = Number(req.headers['content-length']);
+      if (Number.isFinite(contentLength) && contentLength > MAX_LESSON_VIDEO_BYTES) {
+        sendJson(res, 413, { error: `Video exceeds the ${Math.round(MAX_LESSON_VIDEO_BYTES / (1024 * 1024))} MB size limit.` });
+        return;
+      }
+      let gradeKey;
+      let fileName;
+      let collectionId;
+      try {
+        gradeKey = decodeURIComponent(req.headers['x-grade-key'] || '').trim();
+        fileName = decodeURIComponent(req.headers['x-file-name'] || '').trim();
+        collectionId = decodeURIComponent(req.headers['x-collection-id'] || '').trim() || null;
+      } catch {
+        sendJson(res, 400, { error: 'Invalid video upload headers.' });
+        return;
+      }
+      if (!gradeKey) {
+        sendJson(res, 400, { error: 'Grade key is required.' });
+        return;
+      }
+      readBinaryRequestBody(req, MAX_LESSON_VIDEO_BYTES).then(buffer => {
+        const result = saveLessonVideo({
+          gradeKey,
+          collectionId,
+          fileName,
+          buffer,
+          mediaDir: lessonMediaDirectory
+        });
+        scheduleChange(path.basename(lessonsFile));
+        sendJson(res, 201, result);
+      }).catch(error => {
+        const status = /exceeds the limit/i.test(error.message) ? 413 : 400;
+        console.error('[Admin Dashboard] Could not upload lesson video:', error.message);
+        sendJson(res, status, { error: error.message });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/curriculum/lesson') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Curriculum updates must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        const result = saveLesson({
+          gradeKey: body.gradeKey,
+          lesson: body.lesson,
+          isStandalone: body.isStandalone === true,
+          collectionId: typeof body.collectionId === 'string' ? body.collectionId : null,
+          filePath: lessonsFile
+        });
+        scheduleChange(path.basename(lessonsFile));
+        sendJson(res, 200, result);
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not save lesson:', error.message);
+        sendJson(res, 400, { error: error.message });
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE' && requestUrl.pathname === '/api/admin/curriculum/lesson') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Curriculum updates must come from this local dashboard.' });
+        return;
+      }
+      const gradeKey = requestUrl.searchParams.get('gradeKey');
+      const lessonId = requestUrl.searchParams.get('lessonId');
+      const isStandalone = requestUrl.searchParams.get('isStandalone') === 'true';
+      const collectionId = requestUrl.searchParams.get('collectionId');
+      try {
+        const result = deleteLesson({
+          gradeKey,
+          lessonId,
+          isStandalone,
+          collectionId,
+          filePath: lessonsFile
+        });
+        scheduleChange(path.basename(lessonsFile));
+        sendJson(res, 200, result);
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not delete lesson:', error.message);
+        sendJson(res, 400, { error: error.message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/curriculum/reorder') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Curriculum updates must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        const result = reorderLessons({
+          gradeKey: body.gradeKey,
+          lessonIds: body.lessonIds,
+          filePath: lessonsFile
+        });
+        scheduleChange(path.basename(lessonsFile));
+        sendJson(res, 200, result);
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not reorder lessons:', error.message);
+        sendJson(res, 400, { error: error.message });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/curriculum/grade') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Curriculum updates must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        const result = saveGradeMetadata({
+          gradeKey: body.gradeKey,
+          name: body.name,
+          keywords: body.keywords,
+          filePath: lessonsFile
+        });
+        scheduleChange(path.basename(lessonsFile));
+        sendJson(res, 200, result);
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not update grade metadata:', error.message);
+        sendJson(res, 400, { error: error.message });
+      });
+      return;
+    }
+
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/blocked-contacts') {
       try {
-        sendJson(res, 200, { blockedNumbers: blockedContacts.list() });
+        sendJson(res, 200, { blockedNumbers: blockedContactsWithNames() });
       } catch (error) {
         console.error('[Admin Dashboard] Could not read blocked contacts:', error.message);
         sendJson(res, 500, { error: 'Could not read blocked contacts.' });
@@ -1683,8 +2121,8 @@ export function createAdminDashboardServer({
       }
       readRequestBody(req).then(body => {
         const phoneNumber = paymentLabelMatch[1];
-        const data = readDataWithBlockedContacts();
-        const matchingContact = Object.entries(data.contacts).find(([jid, contact]) => {
+        const contacts = readContactsFile();
+        const matchingContact = Object.entries(contacts).find(([jid, contact]) => {
           const phoneJid = getPhoneJid(jid, contact?.phoneJid, contact?.jid);
           return phoneJid?.slice(0, -'@s.whatsapp.net'.length).split(':')[0] === phoneNumber;
         });
@@ -1748,6 +2186,120 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (['GET', 'POST'].includes(req.method) &&
+        requestUrl.pathname === '/api/admin/curriculum/lesson-broadcast') {
+      if (req.method === 'POST' && !isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Lesson video broadcasts must come from this local dashboard.' });
+        return;
+      }
+      const getOptions = () => ({
+        gradeKey: requestUrl.searchParams.get('gradeKey'),
+        lessonId: requestUrl.searchParams.get('lessonId'),
+        isStandalone: requestUrl.searchParams.get('isStandalone') === 'true'
+      });
+      const sendPreview = () => {
+        const { gradeKey, lessonId, isStandalone } = getOptions();
+        if (!gradeKey || !lessonId) {
+          sendJson(res, 400, { error: 'A grade and lesson are required.' });
+          return;
+        }
+        const lessonVideo = getLessonForBroadcast(gradeKey, lessonId, isStandalone);
+        const now = Date.now();
+        const recipients = getInactiveLessonRecipients(now);
+        pruneLessonBroadcastPreviews(now);
+        const previewId = randomUUID();
+        lessonBroadcastPreviews.set(previewId, {
+          gradeKey,
+          lessonId,
+          isStandalone,
+          lessonVideo,
+          jids: recipients.map(contact => contact.jid),
+          expiresAt: now + 5 * 60 * 1000
+        });
+        sendJson(res, 200, {
+          previewId,
+          title: lessonVideo.title,
+          total: recipients.length,
+          inactiveDays: 10,
+          cutoff: new Date(now - 10 * 24 * 60 * 60 * 1000).toISOString(),
+          filter: 'Eligible eShool contacts with recorded WhatsApp activity more than 10 days ago'
+        });
+      };
+      if (req.method === 'GET') {
+        try {
+          sendPreview();
+        } catch (error) {
+          console.error('[Admin Dashboard] Could not preview lesson video recipients:', error.message);
+          sendJson(res, 400, { error: error.message });
+        }
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (typeof body.previewId !== 'string') {
+          sendJson(res, 400, { error: 'A current lesson video recipient preview is required.' });
+          return;
+        }
+        pruneLessonBroadcastPreviews(Date.now());
+        const preview = lessonBroadcastPreviews.get(body.previewId);
+        if (!preview) {
+          sendJson(res, 409, { error: 'This recipient preview expired. Preview the lesson again before queuing it.' });
+          return;
+        }
+        const lessonVideo = getLessonForBroadcast(
+          preview.gradeKey,
+          preview.lessonId,
+          preview.isStandalone
+        );
+        const now = Date.now();
+        const recipients = getInactiveLessonRecipients(now);
+        const currentJids = recipients.map(contact => contact.jid);
+        if (JSON.stringify(currentJids) !== JSON.stringify(preview.jids) ||
+            JSON.stringify(lessonVideo) !== JSON.stringify(preview.lessonVideo)) {
+          sendJson(res, 409, {
+            error: 'The eligible students or lesson video changed after preview. Preview again and confirm the updated recipient count.'
+          });
+          return;
+        }
+        if (recipients.length === 0) {
+          sendJson(res, 409, {
+            error: 'No eligible eShool contacts have recorded WhatsApp activity older than 10 days. Contacts with no saved activity are excluded.'
+          });
+          return;
+        }
+        const requests = readJsonFileOr(broadcastFiles.requests, []);
+        if (!Array.isArray(requests)) throw new Error('Invalid broadcast request queue.');
+        const id = `${now}-${Math.random().toString(36).slice(2, 10)}`;
+        const createdAt = new Date(now).toISOString();
+        const job = {
+          id,
+          text: '',
+          attachments: [],
+          jids: preview.jids,
+          recipientType: 'es',
+          inactiveDays: 10,
+          inactiveBefore: now - 10 * 24 * 60 * 60 * 1000,
+          lessonVideo,
+          createdAt,
+          cancelled: false
+        };
+        requests.push(job);
+        lessonBroadcastPreviews.delete(body.previewId);
+        fs.mkdirSync(path.dirname(broadcastFiles.requests), { recursive: true });
+        writeJsonFile(broadcastFiles.requests, requests);
+        scheduleChange(path.basename(broadcastFiles.requests));
+        sendJson(res, 202, {
+          id,
+          status: 'queued',
+          total: job.jids.length,
+          createdAt
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not queue lesson video broadcast:', error.message);
+        sendJson(res, 400, { error: error.message });
+      });
+      return;
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/api/admin/messages') {
       handleDirectMessagePost(req, res, readDataWithBlockedContacts, messageRequestsFile);
       return;
@@ -1769,6 +2321,117 @@ export function createAdminDashboardServer({
         console.error('[Admin Dashboard] Could not load direct message status:', error.message);
         sendJson(res, 500, { error: 'Could not read direct message status.' });
       }
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/scheduled-lessons') {
+      try {
+        sendJson(res, 200, { schedules: scheduledLessons.list().slice(-100).reverse() });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load scheduled lessons:', error.message);
+        sendJson(res, 500, { error: 'Could not read scheduled lessons.' });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/scheduled-lessons/options') {
+      try {
+        sendJson(res, 200, getManualScheduleOptions());
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load manual lesson scheduling options:', error.message);
+        sendJson(res, 500, { error: 'Could not load students and configured lessons for scheduling.' });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/scheduled-lessons/manual') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Scheduled lesson controls are only accepted from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (typeof body?.jid !== 'string' || typeof body?.gradeKey !== 'string' ||
+            typeof body?.lessonId !== 'string' || typeof body?.scheduledAt !== 'string' ||
+            !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(body.scheduledAt)) {
+          sendJson(res, 400, { error: 'Choose a student, a configured lesson, and a valid future date and time.' });
+          return;
+        }
+        const { students, lessons } = getManualScheduleOptions();
+        const student = students.find(item => item.jid === body.jid);
+        if (!student) {
+          sendJson(res, 404, { error: 'Student not found in the local WhatsApp contacts or progress records.' });
+          return;
+        }
+        const lesson = lessons.find(item =>
+          item.gradeKey === body.gradeKey && item.lessonId === body.lessonId);
+        if (!lesson) {
+          sendJson(res, 409, { error: 'That lesson is no longer available with its video and exercise.' });
+          return;
+        }
+        const gradeConfig = readJsonFile(lessonsFile)[body.gradeKey];
+        const gradeLessons = Array.isArray(gradeConfig?.lessons) ? gradeConfig.lessons : [];
+        const lessonIndex = gradeLessons.findIndex(item => item.id === body.lessonId);
+        if (lessonIndex < 0) {
+          sendJson(res, 409, { error: 'That lesson is no longer available with its video and exercise.' });
+          return;
+        }
+        const schedule = scheduledLessons.create({
+          jid: student.jid,
+          phoneJid: student.phoneJid,
+          studentName: student.name,
+          gradeKey: body.gradeKey,
+          lessonIndex,
+          lessonId: body.lessonId,
+          lessonTitle: lesson.title,
+          scheduledAt: body.scheduledAt
+        });
+        scheduleChange(path.basename(scheduledLessonsFile));
+        sendJson(res, 201, { schedule });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not create manual lesson schedule:', error.message);
+        const status = /future/.test(error.message) ? 409 : 400;
+        sendJson(res, status, { error: error.message });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/scheduled-lessons') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Scheduled lesson controls are only accepted from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (!body || typeof body.id !== 'string' || !body.id) {
+          sendJson(res, 400, { error: 'A scheduled lesson ID is required.' });
+          return;
+        }
+        let schedule;
+        if (body.action === 'cancel') {
+          schedule = scheduledLessons.cancel(body.id);
+        } else if (body.action === 'send_now') {
+          schedule = scheduledLessons.update(body.id, current => ({
+            ...current,
+            scheduledAt: new Date(Date.now() + 1000).toISOString()
+          }));
+        } else if (body.action === 'reschedule' && typeof body.scheduledAt === 'string') {
+          schedule = scheduledLessons.update(body.id, current => ({
+            ...current,
+            scheduledAt: body.scheduledAt
+          }));
+        } else {
+          sendJson(res, 400, { error: 'Choose cancel, send_now, or provide a future time to reschedule.' });
+          return;
+        }
+        if (!schedule) {
+          sendJson(res, 404, { error: 'Scheduled lesson not found.' });
+          return;
+        }
+        scheduleChange(path.basename(scheduledLessonsFile));
+        sendJson(res, 200, { schedule });
+      }).catch(error => {
+        const status = /Only scheduled lessons|must be in the future/.test(error.message) ? 409 : 400;
+        sendJson(res, status, { error: error.message });
+      });
       return;
     }
 
@@ -1809,10 +2472,11 @@ export function createAdminDashboardServer({
       try {
         const data = readDataWithBlockedContacts();
         const status = readJsonFileOr(agentStatusFile, null);
-        const handledChats = Object.entries(data.history)
-          .filter(([jid, messages]) =>
-            isDirectChat(jid) && messages.some(message => message.role === 'agent'))
-          .length;
+        const handledChats = memoizeDashboardQuery(data, 'handled-chat-count', () =>
+          Object.entries(data.history)
+            .filter(([jid, messages]) =>
+              isDirectChat(jid) && messages.some(message => message.role === 'agent'))
+            .length);
         sendJson(res, 200, getDashboardAgentStatus(status, handledChats));
       } catch (error) {
         console.error('[Admin Dashboard] Could not load WhatsApp agent status:', error.message);
@@ -1874,6 +2538,33 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/chat-queue-control') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Chat queue controls must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (typeof body.paused !== 'boolean') {
+          sendJson(res, 400, { error: 'Queue pause state must be true or false.' });
+          return;
+        }
+        const status = readJsonFile(agentStatusFile);
+        if (status.connectionState !== 'connected') {
+          sendJson(res, 409, { error: 'Connect the WhatsApp agent before changing chat handling.' });
+          return;
+        }
+        const request = requestAgentQueueMode(body.paused, agentControlFile);
+        sendJson(res, 202, {
+          status: body.paused ? 'pausing_queue' : 'resuming_queue',
+          requestedAt: request.requestedAt
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not change chat queue handling:', error.message);
+        sendJson(res, 500, { error: 'Could not change chat queue handling.' });
+      });
+      return;
+    }
+
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/agent-logs') {
       try {
         const limitValue = requestUrl.searchParams.get('limit') || '250';
@@ -1891,12 +2582,106 @@ export function createAdminDashboardServer({
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/agent-media') {
       try {
+        const contacts = readContactsFile();
+        const lessonsConfig = readJsonFile(lessonsFile);
+        const contactsByPhone = new Map();
+        for (const [jid, contact] of Object.entries(contacts || {})) {
+          const phoneJid = getPhoneJid(jid, contact?.phoneJid, contact?.jid);
+          if (phoneJid && !contactsByPhone.has(phoneJid)) {
+            contactsByPhone.set(phoneJid, contact);
+          }
+        }
+        const activities = readAgentMediaActivities(agentMediaActivityFile).map(activity => {
+          const contact = contacts?.[activity.recipientJid] ||
+            contactsByPhone.get(getPhoneJid(
+              activity.recipientJid,
+              contacts?.[activity.recipientJid]?.phoneJid,
+              contacts?.[activity.recipientJid]?.jid
+            ));
+          return {
+            ...activity,
+            retryAvailable: Boolean(findLessonForMediaActivity(activity, lessonsConfig)),
+            studentName: displayName(contact, activity.recipientJid)
+          };
+        });
         sendJson(res, 200, {
-          activities: readAgentMediaActivities(agentMediaActivityFile)
+          activities
         });
       } catch (error) {
         console.error('[Admin Dashboard] Could not load WhatsApp media activity:', error.message);
         sendJson(res, 500, { error: 'Could not read WhatsApp media activity.' });
+      }
+      return;
+    }
+
+    const retryMediaMatch = /^\/api\/admin\/agent-media\/([\w-]+)\/retry$/.exec(requestUrl.pathname);
+    if (req.method === 'POST' && retryMediaMatch) {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Media retry requests must come from this local dashboard.' });
+        return;
+      }
+      try {
+        const status = readJsonFile(agentStatusFile);
+        if (status.connectionState !== 'connected') {
+          sendJson(res, 409, { error: 'Connect the WhatsApp agent before retrying this video.' });
+          return;
+        }
+        const activityId = retryMediaMatch[1];
+        const activity = readAgentMediaActivities(agentMediaActivityFile)
+          .find(item => item.id === activityId);
+        if (!activity || activity.status !== 'failed') {
+          sendJson(res, 409, { error: 'Only failed video uploads can be retried.' });
+          return;
+        }
+        if (!findLessonForMediaActivity(activity, readJsonFile(lessonsFile))) {
+          sendJson(res, 409, { error: 'The lesson video source could not be identified for retry.' });
+          return;
+        }
+        enqueueAgentMediaRetry(activityId, agentMediaRetryRequestsFile);
+        writeAgentMediaActivity({
+          ...activity,
+          status: 'retrying',
+          retryError: undefined,
+          updatedAt: new Date().toISOString()
+        }, agentMediaActivityFile);
+        sendJson(res, 202, { status: 'retrying', activityId });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not queue failed video retry:', error.message);
+        sendJson(res, 500, { error: 'Could not queue the video retry.' });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/payment-calendar') {
+      try {
+        const contacts = readContactsFile();
+        const contactsByPhone = new Map();
+        for (const [jid, contact] of Object.entries(contacts || {})) {
+          const phoneJid = getPhoneJid(jid, contact?.phoneJid, contact?.jid);
+          if (phoneJid && !contactsByPhone.has(phoneJid)) {
+            contactsByPhone.set(phoneJid, contact);
+          }
+        }
+        const payments = Object.entries(paymentLabels.list())
+          .flatMap(([phoneNumber, record]) => (record.paymentHistory || []).map(payment => {
+            const phoneJid = getPhoneJid(
+              payment.jid,
+              contacts?.[payment.jid]?.phoneJid,
+              contacts?.[payment.jid]?.jid
+            ) || `${phoneNumber}@s.whatsapp.net`;
+            const contact = contacts?.[payment.jid] || contactsByPhone.get(phoneJid);
+            return {
+              phoneNumber,
+              jid: payment.jid,
+              studentName: displayName(contact, phoneJid),
+              paidAt: payment.paidAt
+            };
+          }))
+          .sort((left, right) => Date.parse(right.paidAt) - Date.parse(left.paidAt));
+        sendJson(res, 200, { payments });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load payment history:', error.message);
+        sendJson(res, 500, { error: 'Could not read student payment history.' });
       }
       return;
     }
@@ -1967,7 +2752,13 @@ export function createAdminDashboardServer({
       if (requestUrl.pathname === '/api/admin/overview') {
         const timeZone = requestUrl.searchParams.get('timeZone') || 'UTC';
         try {
-          sendJson(res, 200, getDashboardOverview(data, Date.now(), timeZone));
+          const now = Date.now();
+          const overview = memoizeDashboardQuery(
+            data,
+            `overview:${timeZone}:${Math.floor(now / 60_000)}`,
+            () => getDashboardOverview(data, now, timeZone)
+          );
+          sendJson(res, 200, overview);
         } catch (error) {
           sendJson(res, 400, { error: error.message });
         }
@@ -2006,19 +2797,20 @@ export function createAdminDashboardServer({
           return;
         }
         const readState = chatReadState.ensureInitialized(data.history);
-        const result = listDashboardChats(
-          data,
-          requestUrl.searchParams.get('q') || '',
-          offset,
-          limit,
-          {
+        const search = requestUrl.searchParams.get('q') || '';
+        const chatCacheKey = JSON.stringify([
+          'chats', search, offset, limit, activityFilter, handledFilter, sort, readFilter,
+          JSON.stringify(readState),
+          activityFilter === '24h' ? Math.floor(Date.now() / 60_000) : null
+        ]);
+        const result = memoizeDashboardQuery(data, chatCacheKey, () =>
+          listDashboardChats(data, search, offset, limit, {
             ...(activityFilter === '24h' ? { activeSince: Date.now() - 24 * 60 * 60 * 1000 } : {}),
             handledOnly: handledFilter === '1',
             readState,
             sort,
             readFilter
-          }
-        );
+          }));
         sendJson(res, 200, {
           ...result,
           chats: result.chats.map(chat => ({
@@ -2038,18 +2830,20 @@ export function createAdminDashboardServer({
           return;
         }
         try {
-          const result = listDashboardEsContacts(
+          const search = requestUrl.searchParams.get('q') || '';
+          const readState = chatReadState.ensureInitialized(data.history);
+          const sort = requestUrl.searchParams.get('sort') || 'date-desc';
+          const readFilter = requestUrl.searchParams.get('read') || 'all';
+          const result = memoizeDashboardQuery(data, JSON.stringify([
+            'es-contacts', search, offset, limit, JSON.stringify(readState), sort, readFilter
+          ]), () => listDashboardEsContacts(
             data,
-            requestUrl.searchParams.get('q') || '',
+            search,
             offset,
             limit,
             getClientMessagesByPhone(data),
-            {
-              readState: chatReadState.ensureInitialized(data.history),
-              sort: requestUrl.searchParams.get('sort') || 'date-desc',
-              readFilter: requestUrl.searchParams.get('read') || 'all'
-            }
-          );
+            { readState, sort, readFilter }
+          ));
           sendJson(res, 200, result);
         } catch (error) {
           sendJson(res, 400, { error: error.message });
@@ -2066,21 +2860,22 @@ export function createAdminDashboardServer({
         }
         let result;
         try {
-          result = listEligibleBroadcastContacts(
-            data,
-            data.optedOutJids || [],
-            requestUrl.searchParams.get('q') || '',
-            offset,
-            limit,
-            {
-              date: requestUrl.searchParams.get('date') || '',
-              timeZone: requestUrl.searchParams.get('timeZone') || 'UTC',
-              recipientType: requestUrl.searchParams.get('recipientType') || 'es',
-              sort: requestUrl.searchParams.get('sort') || 'date-desc',
-              readFilter: requestUrl.searchParams.get('read') || 'all',
-              readState: chatReadState.ensureInitialized(data.history)
-            }
-          );
+          const search = requestUrl.searchParams.get('q') || '';
+          const options = {
+            date: requestUrl.searchParams.get('date') || '',
+            timeZone: requestUrl.searchParams.get('timeZone') || 'UTC',
+            recipientType: requestUrl.searchParams.get('recipientType') || 'es',
+            sort: requestUrl.searchParams.get('sort') || 'date-desc',
+            readFilter: requestUrl.searchParams.get('read') || 'all',
+            readState: chatReadState.ensureInitialized(data.history)
+          };
+          result = memoizeDashboardQuery(data, JSON.stringify([
+            'broadcast-recipients', search, offset, limit,
+            options.date, options.timeZone, options.recipientType, options.sort,
+            options.readFilter, JSON.stringify(options.readState)
+          ]), () => listEligibleBroadcastContacts(
+            data, data.optedOutJids || [], search, offset, limit, options
+          ));
         } catch (error) {
           sendJson(res, 400, { error: error.message });
           return;
@@ -2104,7 +2899,9 @@ export function createAdminDashboardServer({
       }
 
       if (requestUrl.pathname === '/api/admin/conversation') {
-        const conversation = getDashboardConversation(data, requestUrl.searchParams.get('jid'));
+        const jid = requestUrl.searchParams.get('jid');
+        const conversation = memoizeDashboardQuery(data, `conversation:${jid}`, () =>
+          getDashboardConversation(data, jid));
         if (!conversation) {
           sendJson(res, 404, { error: 'Chat not found' });
           return;
@@ -2123,8 +2920,10 @@ export function createAdminDashboardServer({
           sendJson(res, 400, { error: 'Message limit must be between 1 and 200.' });
           return;
         }
+        const limit = Number(limitValue);
         sendJson(res, 200, {
-          messages: listRecentAgentMessages(data, Number(limitValue))
+          messages: memoizeDashboardQuery(data, `agent-conversation:${limit}`, () =>
+            listRecentAgentMessages(data, limit))
         });
         return;
       }
@@ -2163,10 +2962,48 @@ export function createAdminDashboardServer({
       if (requestUrl.pathname === '/api/admin/progress') {
         const timeZone = requestUrl.searchParams.get('timeZone') || 'UTC';
         try {
-          sendJson(res, 200, listDashboardStudentProgress(data, Date.now(), timeZone));
+          const now = Date.now();
+          const progress = memoizeDashboardQuery(
+            data,
+            `progress:${timeZone}:${Math.floor(now / 60_000)}`,
+            () => listDashboardStudentProgress(data, now, timeZone)
+          );
+          sendJson(res, 200, progress);
         } catch (error) {
           sendJson(res, 400, { error: error.message });
         }
+        return;
+      }
+
+      if (requestUrl.pathname === '/api/admin/curriculum') {
+        try {
+          const overview = listCurriculumOverview(data.lessons, {
+            filePath: lessonsFile,
+            mediaDir: lessonMediaDirectory
+          });
+          sendJson(res, 200, overview);
+        } catch (error) {
+          sendJson(res, 500, { error: error.message });
+        }
+        return;
+      }
+
+      if (requestUrl.pathname === '/api/admin/curriculum/grade') {
+        const gradeKey = requestUrl.searchParams.get('key');
+        if (!gradeKey) {
+          sendJson(res, 400, { error: 'Grade key is required.' });
+          return;
+        }
+        const gradeCurriculum = getGradeCurriculum(gradeKey, data.lessons, {
+          filePath: lessonsFile,
+          mediaDir: lessonMediaDirectory,
+          appDir: ROOT_DIR
+        });
+        if (!gradeCurriculum) {
+          sendJson(res, 404, { error: 'Grade not found.' });
+          return;
+        }
+        sendJson(res, 200, gradeCurriculum);
         return;
       }
 

@@ -4,13 +4,84 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { config } from './config.js';
+import { historyManager } from './history.js';
 import {
   hasLessonDeliveryConsent,
+  inferSentLessonProgress,
   lessonManager,
   resolveLessonVideoPath
 } from './lesson_manager.js';
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+test('a correct submission schedules the next numbered lesson for the daily queue', async () => {
+  const jid = 'daily-lesson-progression-test@s.whatsapp.net';
+  const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  const originalProgress = lessonManager.progress[jid];
+  const originalSaveProgress = lessonManager.saveProgress;
+  const originalAddMessage = historyManager.addMessage;
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  const sentMessages = [];
+  const scheduledLessons = [];
+  lessonManager.progress[jid] = {
+    grade: 'grade_3_secondary',
+    currentLessonIndex: 0,
+    currentLessonId: lesson.id,
+    status: 'awaiting_task'
+  };
+  lessonManager.saveProgress = () => {};
+  historyManager.addMessage = () => {};
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      message: {
+        content: JSON.stringify({
+          isTaskSubmission: true,
+          allCorrect: true
+        })
+      }
+    })
+  });
+
+  try {
+    const sock = {
+      sendMessage: async (_jid, message) => sentMessages.push(message),
+      sendPresenceUpdate: async () => {}
+    };
+    const scheduleNextLesson = async details => {
+      scheduledLessons.push(details);
+      return { id: 'daily-schedule' };
+    };
+    assert.equal(await lessonManager.handleTaskSubmission(
+      sock,
+      jid,
+      'My answers are correct.',
+      'Student',
+      null,
+      scheduleNextLesson
+    ), true);
+
+    assert.equal(scheduledLessons.length, 1);
+    assert.equal(scheduledLessons[0].lesson.id, 'lesson_2');
+    assert.equal(scheduledLessons[0].lessonIndex, 1);
+    assert.equal(lessonManager.progress[jid].status, 'awaiting_next_lesson');
+    assert.ok(sentMessages.some(message => message.text.includes('scheduled for tomorrow')));
+    assert.equal(await lessonManager.handleTaskSubmission(
+      sock, jid, 'My answers are correct.', 'Student', null, scheduleNextLesson
+    ), false);
+    assert.equal(scheduledLessons.length, 1);
+  } finally {
+    if (originalProgress) lessonManager.progress[jid] = originalProgress;
+    else delete lessonManager.progress[jid];
+    lessonManager.saveProgress = originalSaveProgress;
+    historyManager.addMessage = originalAddMessage;
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
 
 test('detects each Sudanese school grade with its stage', () => {
   const cases = [
@@ -113,6 +184,50 @@ test('offers a welcome sample only for grades with a real first lesson video and
   }
 });
 
+test('infers the last delivered lesson only from outgoing lesson markers or exercise text', () => {
+  const lessons = [
+    {
+      id: 'lesson_1',
+      title: 'Present simple',
+      taskMessage: 'Complete all the present simple exercises in your notebook.'
+    },
+    {
+      id: 'lesson_2',
+      title: 'Past simple',
+      taskMessage: 'Write five sentences using the past simple tense.'
+    }
+  ];
+
+  assert.deepEqual(inferSentLessonProgress([
+    { role: 'client', text: lessons[1].taskMessage },
+    { role: 'agent', text: '🎬 [فيديو: Past simple]\nPast simple' },
+    { role: 'agent', text: lessons[0].taskMessage },
+    { role: 'agent', text: lessons[1].taskMessage }
+  ], lessons), {
+    lessonIndex: 1,
+    lessonId: 'lesson_2'
+  });
+  assert.equal(inferSentLessonProgress([
+    { role: 'client', text: lessons[1].taskMessage },
+    { role: 'agent', text: 'I will prepare more lessons soon.' }
+  ], lessons), null);
+  assert.deepEqual(inferSentLessonProgress([
+    { role: 'agent', text: 'Complete all the present simple exercises in your notebook.' }
+  ], lessons.slice(0, 1)), { lessonIndex: 0, lessonId: 'lesson_1' });
+  assert.deepEqual(inferSentLessonProgress([
+    { role: 'agent', text: '🎬 [فيديو: lesson_2]' }
+  ], [{ id: 'lesson_2', title: '', taskMessage: '' }]), {
+    lessonIndex: 0,
+    lessonId: 'lesson_2'
+  });
+  assert.equal(inferSentLessonProgress([
+    { role: 'agent', text: 'Do these exercises after class.' }
+  ], [
+    { id: 'lesson_1', taskMessage: 'Do these exercises after class.' },
+    { id: 'lesson_2', taskMessage: 'Do these exercises after class.' }
+  ]), null);
+});
+
 test('recognizes requests to send or resend a lesson video', () => {
   for (const message of [
     'رسل لي الفيديو',
@@ -130,6 +245,118 @@ test('recognizes requests to send or resend a lesson video', () => {
 
   for (const message of ['رسل لي التمرين', 'I watched the video yesterday', 'كيف حالك؟']) {
     assert.equal(lessonManager.isLessonVideoRequest(message), false, message);
+  }
+});
+
+test('recognizes requests to resend a lesson task or exercise', () => {
+  for (const message of [
+    'Can you send the exercise again?',
+    'Please resend my homework',
+    'I did not get the task',
+    'رسل لي التمرين تاني',
+    'ممكن ترسل الواجب مرة تانية',
+    'ما وصلني التمرين'
+  ]) {
+    assert.equal(lessonManager.isLessonTaskRequest(message), true, message);
+  }
+
+  for (const message of [
+    'I finished the exercise',
+    'ما فهمت السؤال',
+    'رسل لي الفيديو تاني',
+    'كيف حالك؟'
+  ]) {
+    assert.equal(lessonManager.isLessonTaskRequest(message), false, message);
+  }
+});
+
+test('lets Grade 3 students choose and complete Treasure Island lessons without changing curriculum progress', async () => {
+  const jid = 'test-treasure-island@s.whatsapp.net';
+  const videoPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'treasure-island-video-')), 'chapter.mp4');
+  fs.writeFileSync(videoPath, 'test-video');
+  const grade = lessonManager.lessonsConfig.grade_3_secondary;
+  const originalCollection = grade.collections?.treasure_island;
+  const originalProgress = lessonManager.progress;
+  const originalSaveProgress = lessonManager.saveProgress;
+  const originalAddMessage = historyManager.addMessage;
+  const sent = [];
+
+  try {
+    grade.collections ||= {};
+    grade.collections.treasure_island = {
+      title: 'Treasure Island',
+      lessons: [{
+        id: 'chapter_1',
+        title: 'Chapter One',
+        videoFile: videoPath,
+        caption: 'Chapter One video',
+        introMessage: '',
+        taskMessage: 'Answer the Chapter One exercise.',
+        answerKey: ['The answer is Jim.']
+      }]
+    };
+    lessonManager.progress = {
+      [jid]: { grade: 'grade_3_secondary', currentLessonIndex: 4, status: 'completed' }
+    };
+    lessonManager.saveProgress = () => {};
+    historyManager.addMessage = () => {};
+
+    const sock = {
+      sendMessage: async (...args) => { sent.push(args); }
+    };
+    assert.equal(await lessonManager.handleTreasureIslandMessage(
+      sock, jid, 'Can I choose a Treasure Island lesson?', 'Student'
+    ), true);
+    assert.match(sent[0][1].text, /1\. Chapter One/);
+
+    assert.equal(await lessonManager.handleTreasureIslandMessage(
+      sock, jid, '١', 'Student'
+    ), true);
+    assert.ok(Buffer.isBuffer(sent.find(([, payload]) => payload.video)?.[1].video));
+    assert.equal(sent.at(-1)[1].text, 'Answer the Chapter One exercise.');
+
+    assert.equal(lessonManager.progress[jid].currentLessonIndex, 4);
+    assert.equal(lessonManager.progress[jid].status, 'completed');
+    assert.equal(lessonManager.progress[jid].treasureIsland.activeLessonId, 'chapter_1');
+    assert.equal(lessonManager.progress[jid].treasureIsland.status, 'awaiting_task');
+  } finally {
+    lessonManager.progress = originalProgress;
+    lessonManager.saveProgress = originalSaveProgress;
+    historyManager.addMessage = originalAddMessage;
+    if (originalCollection) grade.collections.treasure_island = originalCollection;
+    else delete grade.collections.treasure_island;
+    if (Object.keys(grade.collections).length === 0) delete grade.collections;
+    fs.rmSync(path.dirname(videoPath), { recursive: true, force: true });
+  }
+});
+
+test('resends the assigned exercise without changing student progress', async () => {
+  const jid = 'task-resend-test@s.whatsapp.net';
+  const originalProgress = lessonManager.progress[jid];
+  const originalAddMessage = historyManager.addMessage;
+  const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[1];
+  const sentMessages = [];
+  const progress = {
+    grade: 'grade_3_secondary',
+    currentLessonIndex: 1,
+    currentLessonId: lesson.id,
+    status: 'awaiting_reattempt',
+    deliveredAt: '2026-10-19T12:00:00.000Z'
+  };
+  lessonManager.progress[jid] = progress;
+  historyManager.addMessage = () => {};
+
+  try {
+    assert.equal(await lessonManager.resendCurrentLessonTask({
+      sendMessage: async (_jid, message) => sentMessages.push(message)
+    }, jid), true);
+    assert.deepEqual(sentMessages, [{ text: lesson.taskMessage }]);
+    assert.equal(lessonManager.progress[jid], progress);
+    assert.equal(progress.status, 'awaiting_reattempt');
+  } finally {
+    if (originalProgress) lessonManager.progress[jid] = originalProgress;
+    else delete lessonManager.progress[jid];
+    historyManager.addMessage = originalAddMessage;
   }
 });
 
@@ -219,6 +446,43 @@ test('resends the active lesson video without resetting lesson progress', async 
   }
 });
 
+test('resends a failed media activity to its original recipient and preserves its activity ID', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-media-retry-'));
+  const videoPath = path.join(directory, 'lesson.mp4');
+  const video = Buffer.from('retry-video-fixture');
+  fs.writeFileSync(videoPath, video);
+  const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  const originalVideoPath = lesson.videoFile;
+  const originalAddMessage = historyManager.addMessage;
+  const sentMessages = [];
+  lesson.videoFile = videoPath;
+  historyManager.addMessage = () => {};
+
+  try {
+    await lessonManager.resendMediaActivity({
+      sendMessage: async (...args) => sentMessages.push(args)
+    }, {
+      id: 'failed-video-activity',
+      mediaType: 'video',
+      recipientJid: '1001@s.whatsapp.net',
+      description: lesson.caption || lesson.title,
+      retry: { gradeKey: 'grade_3_secondary', lessonId: lesson.id }
+    });
+
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0][0], '1001@s.whatsapp.net');
+    assert.deepEqual(sentMessages[0][1].video, video);
+    assert.deepEqual(sentMessages[0][3], {
+      activityId: 'failed-video-activity',
+      retry: { gradeKey: 'grade_3_secondary', lessonId: lesson.id }
+    });
+  } finally {
+    lesson.videoFile = originalVideoPath;
+    historyManager.addMessage = originalAddMessage;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('does not send a video placeholder, task, or progress update when the lesson video is missing', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-video-missing-'));
   const jid = 'video-missing-test@s.whatsapp.net';
@@ -250,6 +514,80 @@ test('does not send a video placeholder, task, or progress update when the lesso
     lesson.videoFile = originalVideoPath;
     if (originalProgress) lessonManager.progress[jid] = originalProgress;
     else delete lessonManager.progress[jid];
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('does not deliver a second lesson within 24 hours', async () => {
+  const jid = 'daily-delivery-limit-test@s.whatsapp.net';
+  const originalProgress = lessonManager.progress[jid];
+  const originalSaveProgress = lessonManager.saveProgress;
+  const sentMessages = [];
+  lessonManager.progress[jid] = {
+    grade: 'grade_3_secondary',
+    currentLessonIndex: 0,
+    status: 'awaiting_next_lesson',
+    treasureIsland: {
+      deliveredAt: new Date(Date.now() - 60_000).toISOString()
+    }
+  };
+  lessonManager.saveProgress = () => {};
+
+  try {
+    assert.equal(await lessonManager.deliverLesson({
+      sendMessage: async (_jid, message) => sentMessages.push(message)
+    }, jid, 'grade_3_secondary', 1), false);
+    assert.equal(await lessonManager.deliverTreasureIslandLesson({
+      sendMessage: async (_jid, message) => sentMessages.push(message)
+    }, jid, { id: 'chapter_1', title: 'Chapter One', videoFile: 'missing.mp4' }), false);
+    assert.equal(sentMessages.length, 2);
+    assert.match(sentMessages[0].text, /last 24 hours/);
+  } finally {
+    if (originalProgress) lessonManager.progress[jid] = originalProgress;
+    else delete lessonManager.progress[jid];
+    lessonManager.saveProgress = originalSaveProgress;
+  }
+});
+
+test('delivers lesson intro and task without simulated typing delays', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-fast-delivery-'));
+  const videoPath = path.join(directory, 'lesson.mp4');
+  fs.writeFileSync(videoPath, Buffer.from('video-fixture'));
+  const jid = 'lesson-fast-delivery-test@s.whatsapp.net';
+  const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  const originalVideoPath = lesson.videoFile;
+  const originalProgress = lessonManager.progress[jid];
+  const originalHistory = historyManager.history[jid];
+  const originalScheduleSave = historyManager.scheduleSave;
+  const originalSaveProgress = lessonManager.saveProgress;
+  const sentMessages = [];
+  const presenceUpdates = [];
+
+  lesson.videoFile = videoPath;
+  historyManager.scheduleSave = () => {};
+  lessonManager.saveProgress = () => {};
+
+  try {
+    assert.equal(await lessonManager.deliverLesson({
+      sendMessage: async (_jid, content) => sentMessages.push(content),
+      sendPresenceUpdate: async (...args) => presenceUpdates.push(args)
+    }, jid, 'grade_3_secondary', 0), true);
+
+    assert.deepEqual(sentMessages.map(message => message.text || 'video'), [
+      lesson.introMessage,
+      'video',
+      lesson.taskMessage
+    ]);
+    assert.deepEqual(presenceUpdates, []);
+    assert.equal(lessonManager.progress[jid].status, 'awaiting_task');
+  } finally {
+    lesson.videoFile = originalVideoPath;
+    if (originalProgress) lessonManager.progress[jid] = originalProgress;
+    else delete lessonManager.progress[jid];
+    if (originalHistory) historyManager.history[jid] = originalHistory;
+    else delete historyManager.history[jid];
+    historyManager.scheduleSave = originalScheduleSave;
+    lessonManager.saveProgress = originalSaveProgress;
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });

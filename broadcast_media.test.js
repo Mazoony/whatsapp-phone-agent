@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -10,7 +11,10 @@ import {
   saveBroadcastMedia,
   validateBroadcastMedia
 } from './broadcast_media.js';
-import { sendBroadcastContent } from './broadcast_manager.js';
+import {
+  sendBroadcastContent,
+  sendLessonBroadcastVideo
+} from './broadcast_manager.js';
 
 const testAuthManager = {
   status: () => ({ setupRequired: false, authenticated: true }),
@@ -30,6 +34,7 @@ function temporaryDirectory(prefix) {
 test('broadcast media validates, stores, and reads supported files', () => {
   const directory = temporaryDirectory('broadcast-media-test-');
   try {
+    assert.equal(MAX_BROADCAST_MEDIA_BYTES, 300 * 1024 * 1024);
     assert.throws(() => validateBroadcastMedia({
       fileName: 'voice.webm',
       mimeType: 'image/png',
@@ -39,7 +44,12 @@ test('broadcast media validates, stores, and reads supported files', () => {
       fileName: 'voice.webm',
       mimeType: 'audio/webm',
       size: MAX_BROADCAST_MEDIA_BYTES + 1
-    }), /20 MB/);
+    }), /300 MB/);
+    assert.doesNotThrow(() => validateBroadcastMedia({
+      fileName: 'large-video.mp4',
+      mimeType: 'video/mp4',
+      size: MAX_BROADCAST_MEDIA_BYTES
+    }));
     assert.throws(() => validateBroadcastMedia({
       fileName: 'image.png',
       mimeType: 'image/png',
@@ -60,6 +70,37 @@ test('broadcast media validates, stores, and reads supported files', () => {
       size: 5,
       voiceNote: true,
       buffer: Buffer.from('voice')
+    });
+
+    test('lesson video broadcast sends the configured clip and rejects paths outside lesson media', async () => {
+      const directory = temporaryDirectory('lesson-broadcast-video-');
+      const videoPath = path.join(directory, 'grade_1_primary', 'lesson.mp4');
+      fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+      fs.writeFileSync(videoPath, Buffer.from('lesson-video'));
+      const sent = [];
+      const socket = {
+        sendPresenceUpdate: async () => {},
+        sendMessage: async (jid, content) => sent.push({ jid, content })
+      };
+
+      try {
+        await sendLessonBroadcastVideo(socket, '1001@s.whatsapp.net', {
+          videoFile: 'grade_1_primary/lesson.mp4',
+          title: 'Lesson 1',
+          caption: 'Watch this lesson'
+        }, directory);
+        assert.equal(sent.length, 1);
+        assert.equal(sent[0].jid, '1001@s.whatsapp.net');
+        assert.equal(sent[0].content.video.toString(), 'lesson-video');
+        assert.equal(sent[0].content.caption, 'Watch this lesson');
+        assert.equal(sent[0].content.mimetype, 'video/mp4');
+
+        await assert.rejects(sendLessonBroadcastVideo(socket, '1001@s.whatsapp.net', {
+          videoFile: '..\\outside.mp4'
+        }, directory));
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
     });
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
@@ -101,6 +142,33 @@ test('broadcast media API rejects foreign origins and queues validated attachmen
       body: Buffer.from('voice')
     });
     assert.equal(foreignOriginResponse.status, 403);
+
+    const oversizedResponse = await new Promise((resolve, reject) => {
+      const request = http.request({
+        host: '127.0.0.1',
+        port: server.address().port,
+        path: '/api/admin/broadcast-media',
+        method: 'POST',
+        headers: {
+          Origin: origin,
+          'Content-Type': 'video/mp4',
+          'X-File-Name': 'large-video.mp4',
+          'Content-Length': String(MAX_BROADCAST_MEDIA_BYTES + 1)
+        }
+      }, response => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', chunk => { body += chunk; });
+        response.on('end', () => resolve({
+          status: response.statusCode,
+          body: JSON.parse(body)
+        }));
+      });
+      request.on('error', reject);
+      request.end();
+    });
+    assert.equal(oversizedResponse.status, 413);
+    assert.match(oversizedResponse.body.error, /300 MB/);
 
     const malformedAttachmentsResponse = await fetch(`${origin}/api/admin/broadcasts`, {
       method: 'POST',

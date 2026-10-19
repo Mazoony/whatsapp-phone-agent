@@ -78,6 +78,71 @@
           "1: Although he was tired, he completed his homework.",
           "2: would not have missed / wouldn't have missed"
         ]
+      },
+      {
+        "id": "lesson_3",
+        "title": "الحصة 3 Present Simple - Singular - the verb ends in -y",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_3.mp4",
+        "caption": "🎬 فيديو الحصة 3 Present Simple - Singular - the verb ends in -y | مستر مازن (eShool)",
+        "introMessage": "يا هلا بيك! دي الحصة: الحصة 3 Present Simple - Singular - the verb ends in -y. برسل ليك الفيديو والتمرين هسي 👇",
+        "taskMessage": "1. Ahmed __________ English every evening. (study)\n2. My mother __________ delicious meals for our family. (enjoy)\n3. The baby __________ whenever he is hungry. (cry)\n4. She __________ her homework before dinner. (finish?)\n5. My father __________ to work every morning. (drive)\n6. The teacher __________ the students with their assignments. (help)\n7. He __________ his room every Saturday. (tidy)\n8. The little boy __________ his toys with his friends. (share)\n9. A good student __________ hard before an exam. (study)\n10. My brother __________ his bicycle to school every day. (carry)",
+        "answerKey": [
+          "drives — My father - singular",
+          "helps — The teacher - singular",
+          "cries — The baby singular and consonant before the letter -y",
+          "finishes — She - verb ends in -sh",
+          "drives — May father singular",
+          "helps — The teacher - singular",
+          "tidies — He - consonant before the letter -y",
+          "shares — The little boy singular",
+          "studies — A good dtudent - singular and a consonant before the letter -y",
+          "carries — My brother - singular and consonant before the letter -y"
+        ]
+      },
+      {
+        "id": "lesson_4",
+        "title": "الحصة 4 Ask questions with does",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_4.mp4",
+        "caption": "🎬 فيديو الحصة 4 | مستر مازن (eShool)",
+        "introMessage": "يا هلا بيك! دي الحصة: الحصة 4. برسل ليك الفيديو والتمرين هسي 👇",
+        "taskMessage": "1. What ______ Ahmed ______ for breakfast every morning? (eat)\n2. Where ______ Sara ______ English after school? (study)\n3. When ______ your father ______ work every day? (start)\n4. ______ Ali ______ football on Fridays? (play)\n5. Why ______ the teacher ______ the lesson again? (explain)\n6. What time ______ your sister ______ up every morning? (get)\n7. How ______ Hassan ______ to school every day? (go)\n8. ______ the bus ______ near your house every morning? (stop)\n9. Where ______ Mary ______ her homework? (do)\n10. How often ______ your brother ______ his room? (clean)",
+        "answerKey": [
+          "does / eat — Use what to ask about a thing. After does, use eat, not eats.",
+          "does / study — Use where to ask about a place.",
+          "does / start — Use when to ask about time.",
+          "Does / play — This is a yes/no question, so no WH-word is needed.",
+          "does / explain — Use why to ask about a reason",
+          "does / get — Use what time to ask for a specific time.",
+          "does / go — Use how to ask about the way or means of travel.",
+          "Does / stop — This is a yes/no question. Use the base verb stop.",
+          "does / do — Use where to ask about a place. Here, do is the main verb.",
+          "does / clean — Use how often to ask about frequency."
+        ]
+      },
+      {
+        "id": "lesson_5",
+        "title": "الحصة الخامسة: نفي المضارع البسيط باستخدام do not",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_5.mp4",
+        "caption": "🎬 فيديو الحصة الخامسة - الصف الثالث ثانوي | مستر مازن (eShool)",
+        "introMessage": "في الحصة الخامسة حنتمرن على نفي المضارع البسيط باستخدام do not مع I وyou وwe وthey والفاعل الجمع. ضفت ليك كمان مراجعة قصيرة من الحصة الأولى.",
+        "taskMessage": "📝 *تمرين الحصة الخامسة (Task 5): Present Simple Negative with do not*\n\nكمّل الفراغ بالصيغة الصحيحة للفعلين الموجودين بين القوسين. في الأسئلة 1–11 استخدم *do not + الفعل الأساسي* فقط، من غير ما تضيف s للفعل. الأسئلة 12–15 مراجعة للمضارع البسيط المثبت مع الفاعل المفرد من الحصة الأولى.\n\n1. We __________ (not / allocate) funds without proper approval.\n2. The researchers __________ (not / disclose) preliminary findings to the public.\n3. I __________ (not / assume) that the figures are final.\n4. They __________ (not / negotiate) contract terms without legal advice.\n5. You __________ (not / require) prior authorization for this section.\n6. The employees __________ (not / submit) incomplete applications.\n7. We __________ (not / postpone) the inspection without a valid reason.\n8. The analysts __________ (not / identify) a consistent pattern in the data.\n9. I __________ (not / recommend) an untested procedure.\n10. They __________ (not / distribute) confidential documents by email.\n11. You __________ (not / interpret) this clause in isolation.\n\n*مراجعة من الحصة الأولى: المضارع البسيط المثبت مع المفرد*\n12. The analyst __________ (interpret) the survey results carefully.\n13. A responsible engineer __________ (maintain) the equipment regularly.\n14. The new policy __________ (permit) students to use the library.\n15. The manager __________ (confirm) the final schedule.\n\n✍️ رسل لي إجاباتك مرقّمة من 1 إلى 15 عشان أراجعها ليك.",
+        "answerKey": [
+          "1. do not allocate — Use do not with we, followed by the base verb.",
+          "2. do not disclose — Use do not with a plural subject, followed by the base verb.",
+          "3. do not assume — Use do not with I, followed by the base verb.",
+          "4. do not negotiate — Use do not with they, followed by the base verb.",
+          "5. do not require — Use do not with you, followed by the base verb.",
+          "6. do not submit — Employees is a plural subject; use do not and the base verb.",
+          "7. do not postpone — Use do not with we, followed by the base verb.",
+          "8. do not identify — Analysts is a plural subject; use do not and the base verb.",
+          "9. do not recommend — Use do not with I, followed by the base verb.",
+          "10. do not distribute — Use do not with they, followed by the base verb.",
+          "11. do not interpret — Use do not with you, followed by the base verb.",
+          "12. interprets — Review: add -s to the verb with a singular subject.",
+          "13. maintains — Review: add -s to the verb with a singular subject.",
+          "14. permits — Review: add -s to the verb with a singular subject.",
+          "15. confirms — Review: add -s to the verb with a singular subject."
+        ]
       }
     ],
     "standaloneLessons": [
@@ -106,61 +171,203 @@
           "15. confirms — Review: add -s to the verb with a singular subject."
         ]
       }
-    ]
+    ],
+    "collections": {
+      "treasure_island": {
+        "title": "Treasure Island",
+        "lessons": [
+          {
+            "id": "lesson_1",
+            "title": "About the book",
+            "videoFile": "media/lessons/grade_3_secondary/treasure_island/Treasure_Island_-_About_the_Book_-_Lesson_2.mp4",
+            "caption": "🎬 فيديو الحصة | مستر مازن (eShool)",
+            "introMessage": "يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇",
+            "taskMessage": "1. Who wrote Treasure Island?\n2. Who retold the story Treasure Island?\n3. Who is the author of Treasure Island?\n4. When was Stevenson born?\n5. Where was the author of treasure Island born?\n6. What was the weather like in Scotland?\n7. Why did Stevenson move to South Pacific?\n8. Mention 2 stories written by Stevenson?\n9. Where did Stevenson die?\n10. How old was Stevenson when he died?",
+            "answerKey": [
+              "Robert Louis Stevenson",
+              "Stephen Colbourn",
+              "Robert Louis Stevenson",
+              "1850",
+              "Edinburgh / Scotland,",
+              "Cold",
+              "Because it was worm",
+              "Kidnapped, The Black Arrow",
+              "Samoa",
+              "44"
+            ]
+          }
+        ]
+      }
+    }
   },
   "grade_1_primary": {
     "name": "الصف الأول ابتدائي",
-    "keywords": ["أولى ابتدائي", "الأولى ابتدائي", "اولى ابتدائي", "اول ابتدائي", "الصف الأول ابتدائي", "الصف الاول ابتدائي", "الصف الاول الابتدائي", "١ ابتدائي", "1 ابتدائي", "grade 1 primary"],
+    "keywords": [
+      "أولى ابتدائي",
+      "الأولى ابتدائي",
+      "اولى ابتدائي",
+      "اول ابتدائي",
+      "الصف الأول ابتدائي",
+      "الصف الاول ابتدائي",
+      "الصف الاول الابتدائي",
+      "١ ابتدائي",
+      "1 ابتدائي",
+      "grade 1 primary"
+    ],
     "lessons": []
   },
   "grade_2_primary": {
     "name": "الصف الثاني ابتدائي",
-    "keywords": ["تانية ابتدائي", "ثانية ابتدائي", "الثانية ابتدائي", "تاني ابتدائي", "الصف الثاني ابتدائي", "الصف التاني ابتدائي", "الصف الثاني الابتدائي", "٢ ابتدائي", "2 ابتدائي", "grade 2 primary"],
+    "keywords": [
+      "تانية ابتدائي",
+      "ثانية ابتدائي",
+      "الثانية ابتدائي",
+      "تاني ابتدائي",
+      "الصف الثاني ابتدائي",
+      "الصف التاني ابتدائي",
+      "الصف الثاني الابتدائي",
+      "٢ ابتدائي",
+      "2 ابتدائي",
+      "grade 2 primary"
+    ],
     "lessons": []
   },
   "grade_3_primary": {
     "name": "الصف الثالث ابتدائي",
-    "keywords": ["تالتة ابتدائي", "ثالثة ابتدائي", "الثالثة ابتدائي", "تالت ابتدائي", "الصف الثالث ابتدائي", "الصف التالت ابتدائي", "الصف الثالث الابتدائي", "٣ ابتدائي", "3 ابتدائي", "grade 3 primary"],
+    "keywords": [
+      "تالتة ابتدائي",
+      "ثالثة ابتدائي",
+      "الثالثة ابتدائي",
+      "تالت ابتدائي",
+      "الصف الثالث ابتدائي",
+      "الصف التالت ابتدائي",
+      "الصف الثالث الابتدائي",
+      "٣ ابتدائي",
+      "3 ابتدائي",
+      "grade 3 primary"
+    ],
     "lessons": []
   },
   "grade_4_primary": {
     "name": "الصف الرابع ابتدائي",
-    "keywords": ["رابعة ابتدائي", "الرابعة ابتدائي", "رابع ابتدائي", "الصف الرابع ابتدائي", "الصف الرابع الابتدائي", "٤ ابتدائي", "4 ابتدائي", "grade 4 primary"],
+    "keywords": [
+      "رابعة ابتدائي",
+      "الرابعة ابتدائي",
+      "رابع ابتدائي",
+      "الصف الرابع ابتدائي",
+      "الصف الرابع الابتدائي",
+      "٤ ابتدائي",
+      "4 ابتدائي",
+      "grade 4 primary"
+    ],
     "lessons": []
   },
   "grade_5_primary": {
     "name": "الصف الخامس ابتدائي",
-    "keywords": ["خامسة ابتدائي", "الخامسة ابتدائي", "خامس ابتدائي", "الصف الخامس ابتدائي", "الصف الخامس الابتدائي", "٥ ابتدائي", "5 ابتدائي", "grade 5 primary"],
+    "keywords": [
+      "خامسة ابتدائي",
+      "الخامسة ابتدائي",
+      "خامس ابتدائي",
+      "الصف الخامس ابتدائي",
+      "الصف الخامس الابتدائي",
+      "٥ ابتدائي",
+      "5 ابتدائي",
+      "grade 5 primary"
+    ],
     "lessons": []
   },
   "grade_6_primary": {
     "name": "الصف السادس ابتدائي",
-    "keywords": ["سادسة ابتدائي", "السادسة ابتدائي", "سادس ابتدائي", "الصف السادس ابتدائي", "الصف السادس الابتدائي", "٦ ابتدائي", "6 ابتدائي", "grade 6 primary"],
+    "keywords": [
+      "سادسة ابتدائي",
+      "السادسة ابتدائي",
+      "سادس ابتدائي",
+      "الصف السادس ابتدائي",
+      "الصف السادس الابتدائي",
+      "٦ ابتدائي",
+      "6 ابتدائي",
+      "grade 6 primary"
+    ],
     "lessons": []
   },
   "grade_1_intermediate": {
     "name": "الصف الأول متوسط",
-    "keywords": ["أولى متوسط", "الأولى متوسط", "اولى متوسط", "اول متوسط", "الصف الأول متوسط", "الصف الاول متوسط", "الصف الاول المتوسط", "١ متوسط", "1 متوسط", "grade 1 intermediate"],
+    "keywords": [
+      "أولى متوسط",
+      "الأولى متوسط",
+      "اولى متوسط",
+      "اول متوسط",
+      "الصف الأول متوسط",
+      "الصف الاول متوسط",
+      "الصف الاول المتوسط",
+      "١ متوسط",
+      "1 متوسط",
+      "grade 1 intermediate"
+    ],
     "lessons": []
   },
   "grade_2_intermediate": {
     "name": "الصف الثاني متوسط",
-    "keywords": ["تانية متوسط", "ثانية متوسط", "الثانية متوسط", "تاني متوسط", "الصف الثاني متوسط", "الصف التاني متوسط", "الصف الثاني المتوسط", "٢ متوسط", "2 متوسط", "grade 2 intermediate"],
+    "keywords": [
+      "تانية متوسط",
+      "ثانية متوسط",
+      "الثانية متوسط",
+      "تاني متوسط",
+      "الصف الثاني متوسط",
+      "الصف التاني متوسط",
+      "الصف الثاني المتوسط",
+      "٢ متوسط",
+      "2 متوسط",
+      "grade 2 intermediate"
+    ],
     "lessons": []
   },
   "grade_3_intermediate": {
     "name": "الصف الثالث متوسط",
-    "keywords": ["تالتة متوسط", "ثالثة متوسط", "الثالثة متوسط", "تالت متوسط", "الصف الثالث متوسط", "الصف التالت متوسط", "الصف الثالث المتوسط", "٣ متوسط", "3 متوسط", "grade 3 intermediate"],
+    "keywords": [
+      "تالتة متوسط",
+      "ثالثة متوسط",
+      "الثالثة متوسط",
+      "تالت متوسط",
+      "الصف الثالث متوسط",
+      "الصف التالت متوسط",
+      "الصف الثالث المتوسط",
+      "٣ متوسط",
+      "3 متوسط",
+      "grade 3 intermediate"
+    ],
     "lessons": []
   },
   "grade_1_secondary": {
     "name": "الصف الأول ثانوي",
-    "keywords": ["أولى ثانوي", "الأولى ثانوي", "اولى ثانوي", "اول ثانوي", "الصف الأول ثانوي", "الصف الاول ثانوي", "الصف الاول الثانوي", "١ ثانوي", "1 ثانوي", "grade 1 secondary"],
+    "keywords": [
+      "أولى ثانوي",
+      "الأولى ثانوي",
+      "اولى ثانوي",
+      "اول ثانوي",
+      "الصف الأول ثانوي",
+      "الصف الاول ثانوي",
+      "الصف الاول الثانوي",
+      "١ ثانوي",
+      "1 ثانوي",
+      "grade 1 secondary"
+    ],
     "lessons": []
   },
   "grade_2_secondary": {
     "name": "الصف الثاني ثانوي",
-    "keywords": ["تانية ثانوي", "ثانية ثانوي", "الثانية ثانوي", "تاني ثانوي", "الصف الثاني ثانوي", "الصف التاني ثانوي", "الصف الثاني الثانوي", "٢ ثانوي", "2 ثانوي", "grade 2 secondary"],
+    "keywords": [
+      "تانية ثانوي",
+      "ثانية ثانوي",
+      "الثانية ثانوي",
+      "تاني ثانوي",
+      "الصف الثاني ثانوي",
+      "الصف التاني ثانوي",
+      "الصف الثاني الثانوي",
+      "٢ ثانوي",
+      "2 ثانوي",
+      "grade 2 secondary"
+    ],
     "lessons": []
   }
 }

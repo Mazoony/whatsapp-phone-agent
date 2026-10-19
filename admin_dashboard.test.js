@@ -8,6 +8,7 @@ import { writeAgentMediaActivity } from './agent_media_activity.js';
 import { appendAgentLog } from './agent_runtime.js';
 import { writeAgentQr, writeAgentStatus } from './agent_status.js';
 import {
+  createDashboardDataCache,
   createAdminDashboardServer as createAuthenticatedDashboardServer,
   getDashboardAgentStatus,
   getDashboardConversation,
@@ -20,7 +21,9 @@ import {
   listDashboardEsContacts
 } from './admin_dashboard.js';
 import { createContactPaymentLabelsStore } from './contact_payment_labels.js';
+import { config } from './config.js';
 import { WhatsAppPresenceManager } from './whatsapp_presence.js';
+import { createScheduledLessonStore } from './scheduled_lessons.js';
 
 const testAuthManager = {
   status: () => ({ setupRequired: false, authenticated: true }),
@@ -36,6 +39,38 @@ const testAuthManager = {
 function createAdminDashboardServer(options = {}) {
   return createAuthenticatedDashboardServer({ ...options, authManager: testAuthManager });
 }
+
+test('dashboard data cache reuses a snapshot and reloads when a source file changes', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-data-cache-'));
+  const sourceFile = path.join(directory, 'source.json');
+  fs.writeFileSync(sourceFile, '{"revision":1}', 'utf8');
+  let loadCount = 0;
+  const readCachedData = createDashboardDataCache(() => {
+    loadCount += 1;
+    return fs.existsSync(sourceFile)
+      ? JSON.parse(fs.readFileSync(sourceFile, 'utf8'))
+      : { revision: 0 };
+  }, [sourceFile]);
+
+  try {
+    const initial = readCachedData();
+    assert.strictEqual(readCachedData(), initial);
+    assert.equal(loadCount, 1);
+
+    fs.writeFileSync(sourceFile, '{"revision":2}', 'utf8');
+    const updated = readCachedData();
+    assert.notStrictEqual(updated, initial);
+    assert.equal(updated.revision, 2);
+    assert.strictEqual(readCachedData(), updated);
+    assert.equal(loadCount, 2);
+
+    fs.rmSync(sourceFile);
+    assert.deepEqual(readCachedData(), { revision: 0 });
+    assert.equal(loadCount, 3);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 const sampleData = {
   history: {
@@ -145,13 +180,13 @@ test('overview gender statistics count only saved Es phone-book contacts', () =>
     weeklyChatActivity: {
       timeZone: 'UTC',
       days: [
-        { date: '2023-11-08', day: 'Wed', chats: 0 },
-        { date: '2023-11-09', day: 'Thu', chats: 0 },
-        { date: '2023-11-10', day: 'Fri', chats: 0 },
-        { date: '2023-11-11', day: 'Sat', chats: 0 },
-        { date: '2023-11-12', day: 'Sun', chats: 0 },
-        { date: '2023-11-13', day: 'Mon', chats: 0 },
-        { date: '2023-11-14', day: 'Tue', chats: 2 }
+        { date: '2023-11-08', day: 'Wed', chats: 0, newChats: 0 },
+        { date: '2023-11-09', day: 'Thu', chats: 0, newChats: 0 },
+        { date: '2023-11-10', day: 'Fri', chats: 0, newChats: 0 },
+        { date: '2023-11-11', day: 'Sat', chats: 0, newChats: 0 },
+        { date: '2023-11-12', day: 'Sun', chats: 0, newChats: 0 },
+        { date: '2023-11-13', day: 'Mon', chats: 0, newChats: 0 },
+        { date: '2023-11-14', day: 'Tue', chats: 2, newChats: 2 }
       ]
     },
     studentsWithProgress: 1,
@@ -186,15 +221,47 @@ test('weekly dashboard activity counts distinct direct chats for the local calen
   assert.deepEqual(activity, {
     timeZone: 'UTC',
     days: [
-      { date: '2026-10-10', day: 'Sat', chats: 2 },
-      { date: '2026-10-11', day: 'Sun', chats: 0 },
-      { date: '2026-10-12', day: 'Mon', chats: 1 },
-      { date: '2026-10-13', day: 'Tue', chats: 0 },
-      { date: '2026-10-14', day: 'Wed', chats: 0 },
-      { date: '2026-10-15', day: 'Thu', chats: 0 },
-      { date: '2026-10-16', day: 'Fri', chats: 1 }
+      { date: '2026-10-10', day: 'Sat', chats: 2, newChats: 2 },
+      { date: '2026-10-11', day: 'Sun', chats: 0, newChats: 0 },
+      { date: '2026-10-12', day: 'Mon', chats: 1, newChats: 0 },
+      { date: '2026-10-13', day: 'Tue', chats: 0, newChats: 0 },
+      { date: '2026-10-14', day: 'Wed', chats: 0, newChats: 0 },
+      { date: '2026-10-15', day: 'Thu', chats: 0, newChats: 0 },
+      { date: '2026-10-16', day: 'Fri', chats: 1, newChats: 0 }
     ]
   });
+});
+
+test('weekly dashboard activity counts a returning chat once as new across linked phone and LID histories', () => {
+  const now = Date.parse('2026-10-16T12:00:00.000Z');
+  const activity = getDashboardWeeklyChatActivity({
+    ...sampleData,
+    contacts: {
+      ...sampleData.contacts,
+      '2001@s.whatsapp.net': { name: 'New student' },
+      '9001@lid': { jid: '2001@s.whatsapp.net' },
+      '2002@s.whatsapp.net': { name: 'Returning student' }
+    },
+    history: {
+      '2001@s.whatsapp.net': [
+        { role: 'client', text: 'Joined', timestamp: Date.parse('2026-10-10T10:00:00.000Z') }
+      ],
+      '9001@lid': [
+        { role: 'client', text: 'Returned', timestamp: Date.parse('2026-10-12T10:00:00.000Z') }
+      ],
+      '2002@s.whatsapp.net': [
+        { role: 'client', text: 'Older conversation', timestamp: Date.parse('2026-10-03T10:00:00.000Z') },
+        { role: 'client', text: 'Returned this week', timestamp: Date.parse('2026-10-15T10:00:00.000Z') }
+      ]
+    }
+  }, 'UTC', now);
+
+  assert.equal(activity.days[0].chats, 1);
+  assert.equal(activity.days[0].newChats, 1);
+  assert.equal(activity.days[2].chats, 1);
+  assert.equal(activity.days[2].newChats, 0);
+  assert.equal(activity.days[5].chats, 1);
+  assert.equal(activity.days[5].newChats, 0);
 });
 
 test('weekly dashboard activity uses the requested timezone and rejects invalid zones', () => {
@@ -211,6 +278,7 @@ test('weekly dashboard activity uses the requested timezone and rejects invalid 
   assert.equal(losAngeles.days.at(-1).date, '2026-10-10');
   assert.equal(losAngeles.days.at(-1).day, 'Sat');
   assert.equal(losAngeles.days.at(-1).chats, 1);
+  assert.equal(losAngeles.days.at(-1).newChats, 1);
   assert.throws(() => getDashboardWeeklyChatActivity(data, 'Not/A_Timezone', now), /timezone is invalid/);
 });
 
@@ -835,14 +903,18 @@ test('banning and deleting a number suppresses it and allows explicit unblocking
       headers: { Origin: origin }
     });
     assert.equal(banResponse.status, 200);
-    assert.equal((await banResponse.json()).reason, 'banned');
+    const banResult = await banResponse.json();
+    assert.equal(banResult.name, 'Es Test Student');
+    assert.equal(banResult.reason, 'banned');
 
     let contactsResponse = await fetch(`${baseUrl}/api/admin/es-contacts`);
     let dashboardContacts = await contactsResponse.json();
     assert.equal(dashboardContacts.contacts[0].canMessage, false);
     assert.equal(dashboardContacts.contacts[0].block.reason, 'banned');
-    assert.deepEqual((await (await fetch(`${baseUrl}/api/admin/blocked-contacts`)).json())
-      .blockedNumbers.map(record => record.number), ['249111111111']);
+    let blockedContacts = (await (await fetch(`${baseUrl}/api/admin/blocked-contacts`)).json())
+      .blockedNumbers;
+    assert.deepEqual(blockedContacts.map(record => record.number), ['249111111111']);
+    assert.equal(blockedContacts[0].name, 'Es Test Student');
 
     const deleteResponse = await fetch(numberUrl, {
       method: 'DELETE',
@@ -851,8 +923,10 @@ test('banning and deleting a number suppresses it and allows explicit unblocking
     assert.equal(deleteResponse.status, 200);
     assert.equal((await deleteResponse.json()).removedContacts, 2);
     assert.deepEqual(JSON.parse(fs.readFileSync(contactsFile, 'utf8')), {});
-    assert.equal((await (await fetch(`${baseUrl}/api/admin/blocked-contacts`)).json())
-      .blockedNumbers[0].reason, 'deleted');
+    blockedContacts = (await (await fetch(`${baseUrl}/api/admin/blocked-contacts`)).json())
+      .blockedNumbers;
+    assert.equal(blockedContacts[0].reason, 'deleted');
+    assert.equal(blockedContacts[0].name, 'Es Test Student');
 
     const unblockResponse = await fetch(`${numberUrl}/unblock`, {
       method: 'POST',
@@ -927,6 +1001,7 @@ test('Es contacts API exposes inferred paid labels', async () => {
   };
   const server = createAdminDashboardServer({
     readData: () => data,
+    readContacts: () => data.contacts,
     paymentLabelsFile
   });
 
@@ -969,7 +1044,75 @@ test('dashboard manually sets and clears contact paid labels', async () => {
   };
   const server = createAdminDashboardServer({
     readData: () => data,
+    readContacts: () => data.contacts,
     paymentLabelsFile
+  });
+
+  test('dashboard lists and manages student-confirmed lesson schedules', async t => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-scheduled-lessons-'));
+    t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
+    const scheduledLessonsFile = path.join(temporaryDirectory, 'scheduled_lessons.json');
+    const store = createScheduledLessonStore({ filePath: scheduledLessonsFile });
+    const schedule = store.create({
+      jid: '1001@s.whatsapp.net',
+      phoneJid: '1001@s.whatsapp.net',
+      studentName: 'Ali',
+      gradeKey: 'grade_3_secondary',
+      lessonIndex: 0,
+      lessonId: 'lesson_1',
+      lessonTitle: 'Lesson One',
+      scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString()
+    });
+    const server = createAdminDashboardServer({
+      readData: () => sampleData,
+      scheduledLessonsFile
+    });
+
+    try {
+      await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+      const origin = `http://127.0.0.1:${server.address().port}`;
+      const listResponse = await fetch(`${origin}/api/admin/scheduled-lessons`);
+      assert.equal(listResponse.status, 200);
+      assert.equal((await listResponse.json()).schedules[0].id, schedule.id);
+
+      const denied = await fetch(`${origin}/api/admin/scheduled-lessons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', id: schedule.id })
+      });
+      assert.equal(denied.status, 403);
+
+      const rescheduledAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
+      const editResponse = await fetch(`${origin}/api/admin/scheduled-lessons`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reschedule',
+          id: schedule.id,
+          scheduledAt: rescheduledAt
+        })
+      });
+      assert.equal(editResponse.status, 200);
+      assert.equal((await editResponse.json()).schedule.scheduledAt, rescheduledAt);
+
+      const sendNowResponse = await fetch(`${origin}/api/admin/scheduled-lessons`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send_now', id: schedule.id })
+      });
+      assert.equal(sendNowResponse.status, 200);
+      assert.equal((await sendNowResponse.json()).schedule.status, 'scheduled');
+
+      const cancelResponse = await fetch(`${origin}/api/admin/scheduled-lessons`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', id: schedule.id })
+      });
+      assert.equal(cancelResponse.status, 200);
+      assert.equal((await cancelResponse.json()).schedule.status, 'cancelled');
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
   });
 
   try {
@@ -984,7 +1127,21 @@ test('dashboard manually sets and clears contact paid labels', async () => {
       body: JSON.stringify({ status: 'paid' })
     });
     assert.equal(paidResponse.status, 200);
-    assert.equal((await paidResponse.json()).label.source, 'manual');
+    const paidResult = await paidResponse.json();
+    assert.equal(paidResult.label.source, 'manual');
+
+    const paymentCalendarResponse = await fetch(
+      `http://127.0.0.1:${server.address().port}/api/admin/payment-calendar`
+    );
+    assert.equal(paymentCalendarResponse.status, 200);
+    assert.deepEqual(await paymentCalendarResponse.json(), {
+      payments: [{
+        phoneNumber,
+        jid: `${phoneNumber}@s.whatsapp.net`,
+        studentName: 'Manual Es Student',
+        paidAt: paidResult.label.paymentHistory[0].paidAt
+      }]
+    });
 
     const contactsResponse = await fetch(
       `http://127.0.0.1:${server.address().port}/api/admin/es-contacts?limit=50`
@@ -1022,6 +1179,151 @@ test('dashboard manually sets and clears contact paid labels', async () => {
     const unpaidContact = (await clearedContactsResponse.json()).contacts
       .find(contact => contact.phoneNumber === phoneNumber);
     assert.equal(unpaidContact.paid, null);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('manual lesson scheduling exposes eligible choices and creates only validated future schedules', async t => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-manual-schedule-'));
+  t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
+  const mediaDirectory = path.join(temporaryDirectory, 'lesson-media');
+  fs.mkdirSync(mediaDirectory);
+  const videoPath = path.join(mediaDirectory, 'lesson-1.mp4');
+  fs.writeFileSync(videoPath, 'video');
+  const lessonsFile = path.join(temporaryDirectory, 'lessons.json');
+  const progressFile = path.join(temporaryDirectory, 'student_progress.json');
+  const scheduledLessonsFile = path.join(temporaryDirectory, 'scheduled_lessons.json');
+  fs.writeFileSync(lessonsFile, JSON.stringify({
+    grade_3_secondary: {
+      name: 'Third Secondary',
+      lessons: [{
+        id: 'lesson_1',
+        title: 'Lesson One',
+        videoFile: videoPath,
+        taskMessage: 'Answer the question.',
+        answerKey: ['Correct answer']
+      }]
+    }
+  }));
+  fs.writeFileSync(progressFile, JSON.stringify({
+    '249123456789@s.whatsapp.net': { grade: 'grade_3_secondary' }
+  }));
+  const server = createAdminDashboardServer({
+    readData: () => sampleData,
+    readContacts: () => ({
+      '249123456789@s.whatsapp.net': { name: 'Manual Student' }
+    }),
+    lessonsFile,
+    lessonMediaDirectory: mediaDirectory,
+    progressFile,
+    scheduledLessonsFile
+  });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const optionsResponse = await fetch(`${origin}/api/admin/scheduled-lessons/options`);
+  assert.equal(optionsResponse.status, 200);
+  const options = await optionsResponse.json();
+  assert.deepEqual(options.students, [{
+    jid: '249123456789@s.whatsapp.net',
+    phoneJid: '249123456789@s.whatsapp.net',
+    name: 'Manual Student',
+    gradeKey: 'grade_3_secondary'
+  }]);
+  assert.equal(options.lessons.length, 1);
+  assert.equal(options.lessons[0].lessonId, 'lesson_1');
+  assert.equal(options.lessons[0].gradeName, 'Third Secondary');
+
+  const deniedResponse = await fetch(`${origin}/api/admin/scheduled-lessons/manual`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  assert.equal(deniedResponse.status, 403);
+
+  const response = await fetch(`${origin}/api/admin/scheduled-lessons/manual`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jid: '249123456789@s.whatsapp.net',
+      gradeKey: 'grade_3_secondary',
+      lessonId: 'lesson_1',
+      scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString()
+    })
+  });
+  assert.equal(response.status, 201);
+  const { schedule } = await response.json();
+  assert.equal(schedule.studentName, 'Manual Student');
+  assert.equal(schedule.lessonTitle, 'Lesson One');
+  assert.equal(schedule.lessonIndex, 0);
+  assert.equal(schedule.status, 'scheduled');
+
+  const invalidStudentResponse = await fetch(`${origin}/api/admin/scheduled-lessons/manual`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jid: '999999999999@s.whatsapp.net',
+      gradeKey: 'grade_3_secondary',
+      lessonId: 'lesson_1',
+      scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString()
+    })
+  });
+  assert.equal(invalidStudentResponse.status, 404);
+
+  const invalidLessonResponse = await fetch(`${origin}/api/admin/scheduled-lessons/manual`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jid: '249123456789@s.whatsapp.net',
+      gradeKey: 'grade_3_secondary',
+      lessonId: 'unconfigured_lesson',
+      scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString()
+    })
+  });
+  assert.equal(invalidLessonResponse.status, 409);
+
+  const pastTimeResponse = await fetch(`${origin}/api/admin/scheduled-lessons/manual`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jid: '249123456789@s.whatsapp.net',
+      gradeKey: 'grade_3_secondary',
+      lessonId: 'lesson_1',
+      scheduledAt: new Date(Date.now() - 60 * 60_000).toISOString()
+    })
+  });
+  assert.equal(pastTimeResponse.status, 409);
+});
+
+test('payment calendar loads without reading conversation history', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-payment-calendar-test-'));
+  const paymentLabelsFile = path.join(temporaryDirectory, 'contact_payment_labels.json');
+  const phoneNumber = '249123456789';
+  createContactPaymentLabelsStore(paymentLabelsFile)
+    .setManualStatus(phoneNumber, `${phoneNumber}@s.whatsapp.net`, 'paid');
+  const server = createAdminDashboardServer({
+    readData: () => {
+      throw new Error('Conversation history should not be read for payment calendar data.');
+    },
+    readContacts: () => ({
+      [`${phoneNumber}@s.whatsapp.net`]: { name: 'Calendar Student' }
+    }),
+    paymentLabelsFile
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const response = await fetch(
+      `http://127.0.0.1:${server.address().port}/api/admin/payment-calendar`
+    );
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.payments.length, 1);
+    assert.equal(result.payments[0].studentName, 'Calendar Student');
+    assert.equal(result.payments[0].phoneNumber, phoneNumber);
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -1087,6 +1389,7 @@ test('agent status API reports live connection heartbeat and handled chat total'
       connectionState: 'connected',
       connected: true,
       respondingEnabled: true,
+      queuePaused: false,
       lastConnectedAt: '2026-10-15T10:00:00.000Z',
       lastHeartbeatAt: JSON.parse(fs.readFileSync(agentStatusFile, 'utf8')).updatedAt,
       account: { name: 'WhatsApp User', phoneNumber: '249123456789' },
@@ -1133,6 +1436,108 @@ test('dashboard reply-mode endpoint queues pause and resume for a connected agen
       body: JSON.stringify({ enabled: 'false' })
     });
     assert.equal(invalidResponse.status, 400);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard chat queue control pauses and resumes handling only for a connected agent', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-chat-queue-control-test-'));
+  const agentStatusFile = path.join(temporaryDirectory, 'agent_status.json');
+  const agentControlFile = path.join(temporaryDirectory, 'agent_control.json');
+  fs.writeFileSync(agentStatusFile, JSON.stringify({
+    connectionState: 'connected',
+    updatedAt: new Date().toISOString()
+  }));
+  const server = createAdminDashboardServer({ agentStatusFile, agentControlFile });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const setPaused = paused => fetch(`${origin}/api/admin/chat-queue-control`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paused })
+    });
+
+    const pauseResponse = await setPaused(true);
+    assert.equal(pauseResponse.status, 202);
+    assert.equal((await pauseResponse.json()).status, 'pausing_queue');
+    assert.equal(JSON.parse(fs.readFileSync(agentControlFile, 'utf8')).action, 'pause_queue');
+
+    const resumeResponse = await setPaused(false);
+    assert.equal(resumeResponse.status, 202);
+    assert.equal((await resumeResponse.json()).status, 'resuming_queue');
+    assert.equal(JSON.parse(fs.readFileSync(agentControlFile, 'utf8')).action, 'resume_queue');
+
+    const invalidResponse = await fetch(`${origin}/api/admin/chat-queue-control`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paused: 'true' })
+    });
+    assert.equal(invalidResponse.status, 400);
+
+    fs.writeFileSync(agentStatusFile, JSON.stringify({
+      connectionState: 'disconnected',
+      updatedAt: new Date().toISOString()
+    }));
+    const disconnectedResponse = await setPaused(true);
+    assert.equal(disconnectedResponse.status, 409);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard cancels waiting chats but does not allow cancelling the active chat', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-chat-queue-cancel-test-'));
+  const agentStatusFile = path.join(temporaryDirectory, 'agent_status.json');
+  const agentControlFile = path.join(temporaryDirectory, 'agent_control.json');
+  const incomingChatQueueFile = path.join(temporaryDirectory, 'incoming_chat_queue.json');
+  fs.writeFileSync(agentStatusFile, JSON.stringify({
+    connectionState: 'connected',
+    updatedAt: new Date().toISOString()
+  }));
+  fs.writeFileSync(incomingChatQueueFile, JSON.stringify({
+    active: { jid: '1001@s.whatsapp.net', name: 'Ali', position: 1 },
+    waiting: [{ jid: '1002@s.whatsapp.net', name: 'Sara', position: 2 }],
+    paused: false,
+    updatedAt: new Date().toISOString()
+  }));
+  const server = createAdminDashboardServer({
+    agentStatusFile,
+    agentControlFile,
+    incomingChatQueueFile
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const cancel = jid => fetch(`${origin}/api/admin/chat-queue-cancel`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jid })
+    });
+
+    const waitingResponse = await cancel('1002@s.whatsapp.net');
+    assert.equal(waitingResponse.status, 202);
+    assert.equal((await waitingResponse.json()).status, 'cancellation_requested');
+    assert.deepEqual(JSON.parse(fs.readFileSync(agentControlFile, 'utf8')).jid, '1002@s.whatsapp.net');
+
+    const activeResponse = await cancel('1001@s.whatsapp.net');
+    assert.equal(activeResponse.status, 409);
+    assert.match((await activeResponse.json()).error, /already being handled/);
+
+    const invalidResponse = await cancel('1003@g.us');
+    assert.equal(invalidResponse.status, 400);
+
+    fs.writeFileSync(agentStatusFile, JSON.stringify({
+      connectionState: 'disconnected',
+      updatedAt: new Date().toISOString()
+    }));
+    const disconnectedResponse = await cancel('1002@s.whatsapp.net');
+    assert.equal(disconnectedResponse.status, 409);
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -1288,7 +1693,8 @@ test('agent media API exposes live upload progress and delivery results', async 
     updatedAt: new Date().toISOString()
   }, agentMediaActivityFile);
   const server = createAdminDashboardServer({
-    readData: () => sampleData,
+    readData: () => { throw new Error('Media activity must not read conversation history.'); },
+    readContacts: () => sampleData.contacts,
     agentMediaActivityFile
   });
 
@@ -1302,8 +1708,10 @@ test('agent media API exposes live upload progress and delivery results', async 
         mediaType: 'video',
         label: 'Video',
         recipientJid: '1001@s.whatsapp.net',
+        studentName: 'Ali',
         description: 'Lesson 2',
         status: 'uploading',
+        retryAvailable: false,
         loaded: 512,
         total: 1024,
         percent: 50,
@@ -1312,6 +1720,203 @@ test('agent media API exposes live upload progress and delivery results', async 
       }]
     });
   } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('failed lesson videos expose a retry action and queue the exact activity', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-agent-media-retry-test-'));
+  const agentMediaActivityFile = path.join(temporaryDirectory, 'agent_media_activity.json');
+  const agentStatusFile = path.join(temporaryDirectory, 'agent_status.json');
+  const agentMediaRetryRequestsFile = path.join(temporaryDirectory, 'media_retry_requests.json');
+  const lessonsFile = path.join(temporaryDirectory, 'lessons.json');
+  const activity = {
+    id: 'failed-video-1',
+    mediaType: 'video',
+    label: 'Video',
+    recipientJid: '1001@s.whatsapp.net',
+    description: 'Lesson one caption',
+    status: 'failed',
+    loaded: 256,
+    total: 1024,
+    percent: 25,
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  writeAgentMediaActivity(activity, agentMediaActivityFile);
+  writeAgentStatus('connected', new Date().toISOString(), null, agentStatusFile);
+  fs.writeFileSync(lessonsFile, JSON.stringify({
+    grade_3_secondary: {
+      lessons: [{
+        id: 'lesson_1',
+        title: 'Lesson one',
+        videoFile: 'media/lesson_1.mp4',
+        caption: 'Lesson one caption'
+      }]
+    }
+  }));
+  const server = createAdminDashboardServer({
+    readData: () => sampleData,
+    readContacts: () => sampleData.contacts,
+    agentMediaActivityFile,
+    agentMediaRetryRequestsFile,
+    agentStatusFile,
+    lessonsFile
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const activitiesResponse = await fetch(`${origin}/api/admin/agent-media`);
+    const activities = await activitiesResponse.json();
+    assert.equal(activities.activities[0].retryAvailable, true);
+
+    const retryResponse = await fetch(`${origin}/api/admin/agent-media/failed-video-1/retry`, {
+      method: 'POST',
+      headers: { origin },
+      body: '{}'
+    });
+    assert.equal(retryResponse.status, 202);
+    assert.deepEqual(await retryResponse.json(), {
+      status: 'retrying',
+      activityId: 'failed-video-1'
+    });
+    assert.equal(
+      JSON.parse(fs.readFileSync(agentMediaActivityFile, 'utf8')).activities[0].status,
+      'retrying'
+    );
+    assert.equal(
+      JSON.parse(fs.readFileSync(agentMediaRetryRequestsFile, 'utf8'))[0].activityId,
+      'failed-video-1'
+    );
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('lesson broadcast preview queues only eligible Es contacts inactive for over ten days', async () => {
+  const previousAllowedNumbers = config.allowedNumbers;
+  const previousBlockedNumbers = config.blockedNumbers;
+  config.allowedNumbers = 'all';
+  config.blockedNumbers = [];
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-lesson-broadcast-test-'));
+  const lessonMediaDirectory = path.join(temporaryDirectory, 'media', 'lessons');
+  const videoPath = path.join(lessonMediaDirectory, 'grade_1_primary', 'lesson.mp4');
+  fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+  fs.writeFileSync(videoPath, Buffer.from('lesson video'));
+  const lessonsFile = path.join(temporaryDirectory, 'lessons.json');
+  fs.writeFileSync(lessonsFile, JSON.stringify({
+    grade_1_primary: {
+      lessons: [{
+        id: 'lesson_1',
+        title: 'Lesson One',
+        caption: 'Watch lesson one',
+        videoFile: videoPath
+      }]
+    }
+  }));
+  const now = Date.now();
+  const contacts = {
+    '249111111111@s.whatsapp.net': {
+      name: 'Inactive Es',
+      isEs: true,
+      savedInAddressBook: true
+    },
+    '249222222222@s.whatsapp.net': {
+      name: 'Recent Es',
+      isEs: true,
+      savedInAddressBook: true
+    },
+    '249333333333@s.whatsapp.net': {
+      name: 'Opted Out Es',
+      isEs: true,
+      savedInAddressBook: true
+    },
+    '249444444444@s.whatsapp.net': {
+      name: 'Unknown Activity Es',
+      isEs: true,
+      savedInAddressBook: true
+    }
+  };
+  const whatsappChatActivityFile = path.join(temporaryDirectory, 'chat_activity.json');
+  fs.writeFileSync(whatsappChatActivityFile, JSON.stringify({
+    '249111111111@s.whatsapp.net': now - 11 * 24 * 60 * 60 * 1000,
+    '249222222222@s.whatsapp.net': now - 2 * 24 * 60 * 60 * 1000,
+    '249333333333@s.whatsapp.net': now - 15 * 24 * 60 * 60 * 1000
+  }));
+  const followUpStateFile = path.join(temporaryDirectory, 'follow-up.json');
+  fs.writeFileSync(followUpStateFile, JSON.stringify({
+    optedOutJids: ['249333333333@s.whatsapp.net']
+  }));
+  const requestsFile = path.join(temporaryDirectory, 'broadcast_requests.json');
+  const server = createAdminDashboardServer({
+    readData: () => { throw new Error('Lesson broadcast must not read conversation history.'); },
+    readContacts: () => contacts,
+    whatsappChatActivityFile,
+    followUpStateFile,
+    blockedContactsFile: path.join(temporaryDirectory, 'blocked.json'),
+    broadcastFiles: {
+      requests: requestsFile,
+      state: path.join(temporaryDirectory, 'broadcast_state.json')
+    },
+    lessonsFile,
+    lessonMediaDirectory
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const query = new URLSearchParams({
+      gradeKey: 'grade_1_primary',
+      lessonId: 'lesson_1',
+      isStandalone: 'false'
+    });
+    const previewResponse = await fetch(`${origin}/api/admin/curriculum/lesson-broadcast?${query}`);
+    assert.equal(previewResponse.status, 200);
+    const preview = await previewResponse.json();
+    assert.equal(preview.title, 'Lesson One');
+    assert.equal(preview.total, 1);
+    assert.equal(preview.inactiveDays, 10);
+
+    fs.writeFileSync(whatsappChatActivityFile, JSON.stringify({
+      '249111111111@s.whatsapp.net': now - 1 * 24 * 60 * 60 * 1000,
+      '249222222222@s.whatsapp.net': now - 2 * 24 * 60 * 60 * 1000,
+      '249333333333@s.whatsapp.net': now - 15 * 24 * 60 * 60 * 1000
+    }));
+    const changedRecipientsResponse = await fetch(`${origin}/api/admin/curriculum/lesson-broadcast`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ previewId: preview.previewId })
+    });
+    assert.equal(changedRecipientsResponse.status, 409);
+    assert.equal(fs.existsSync(requestsFile), false);
+
+    fs.writeFileSync(whatsappChatActivityFile, JSON.stringify({
+      '249111111111@s.whatsapp.net': now - 11 * 24 * 60 * 60 * 1000,
+      '249222222222@s.whatsapp.net': now - 2 * 24 * 60 * 60 * 1000,
+      '249333333333@s.whatsapp.net': now - 15 * 24 * 60 * 60 * 1000
+    }));
+    const queuedResponse = await fetch(`${origin}/api/admin/curriculum/lesson-broadcast`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ previewId: preview.previewId })
+    });
+    assert.equal(queuedResponse.status, 202);
+    assert.equal((await queuedResponse.json()).total, 1);
+    const [job] = JSON.parse(fs.readFileSync(requestsFile, 'utf8'));
+    assert.deepEqual(job.jids, ['249111111111@s.whatsapp.net']);
+    assert.deepEqual(job.lessonVideo, {
+      title: 'Lesson One',
+      caption: 'Watch lesson one',
+      videoFile: path.join('grade_1_primary', 'lesson.mp4')
+    });
+    assert.equal(job.recipientType, 'es');
+    assert.equal(job.inactiveDays, 10);
+  } finally {
+    config.allowedNumbers = previousAllowedNumbers;
+    config.blockedNumbers = previousBlockedNumbers;
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
@@ -1334,6 +1939,7 @@ test('chat queue API returns the current ordered agent workload', async () => {
       position: 2,
       queuedAt: '2026-10-20T10:00:02.000Z'
     }],
+    paused: false,
     updatedAt: '2026-10-20T10:00:06.000Z'
   };
   fs.writeFileSync(incomingChatQueueFile, JSON.stringify(queueSnapshot));
@@ -1655,6 +2261,170 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       })
     });
     assert.equal(mismatchedDateResponse.status, 400);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('curriculum API endpoints allow viewing, saving, uploading video, and managing lessons', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'curriculum-api-test-'));
+  const testLessonsFile = path.join(temporaryDirectory, 'lessons.json');
+  const testMediaDir = path.join(temporaryDirectory, 'media', 'lessons');
+  fs.mkdirSync(path.join(testMediaDir, 'grade_3_secondary'), { recursive: true });
+
+  const initialLessons = {
+    grade_3_secondary: {
+      name: 'الصف الثالث ثانوي',
+      keywords: ['تالتة ثانوي'],
+      lessons: [
+        {
+          id: 'lesson_1',
+          title: 'Lesson 1: Intro',
+          videoFile: 'media/lessons/grade_3_secondary/lesson_1.mp4',
+          taskMessage: '1. What is X?',
+          answerKey: ['1. X is Y']
+        }
+      ]
+    }
+  };
+  fs.writeFileSync(testLessonsFile, JSON.stringify(initialLessons, null, 2), 'utf8');
+
+  const server = createAdminDashboardServer({
+    readData: () => ({ ...sampleData, lessons: JSON.parse(fs.readFileSync(testLessonsFile, 'utf8')) }),
+    lessonsFile: testLessonsFile,
+    lessonMediaDirectory: testMediaDir
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    const origin = `http://127.0.0.1:${port}`;
+
+    // 1. GET /api/admin/curriculum
+    const overviewRes = await fetch(`${origin}/api/admin/curriculum`);
+    assert.equal(overviewRes.status, 200);
+    const overviewData = await overviewRes.json();
+    assert.ok(Array.isArray(overviewData.stages));
+    assert.equal(overviewData.totalLessons, 1);
+
+    // 2. GET /api/admin/curriculum/grade
+    const gradeRes = await fetch(`${origin}/api/admin/curriculum/grade?key=grade_3_secondary`);
+    assert.equal(gradeRes.status, 200);
+    const gradeData = await gradeRes.json();
+    assert.equal(gradeData.key, 'grade_3_secondary');
+    assert.equal(gradeData.lessons.length, 1);
+
+    // 3. POST /api/admin/curriculum/video (upload lesson video)
+    const videoBuffer = Buffer.from('simulated-mp4-stream');
+    const uploadRes = await fetch(`${origin}/api/admin/curriculum/video`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        'Content-Type': 'video/mp4',
+        'x-grade-key': 'grade_3_secondary',
+        'x-file-name': 'lesson_2.mp4'
+      },
+      body: videoBuffer
+    });
+    assert.equal(uploadRes.status, 201);
+    const uploadData = await uploadRes.json();
+    assert.equal(uploadData.success, true);
+    assert.equal(uploadData.fileName, 'lesson_2.mp4');
+
+    // 4. POST /api/admin/curriculum/lesson (add new lesson)
+    const saveRes = await fetch(`${origin}/api/admin/curriculum/lesson`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        gradeKey: 'grade_3_secondary',
+        lesson: {
+          title: 'Lesson 2: Past Simple',
+          videoFile: 'media/lessons/grade_3_secondary/lesson_2.mp4',
+          taskMessage: '1. Conjugate verb.',
+          answerKey: ['1. went']
+        }
+      })
+    });
+    assert.equal(saveRes.status, 200);
+    const saveData = await saveRes.json();
+    assert.equal(saveData.success, true);
+    assert.equal(saveData.lesson.id, 'lesson_2');
+
+    // Verify it was persisted to file
+    const fileContent = JSON.parse(fs.readFileSync(testLessonsFile, 'utf8'));
+    assert.equal(fileContent.grade_3_secondary.lessons.length, 2);
+
+    const treasureUploadRes = await fetch(`${origin}/api/admin/curriculum/video`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        'Content-Type': 'video/mp4',
+        'x-grade-key': 'grade_3_secondary',
+        'x-collection-id': 'treasure_island',
+        'x-file-name': 'chapter_1.mp4'
+      },
+      body: Buffer.from('treasure-island-video')
+    });
+    assert.equal(treasureUploadRes.status, 201);
+    const treasureUpload = await treasureUploadRes.json();
+    assert.equal(treasureUpload.relativePath, 'media/lessons/grade_3_secondary/treasure_island/chapter_1.mp4');
+
+    const treasureSaveRes = await fetch(`${origin}/api/admin/curriculum/lesson`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gradeKey: 'grade_3_secondary',
+        collectionId: 'treasure_island',
+        lesson: {
+          id: 'chapter_1',
+          title: 'Chapter One',
+          videoFile: treasureUpload.relativePath,
+          taskMessage: 'Answer the Chapter One questions.',
+          answerKey: ['Jim Hawkins is the narrator.']
+        }
+      })
+    });
+    assert.equal(treasureSaveRes.status, 200);
+    assert.equal(JSON.parse(fs.readFileSync(testLessonsFile, 'utf8'))
+      .grade_3_secondary.collections.treasure_island.lessons[0].id, 'chapter_1');
+
+    // 5. POST /api/admin/curriculum/reorder
+    const reorderRes = await fetch(`${origin}/api/admin/curriculum/reorder`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        gradeKey: 'grade_3_secondary',
+        lessonIds: ['lesson_2', 'lesson_1']
+      })
+    });
+    assert.equal(reorderRes.status, 200);
+    const reorderData = await reorderRes.json();
+    assert.equal(reorderData.lessons[0].id, 'lesson_2');
+
+    // 6. DELETE /api/admin/curriculum/lesson
+    const deleteRes = await fetch(`${origin}/api/admin/curriculum/lesson?gradeKey=grade_3_secondary&lessonId=lesson_2`, {
+      method: 'DELETE',
+      headers: { Origin: origin }
+    });
+    assert.equal(deleteRes.status, 200);
+    const postDelContent = JSON.parse(fs.readFileSync(testLessonsFile, 'utf8'));
+    assert.equal(postDelContent.grade_3_secondary.lessons.length, 1);
+    assert.equal(postDelContent.grade_3_secondary.lessons[0].id, 'lesson_1');
+
+    const treasureDeleteRes = await fetch(`${origin}/api/admin/curriculum/lesson?gradeKey=grade_3_secondary&lessonId=chapter_1&collectionId=treasure_island`, {
+      method: 'DELETE',
+      headers: { Origin: origin }
+    });
+    assert.equal(treasureDeleteRes.status, 200);
+    assert.equal(JSON.parse(fs.readFileSync(testLessonsFile, 'utf8'))
+      .grade_3_secondary.collections.treasure_island.lessons.length, 0);
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });

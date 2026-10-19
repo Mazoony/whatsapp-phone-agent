@@ -43,13 +43,15 @@ export function writeAgentStatus(
   lastConnectedAt = null,
   account = null,
   filePath = AGENT_STATUS_FILE,
-  respondingEnabled = true
+  respondingEnabled = true,
+  queuePaused = false
 ) {
   const status = {
     connectionState,
     lastConnectedAt,
     account,
     respondingEnabled,
+    queuePaused,
     updatedAt: new Date().toISOString()
   };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -99,8 +101,22 @@ export function requestAgentResponseMode(respondingEnabled, filePath = AGENT_CON
   return writeAgentControlRequest(respondingEnabled ? 'resume_replies' : 'pause_replies', filePath);
 }
 
-function writeAgentControlRequest(action, filePath) {
-  const request = { action, requestedAt: new Date().toISOString() };
+export function requestAgentQueueMode(paused, filePath = AGENT_CONTROL_FILE) {
+  if (typeof paused !== 'boolean') {
+    throw new TypeError('Agent queue pause mode must be a boolean.');
+  }
+  return writeAgentControlRequest(paused ? 'pause_queue' : 'resume_queue', filePath);
+}
+
+export function requestAgentQueueCancellation(jid, filePath = AGENT_CONTROL_FILE) {
+  if (typeof jid !== 'string' || !/^\d+@(s\.whatsapp\.net|lid)$/.test(jid)) {
+    throw new TypeError('A valid direct chat ID is required to cancel queued handling.');
+  }
+  return writeAgentControlRequest('cancel_queued_chat', filePath, { jid });
+}
+
+function writeAgentControlRequest(action, filePath, details = {}) {
+  const request = { action, ...details, requestedAt: new Date().toISOString() };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const temporaryPath = `${filePath}.${process.pid}.tmp`;
   fs.writeFileSync(temporaryPath, JSON.stringify(request), 'utf8');
@@ -116,10 +132,24 @@ export function consumeAgentControlRequest(filePath = AGENT_CONTROL_FILE) {
     if (error.code === 'ENOENT') return false;
     throw error;
   }
-  if (!request || !['disconnect', 'pause_replies', 'resume_replies'].includes(request.action) ||
+  if (!request || ![
+    'disconnect',
+    'pause_replies',
+    'resume_replies',
+    'pause_queue',
+    'resume_queue',
+    'cancel_queued_chat'
+  ].includes(request.action) ||
       typeof request.requestedAt !== 'string' ||
       !Number.isFinite(Date.parse(request.requestedAt))) {
     throw new Error('Agent control request is invalid.');
+  }
+  if (request.action === 'cancel_queued_chat') {
+    if (typeof request.jid !== 'string' || !/^\d+@(s\.whatsapp\.net|lid)$/.test(request.jid)) {
+      throw new Error('Agent queue cancellation request is invalid.');
+    }
+    fs.unlinkSync(filePath);
+    return { action: request.action, jid: request.jid };
   }
   fs.unlinkSync(filePath);
   return request.action;

@@ -256,21 +256,98 @@ test('incoming text gets a local response when Gemini keys are unavailable', asy
   }
 });
 
+test('incoming images use local Ollama vision when Gemini keys are unavailable', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousVisionModel = config.ollamaVisionModel;
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  config.ollamaVisionModel = 'test-vision-model';
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    assert.equal(body.model, 'test-vision-model');
+    assert.deepEqual(body.messages.at(-1).images, [
+      Buffer.from('student image').toString('base64')
+    ]);
+    return {
+      ok: true,
+      json: async () => ({ message: { content: 'وصلتني الصورة، خلينا نشوفها سوا.' } })
+    };
+  };
+
+  try {
+    assert.equal(await generateClientResponse(
+      'vision-fallback-test@s.whatsapp.net',
+      'Es Student',
+      'ممكن تشرح لي؟',
+      [{ data: Buffer.from('student image'), mimeType: 'image/jpeg' }]
+    ), 'وصلتني الصورة، خلينا نشوفها سوا.');
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    config.ollamaVisionModel = previousVisionModel;
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('payment questions receive the configured price and requested Bankak details', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    const prompt = body.messages.find(message => message.role === 'user').content;
+    assert.match(prompt, /If the student asks how much the course costs, give the applicable monthly price above/i);
+    assert.match(prompt, /17,000 Sudanese pounds \(SDG\)/);
+    assert.match(prompt, /Bankak\) account number 2865022/i);
+    assert.match(prompt, /Mazen Mohammed Ahmed Al-Siddiq Saleh/i);
+    assert.match(prompt, /If they ask for both, provide both/i);
+    assert.match(prompt, /Do not bring up fees, payment, or payment details unless the student asks/i);
+    assert.match(prompt, /كم رسوم الاشتراك ورقم حساب بنكك؟/);
+    return {
+      ok: true,
+      json: async () => ({ message: { content: 'الاشتراك ١٧ ألف جنيه شهرياً. رقم حساب بنكك 2865022 باسم مازن محمد أحمد الصديق صالح.' } })
+    };
+  };
+
+  try {
+    assert.match(
+      await generateClientResponse(
+        '249111111111@s.whatsapp.net',
+        'Es Student',
+        'كم رسوم الاشتراك ورقم حساب بنكك؟',
+        [],
+        'grade_3_secondary'
+      ),
+      /2865022/
+    );
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('task grading uses local Ollama and requests JSON when Gemini keys are unavailable', async () => {
   const previousKeys = [...config.geminiApiKeys];
   const previousFetch = globalThis.fetch;
   config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
   globalThis.fetch = async (_url, options) => {
     const body = JSON.parse(options.body);
-    assert.equal(body.format, 'json');
+    assert.deepEqual(body.format, {
+      type: 'object',
+      properties: {
+        isTaskSubmission: { type: 'boolean' },
+        allCorrect: { type: 'boolean' }
+      },
+      required: ['isTaskSubmission', 'allCorrect'],
+      additionalProperties: false
+    });
+    assert.deepEqual(body.options, { num_predict: 128 });
     return {
       ok: true,
       json: async () => ({
         message: {
           content: JSON.stringify({
             isTaskSubmission: true,
-            allCorrect: false,
-            feedback: 'شغلك كويس، راجع السؤال الثاني.'
+            allCorrect: false
           })
         }
       })
@@ -285,12 +362,66 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
     }, 'He go to school.'), {
       isTaskSubmission: true,
       allCorrect: false,
-      feedback: 'شغلك كويس، راجع السؤال الثاني.'
+      feedback: 'شغلك كويس، في إجابة محتاجة مراجعة. ركز في المطلوب وحاول تاني.'
     });
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
     globalThis.fetch = previousFetch;
   }
+});
+
+test('task grading accepts a single-word answer as a complete submission', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    assert.ok(body.messages.some(message =>
+      message.role === 'user' &&
+      message.content.includes('A one-word answer can be complete')));
+    assert.ok(body.messages.some(message =>
+      message.role === 'user' &&
+      message.content.includes('Judge meaning and the grammar being tested, not exact wording')));
+    assert.ok(body.messages.some(message =>
+      message.role === 'user' &&
+      message.content.includes('Accept correct paraphrases, synonyms, valid equivalent forms')));
+    assert.ok(body.messages.some(message =>
+      message.role === 'user' && message.content.includes('interprets')));
+    return {
+      ok: true,
+      json: async () => ({
+        message: {
+          content: JSON.stringify({
+            isTaskSubmission: true,
+            allCorrect: true
+          })
+        }
+      })
+    };
+  };
+
+  try {
+    assert.deepEqual(await evaluateStudentTask({
+      title: 'Present Simple',
+      taskMessage: 'Complete the sentence: The analyst ____ the results. (interpret)',
+      answerKey: ['interprets']
+    }, 'interprets'), {
+      isTaskSubmission: true,
+      allCorrect: true,
+      feedback: 'ما شاء الله عليك، إجاباتك كلها صحيحة.'
+    });
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading refuses to use an unconfigured answer key', async () => {
+  await assert.rejects(evaluateStudentTask({
+    title: 'Unconfigured lesson',
+    taskMessage: 'Answer the question.',
+    answerKey: []
+  }, 'An answer'), /without configured questions and an answer key/);
 });
 
 test('sanitizes bracketed video and exercise placeholders from AI response text', () => {

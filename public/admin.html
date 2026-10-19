@@ -92,6 +92,8 @@
     .agent-media-panel { padding: 16px; margin-bottom: 14px; }
     .agent-media-panel h3 { margin: 0; font-size: 13px; }
     .agent-media-list { display: grid; gap: 9px; margin-top: 12px; }
+    .agent-media-more { margin-top: 10px; border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; color: var(--ink); background: #fff; font: inherit; font-size: 10px; font-weight: 700; }
+    .agent-media-more[hidden] { display: none; }
     .agent-media-item { padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; }
     .agent-media-top, .agent-media-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .agent-media-top { font-size: 12px; font-weight: 650; }
@@ -101,15 +103,26 @@
     .agent-media-item.failed .agent-media-progress > span { background: #b94747; }
     .agent-media-item.failed .agent-media-status { color: #b94747; }
     .agent-media-item.sent .agent-media-status { color: #208453; }
+    .agent-media-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+    .agent-media-retry { border: 1px solid #b94747; border-radius: 7px; padding: 5px 9px; color: #a13535; background: #fff8f7; font: inherit; font-size: 10px; font-weight: 700; }
+    .agent-media-retry:disabled { cursor: wait; opacity: .6; }
+    .agent-media-error { color: #a13535; font-size: 10px; overflow-wrap: anywhere; }
     .agent-media-empty { padding: 14px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 11px; }
     .agent-queue-panel { padding: 16px; margin-bottom: 14px; }
     .agent-queue-panel h3 { margin: 0; font-size: 13px; }
+    .agent-queue-controls { display: flex; align-items: center; gap: 8px; }
+    .agent-queue-control { border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; color: var(--ink); background: #fff; font: inherit; font-size: 10px; font-weight: 700; }
+    .agent-queue-control:disabled { cursor: wait; opacity: .6; }
+    .agent-queue-paused { margin-top: 9px; padding: 8px 10px; border-radius: 7px; color: #8a5b12; background: #fff5df; font-size: 10px; }
     .agent-queue-list { display: grid; gap: 8px; margin-top: 12px; }
     .agent-queue-item { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; transition: transform .45s cubic-bezier(.2,.75,.25,1), opacity .25s ease; will-change: transform; }
     .agent-queue-position { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 750; }
     .agent-queue-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
     .agent-queue-detail { margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .agent-queue-actions { display: flex; align-items: center; justify-content: end; gap: 9px; }
     .agent-queue-state { color: var(--muted); font-size: 10px; font-weight: 650; white-space: nowrap; }
+    .agent-queue-cancel { border: 1px solid #e6bcbc; border-radius: 7px; padding: 5px 8px; color: #a3423c; background: #fff8f7; font: inherit; font-size: 10px; font-weight: 700; }
+    .agent-queue-cancel:disabled { cursor: wait; opacity: .6; }
     .agent-queue-item.active { border-color: #a8d7c1; background: #f5fbf7; }
     .agent-queue-item.active .agent-queue-state { color: #208453; }
     .agent-queue-empty { padding: 14px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 11px; }
@@ -175,7 +188,42 @@
     .weekly-chat-chart .weekly-chat-grid { stroke: #e5ebe7; stroke-width: 1; }
     .weekly-chat-chart .weekly-chat-line { fill: none; stroke: #23875a; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
     .weekly-chat-chart .weekly-chat-point { fill: white; stroke: #23875a; stroke-width: 3; }
+    .weekly-chat-chart .weekly-chat-new-line { fill: none; stroke: #5278c7; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .weekly-chat-chart .weekly-chat-new-point { fill: white; stroke: #5278c7; stroke-width: 3; }
+    .weekly-chat-chart .weekly-chat-count { font-size: 10px; font-weight: 750; paint-order: stroke; stroke: white; stroke-width: 3px; stroke-linejoin: round; }
+    .weekly-chat-chart .weekly-chat-count-all { fill: #17633f; }
+    .weekly-chat-chart .weekly-chat-count-new { fill: #385ba1; }
+    .weekly-chat-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .weekly-chat-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .weekly-chat-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: #23875a; }
+    .weekly-chat-legend .weekly-chat-new-key { background: #5278c7; }
     .weekly-chat-summary { margin-top: 3px !important; }
+    .payment-calendar-panel { padding: 16px; }
+    .payment-calendar-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .payment-calendar-toolbar button { border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px; color: var(--ink); background: white; font: inherit; font-size: 12px; }
+    .payment-calendar-month { font-size: 15px; font-weight: 750; }
+    .payment-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .payment-summary-stat { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .payment-summary-label { display: block; color: var(--muted); font-size: 10px; font-weight: 650; }
+    .payment-summary-value { display: block; margin-top: 5px; font-size: 19px; font-weight: 760; }
+    .payment-summary-rate { display: flex; align-items: center; gap: 6px; margin-top: 7px; color: var(--muted); font-size: 10px; }
+    .payment-summary-rate input { width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font: inherit; }
+    .payment-rate-status { min-height: 14px; margin: 4px 0 0; color: var(--muted); font-size: 9px; }
+    .payment-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+    .payment-calendar-weekday { padding: 6px 2px; color: var(--muted); text-align: center; font-size: 10px; font-weight: 700; }
+    .payment-calendar-day { min-height: 66px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; text-align: left; font: inherit; font-size: 11px; }
+    .payment-calendar-day.outside-month { color: #98a49d; background: #f8faf8; }
+    .payment-calendar-day.has-payments { border-color: #9dceb2; background: #f1f9f3; }
+    .payment-calendar-day.selected { outline: 2px solid var(--green); outline-offset: 1px; }
+    .payment-calendar-count { color: #23734e; font-size: 9px; font-weight: 700; }
+    .payment-calendar-selection { margin-top: 18px; }
+    .payment-calendar-selection h3 { margin: 0 0 8px; font-size: 13px; }
+    .payment-calendar-list { display: grid; gap: 8px; }
+    .payment-calendar-entry { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .payment-calendar-entry strong { display: block; font-size: 12px; }
+    .payment-calendar-entry small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .payment-calendar-empty { padding: 13px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 11px; }
+    @media (max-width: 520px) { .payment-calendar-grid { gap: 3px; } .payment-calendar-day { min-height: 52px; padding: 5px; } .payment-calendar-entry { align-items: flex-start; flex-direction: column; } .payment-summary-grid { grid-template-columns: 1fr; } }
     .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin: 20px 0 12px; }
     .chat-sort-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .chat-sort-controls[hidden] { display: none; }
@@ -232,6 +280,12 @@
     .broadcast-job:last-child { border-bottom: 0; }
     .broadcast-job small { display: block; color: var(--muted); margin-top: 3px; }
     .broadcast-job button { border: 1px solid #e6bcbc; background: #fff8f7; color: #a3423c; border-radius: 7px; padding: 5px 8px; font-size: 10px; }
+    .scheduled-lesson-form { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 1fr) minmax(190px, .9fr) auto; align-items: end; gap: 10px; padding: 15px; }
+    .scheduled-lesson-form label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 650; }
+    .scheduled-lesson-form select, .scheduled-lesson-form input { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: white; color: var(--ink); font: inherit; }
+    .scheduled-lesson-form small { color: var(--muted); font-size: 9px; font-weight: 400; }
+    @media (max-width: 850px) { .scheduled-lesson-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 520px) { .scheduled-lesson-form { grid-template-columns: minmax(0, 1fr); } }
     .search { width: min(100%, 430px); position: relative; }
     .search input { width: 100%; background: white; border: 1px solid var(--line); border-radius: 10px; padding: 10px 37px 10px 12px; outline: 0; }
     .search input:focus { border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
@@ -362,7 +416,115 @@
     .pagination { display: flex; justify-content: center; align-items: center; gap: 11px; padding: 12px; color: var(--muted); font-size: 11px; }
     .pagination button { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 5px 9px; }
     .error { margin: 14px 0; padding: 11px 13px; border: 1px solid #f1cccc; background: #fff5f4; border-radius: 9px; color: var(--red); font-size: 12px; }
+
+    /* Curriculum & Lessons Management Styles */
+    .curriculum-header-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; margin: 0 0 20px; }
+    .stage-nav-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .stage-pill { border: 1px solid var(--line); border-radius: 20px; padding: 7px 14px; background: white; font-size: 11px; font-weight: 600; color: #43534b; cursor: pointer; transition: all .15s ease; }
+    .stage-pill:hover, .stage-pill.active { background: var(--green-soft); color: var(--green); border-color: #a9cdb6; }
+    .curriculum-grade-select-wrapper { display: flex; align-items: center; gap: 8px; }
+    .curriculum-grade-dropdown { height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; }
+    .curriculum-grade-dropdown:focus { outline: 0; border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
+    .curriculum-stages-container { display: grid; gap: 24px; }
+    .stage-section { display: flex; flex-direction: column; gap: 12px; }
+    .stage-section[hidden] { display: none; }
+    .stage-title-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin: 0; }
+    .stage-title-head h3 { font-size: 15px; margin: 0; color: var(--ink); font-weight: 750; letter-spacing: -.3px; }
+    .stage-badge { font-size: 10px; padding: 3px 9px; border-radius: 12px; background: #edf3ef; color: #4b6255; font-weight: 600; }
+    .grades-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+    .grade-card { background: var(--paper); border: 1px solid var(--line); border-radius: 13px; padding: 17px; box-shadow: var(--shadow); cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; display: flex; flex-direction: column; justify-content: space-between; }
+    .grade-card:hover { transform: translateY(-2px); border-color: #a9cdb6; box-shadow: 0 10px 26px rgba(30, 90, 60, .1); }
+    .grade-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .grade-card-title { font-size: 14px; font-weight: 750; margin: 0 0 3px; color: var(--ink); letter-spacing: -.2px; }
+    .grade-card-subtitle { font-size: 11px; color: var(--muted); }
+    .grade-card-metrics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .metric-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 3px 8px; border-radius: 6px; background: #f4f7f5; color: #3c5246; font-weight: 550; }
+    .metric-chip.has-lessons { background: #e4f4ea; color: #156d46; font-weight: 650; }
+    .metric-chip.has-videos { background: #eef2fa; color: #2b5597; }
+    .grade-curriculum-panel { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); }
+    .grade-head-banner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+    .grade-head-info { display: flex; flex-direction: column; gap: 2px; }
+    .grade-head-info h2 { margin: 0; font-size: 18px; letter-spacing: -.4px; }
+    .back-link { border: 0; background: transparent; color: var(--green); font-size: 11px; font-weight: 750; cursor: pointer; padding: 0 0 4px; display: inline-flex; align-items: center; width: fit-content; }
+    .back-link:hover { text-decoration: underline; }
+    .grade-head-actions { display: flex; align-items: center; gap: 8px; }
+    .lesson-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 22px 0 10px; }
+    .lesson-section-heading h3 { margin: 0; font-size: 14px; }
+    .lesson-section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+    .curriculum-keywords-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: var(--muted); }
+    .curriculum-keyword-tag { background: #f0f4f2; border: 1px solid #dfe8e2; border-radius: 6px; padding: 2px 7px; font-size: 10px; color: #3c5247; }
+    .curriculum-lessons-list { display: grid; gap: 12px; margin-top: 18px; }
+    .lesson-card { border: 1px solid var(--line); border-radius: 11px; padding: 15px 17px; background: #fafcfb; transition: all .15s ease; }
+    .lesson-card:hover { border-color: #aed5bf; background: white; box-shadow: 0 4px 12px rgba(20,50,35,.04); }
+    .lesson-card-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+    .lesson-card-title-group { display: flex; align-items: center; gap: 11px; }
+    .lesson-order-num { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--green-soft); color: var(--green); font-weight: 800; font-size: 12px; flex-shrink: 0; }
+    .lesson-card-title-group h4 { margin: 0; font-size: 13px; font-weight: 700; color: var(--ink); }
+    .lesson-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-left: 41px; }
+    .lesson-actions { display: flex; align-items: center; gap: 6px; }
+    .btn-action { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; color: #35473e; transition: all .15s; }
+    .btn-action:hover { background: #f2f7f4; border-color: #a8cdb7; color: var(--ink); }
+    .btn-action.btn-danger { color: var(--red); border-color: #f2cfcf; }
+    .btn-action.btn-danger:hover { background: #fff5f5; border-color: var(--red); }
+    .lesson-empty-card { text-align: center; padding: 40px 20px; border: 2px dashed var(--line); border-radius: 12px; background: #fafcfb; }
+    .lesson-empty-card p { margin: 6px 0 16px; color: var(--muted); font-size: 12px; }
+
+    /* Modal Backdrop and Dialog */
+    .modal-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(18, 38, 30, .6); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 18px; }
+    .modal-backdrop[hidden] { display: none !important; }
+    .lesson-modal-dialog { width: min(100%, 820px); max-height: 92vh; display: flex; flex-direction: column; background: white; border-radius: 16px; box-shadow: 0 24px 60px rgba(10,35,25,.28); border: 1px solid var(--line); overflow: hidden; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; border-bottom: 1px solid var(--line); background: #fafcfb; }
+    .modal-header h2, .modal-header h3 { margin: 0 0 3px; font-size: 17px; font-weight: 750; letter-spacing: -.3px; }
+    .modal-header .subheading { font-size: 11px; margin: 0; }
+    .modal-close { border: 0; background: transparent; font-size: 18px; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; }
+    .modal-close:hover { color: var(--ink); background: #eff3f1; }
+    .lesson-modal-form { display: flex; flex-direction: column; overflow-y: auto; padding: 22px 24px; gap: 16px; }
+    .form-row-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .form-row-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .lesson-modal-form label { display: grid; gap: 5px; font-size: 11px; font-weight: 650; color: #2e4438; }
+    .lesson-modal-form input, .lesson-modal-form select, .lesson-modal-form textarea { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 12px; background: white; color: var(--ink); }
+    .lesson-modal-form input:focus, .lesson-modal-form select:focus, .lesson-modal-form textarea:focus { outline: 0; border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
+    .field-hint { font-size: 10px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+    .section-sublabel { font-size: 12px; font-weight: 750; color: #1c382e; margin-bottom: 4px; display: block; }
+    .curriculum-video-section, .curriculum-task-section, .curriculum-rubric-section { border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; background: #fafcfb; }
+    .video-options-tabs { display: flex; gap: 6px; margin: 8px 0 12px; }
+    .tab-btn { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 6px 12px; font-size: 11px; font-weight: 600; cursor: pointer; color: #43534b; }
+    .tab-btn.active { background: var(--green); color: white; border-color: var(--green); }
+    .dropzone { border: 2px dashed #b7d1c2; border-radius: 10px; padding: 24px 16px; text-align: center; background: white; cursor: pointer; transition: all .18s; }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--green); background: #f0f7f3; }
+    .dropzone-icon { font-size: 28px; display: block; margin-bottom: 6px; }
+    .dropzone strong { font-size: 12px; display: block; color: #1b382d; }
+    .dropzone small { font-size: 10px; color: var(--muted); }
+    .upload-progress-container { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+    .progress-bar { flex: 1; height: 8px; border-radius: 10px; background: #e8efeb; overflow: hidden; }
+    .progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--green); transition: width .15s ease; }
+    .progress-text { font-size: 11px; font-weight: 700; color: var(--green); min-width: 38px; text-align: right; }
+    .selected-video-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 11px; padding-top: 10px; border-top: 1px dashed var(--line); }
+    .selected-video-preview input { font-family: ui-monospace, Consolas, monospace; font-size: 11px; background: #f4f7f5; padding: 6px 9px; flex: 1; }
+    .rubric-head, .task-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .btn-micro { border: 1px solid #c8dcd0; background: white; border-radius: 6px; padding: 4px 9px; font-size: 10px; font-weight: 650; color: var(--green); cursor: pointer; }
+    .btn-micro:hover { background: var(--green-soft); }
+    .rubric-rows { display: grid; gap: 8px; max-height: 240px; overflow-y: auto; padding-right: 4px; }
+    .rubric-row { display: grid; grid-template-columns: 28px minmax(100px, 1.2fr) minmax(130px, 1.8fr) 28px; align-items: center; gap: 8px; }
+    .rubric-num { text-align: center; font-weight: 750; color: var(--green); font-size: 11px; }
+    .rubric-delete-btn { border: 0; background: transparent; color: #ba4747; font-size: 15px; cursor: pointer; padding: 4px; border-radius: 4px; }
+    .rubric-delete-btn:hover { background: #feebeb; }
+    .modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid var(--line); background: #fafcfb; }
+    .footer-buttons { display: flex; gap: 10px; }
+    .phone-mockup { max-width: 380px; width: 100%; border-radius: 24px; border: 9px solid #1a2c24; background: #eef2ee; overflow: hidden; box-shadow: 0 20px 48px rgba(0,0,0,.25); margin: 0 auto; }
+    .phone-header { background: #075e54; color: white; padding: 11px 13px; display: flex; align-items: center; gap: 10px; }
+    .phone-avatar { width: 34px; height: 34px; border-radius: 50%; background: #25d366; display: grid; place-items: center; font-weight: 850; color: white; font-size: 14px; }
+    .phone-contact strong { display: block; font-size: 12px; }
+    .phone-contact small { font-size: 10px; opacity: .85; }
+    .phone-chat { padding: 14px; max-height: 480px; overflow-y: auto; background-color: #efeae2; background-image: var(--chat-doodle); background-size: 200px 200px; display: flex; flex-direction: column; gap: 9px; }
+    .preview-bubble { max-width: 88%; background: white; border-radius: 9px; padding: 9px 12px; font-size: 11px; line-height: 1.45; white-space: pre-wrap; align-self: flex-start; box-shadow: 0 1px 2px rgba(0,0,0,.15); position: relative; border-top-left-radius: 2px; }
+    .preview-bubble.video-card { background: white; padding: 6px; }
+    .preview-video-placeholder { width: 100%; height: 130px; background: #13241c; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; gap: 5px; font-size: 11px; }
+    .preview-video-placeholder span { font-size: 32px; }
+    .preview-caption-text { padding: 6px 8px 4px; font-size: 11px; color: #22352b; }
+
     @media (max-width: 950px) { .metrics { grid-template-columns: repeat(2, 1fr); } .columns { grid-template-columns: 1fr; } .agent-runtime-grid { grid-template-columns: 1fr; } }
+
     @media (max-width: 700px) {
       .layout { grid-template-columns: 1fr; padding-top: 60px; }
       aside { inset: 0 0 auto; z-index: 5; width: auto; height: 60px; overflow-x: auto; overflow-y: hidden; padding: 10px 13px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
@@ -408,6 +570,9 @@
         <button class="nav-item" data-section="agent"><span class="nav-icon">●</span>WhatsApp agent</button>
         <button class="nav-item" data-section="es-contacts"><span class="nav-icon">✳</span>Es contacts</button>
         <button class="nav-item" data-section="progress"><span class="nav-icon">◷</span>Student progress</button>
+        <button class="nav-item" data-section="payment-calendar"><span class="nav-icon">$</span>Payments</button>
+        <button class="nav-item" data-section="scheduled-lessons"><span class="nav-icon">◷</span>Scheduled lessons</button>
+        <button class="nav-item" data-section="curriculum"><span class="nav-icon">📚</span>Curriculum</button>
       </nav>
       <div class="side-note"><b>Private local dashboard</b>Data stays on this computer. Confirmed bulk messages are queued for WhatsApp.</div>
     </aside>
@@ -459,10 +624,14 @@
           </button>
         </div>
 
-        <div class="section-heading"><div><h2>Chats throughout the week</h2><p>Unique direct chats with incoming messages, day by day.</p></div></div>
+        <div class="section-heading"><div><h2>Chats throughout the week</h2><p>Unique direct chats with incoming messages and new conversations, day by day.</p></div></div>
         <article class="panel weekly-chat-panel">
           <div id="weekly-chat-summary" class="weekly-chat-summary" aria-live="polite">Loading the last seven days…</div>
           <div id="weekly-chat-chart" class="weekly-chat-chart" aria-live="polite"></div>
+          <div class="weekly-chat-legend" aria-label="Chart legend">
+            <span><i></i>All active chats</span>
+            <span><i class="weekly-chat-new-key"></i>New chats</span>
+          </div>
         </article>
 
         <div class="section-heading"><div><h2>Gender statistics</h2><p>Gender across saved Es phone-book contacts.</p></div></div>
@@ -533,12 +702,14 @@
           <div class="agent-conversation" id="agent-conversation" aria-live="polite"><div class="agent-conversation-empty">Waiting for saved chat messages…</div></div>
         </article>
         <article class="panel agent-queue-panel" id="agent-queue-panel" hidden>
-          <div class="agent-media-top"><h3>Live chat queue</h3><span class="agent-queue-state">FIFO · updates live</span></div>
+          <div class="agent-media-top"><h3>Live chat queue</h3><div class="agent-queue-controls"><span class="agent-queue-state">FIFO · updates live</span><button class="agent-queue-control" id="agent-queue-toggle" type="button" disabled>Pause handling</button></div></div>
+          <div class="agent-queue-paused" id="agent-queue-paused" hidden>New chat handling is paused. Any chat already in progress will finish; queued chats will wait until resumed.</div>
           <div class="agent-queue-list" id="agent-queue-list" aria-live="polite"><div class="agent-queue-empty">No chats are waiting for the agent.</div></div>
         </article>
         <article class="panel agent-media-panel" id="agent-media-panel" hidden>
           <h3>Video &amp; media delivery</h3>
           <div class="agent-media-list" id="agent-media-list" aria-live="polite"><div class="agent-media-empty">Waiting for media activity…</div></div>
+          <button class="agent-media-more" id="agent-media-more" type="button" aria-expanded="false" hidden></button>
         </article>
         <div class="agent-runtime-grid" id="agent-runtime-panel" hidden>
           <article class="panel agent-qr-panel">
@@ -677,7 +848,7 @@
         <p class="activity-note">Choose Female, Male, or Not identified to save a manual value. Select Auto to use the language-based inference instead. Inferred gender is not verified and may be wrong.</p>
         <div class="panel table-wrap blocked-contacts">
           <h3>Banned or deleted numbers</h3>
-          <table><thead><tr><th>Phone number</th><th>Action</th><th>Blocked since</th><th></th></tr></thead><tbody id="blocked-contact-rows"><tr><td colspan="4" class="empty">Loading blocked numbers…</td></tr></tbody></table>
+          <table><thead><tr><th>Name</th><th>Phone number</th><th>Action</th><th>Blocked since</th><th></th></tr></thead><tbody id="blocked-contact-rows"><tr><td colspan="5" class="empty">Loading blocked numbers…</td></tr></tbody></table>
         </div>
         <article class="panel es-student-activity" id="es-student-activity" hidden>
           <div class="student-activity-head">
@@ -731,13 +902,49 @@
             <span class="broadcast-recording-status" id="broadcast-recording-status" aria-live="polite"></span>
           </div>
           <div class="broadcast-attachments" id="broadcast-attachments" aria-live="polite"></div>
-          <p class="activity-note">Attach up to 5 files (20 MB each) or record a voice note. Images and videos can include the message as a caption; for audio, the text is sent separately.</p>
+          <p class="activity-note">Attach up to 5 files (300 MB each) or record a voice note. Images and videos can include the message as a caption; for audio, the text is sent separately.</p>
           <div class="composer-actions"><span class="result-count" id="message-length">0 / 4,000</span><button class="primary-button" id="send-broadcast" disabled>Queue message</button></div>
         </article>
         <article class="panel broadcast-jobs">
           <div class="panel-head"><h3>Recent bulk messages</h3><span>Updates automatically</span></div>
           <div id="broadcast-jobs-list"><div class="empty">No bulk messages queued.</div></div>
         </article>
+      </section>
+
+      <section class="section" id="section-payment-calendar">
+        <div class="section-heading"><div><h2>Monthly payment calendar</h2><p>See which students you marked paid on each date. Each mark records one month of payment.</p></div></div>
+        <article class="panel payment-calendar-panel">
+          <div class="payment-calendar-toolbar">
+            <button id="payment-calendar-previous" type="button" aria-label="Previous month">← Previous</button>
+            <span class="payment-calendar-month" id="payment-calendar-month"></span>
+            <button id="payment-calendar-next" type="button" aria-label="Next month">Next →</button>
+          </div>
+          <div class="payment-summary-grid" aria-label="Monthly payment totals">
+            <div class="payment-summary-stat">
+              <span class="payment-summary-label">Students paid this month</span>
+              <strong class="payment-summary-value" id="payment-month-student-count">0</strong>
+            </div>
+            <div class="payment-summary-stat">
+              <span class="payment-summary-label">Total collected</span>
+              <strong class="payment-summary-value" id="payment-month-sdg-total">0 SDG</strong>
+            </div>
+            <div class="payment-summary-stat">
+              <span class="payment-summary-label">USD equivalent</span>
+              <strong class="payment-summary-value" id="payment-month-usd-total">Enter rate</strong>
+              <label class="payment-summary-rate" for="payment-usd-rate">
+                <span>SDG per 1 USD</span>
+                <input id="payment-usd-rate" type="number" min="0" step="any" inputmode="decimal" aria-describedby="payment-rate-status">
+              </label>
+              <p class="payment-rate-status" id="payment-rate-status" aria-live="polite"></p>
+            </div>
+          </div>
+          <div class="payment-calendar-grid" id="payment-calendar-grid" aria-label="Monthly student payment calendar"></div>
+          <div class="payment-calendar-selection">
+            <h3 id="payment-calendar-selected-date"></h3>
+            <div class="payment-calendar-list" id="payment-calendar-list" aria-live="polite"></div>
+          </div>
+        </article>
+        <p class="activity-note">Older manually marked paid records use their saved mark date. Student-reported payment labels are not included. Dates use your browser's local timezone.</p>
       </section>
 
       <section class="section" id="section-progress">
@@ -767,6 +974,284 @@
           <table><thead><tr><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Last student message</th><th>Texts received</th><th>Active days (30d)</th><th>Last delivery</th></tr></thead><tbody id="progress-rows"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody></table>
         </div>
       </section>
+
+      <section class="section" id="section-scheduled-lessons">
+        <div class="section-heading">
+          <div>
+            <h2>One-time lesson deliveries</h2>
+            <p>Schedule a lesson for a student using Sudan time (Africa/Khartoum). Scheduled sends need the WhatsApp agent to be running.</p>
+          </div>
+          <button class="pagination button" id="refresh-scheduled-lessons" type="button">Refresh</button>
+        </div>
+        <form class="panel scheduled-lesson-form" id="manual-schedule-form">
+          <label>Student
+            <select id="manual-schedule-student" required>
+              <option value="">Loading students…</option>
+            </select>
+          </label>
+          <label>Lesson
+            <select id="manual-schedule-lesson" required disabled>
+              <option value="">Select a student first</option>
+            </select>
+          </label>
+          <label>Send at (Sudan time)
+            <input id="manual-schedule-time" type="datetime-local" required>
+            <small>Time is interpreted as Africa/Khartoum, regardless of your device timezone.</small>
+          </label>
+          <button class="primary-button" id="manual-schedule-submit" type="submit">Schedule lesson</button>
+          <div id="manual-schedule-status" role="status" aria-live="polite" style="grid-column: 1 / -1"></div>
+        </form>
+        <article class="panel">
+          <div class="broadcast-jobs" id="scheduled-lessons-list" aria-live="polite">
+            <div class="empty">Loading scheduled lessons…</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="section" id="section-curriculum">
+        <div class="section-heading">
+          <div>
+            <h2>Curriculum &amp; Lessons (المناهج والدروس)</h2>
+            <p>Upload videos, configure tasks, and establish answer keys by stage and school year.</p>
+          </div>
+          <div class="top-actions">
+            <button class="primary-button" id="open-new-lesson-btn" type="button">+ Upload New Lesson</button>
+          </div>
+        </div>
+
+        <div class="curriculum-header-bar">
+          <div class="stage-nav-pills" id="curriculum-stage-tabs">
+            <button class="stage-pill active" type="button" data-stage="all">All Stages · جميع المراحل</button>
+            <button class="stage-pill" type="button" data-stage="primary">Primary · الابتدائية</button>
+            <button class="stage-pill" type="button" data-stage="intermediate">Intermediate · المتوسطة</button>
+            <button class="stage-pill" type="button" data-stage="secondary">Secondary · الثانوية</button>
+          </div>
+          <div class="curriculum-grade-select-wrapper">
+            <select id="curriculum-grade-quick-select" class="curriculum-grade-dropdown" aria-label="Select Stage and Grade">
+              <option value="">-- Jump to Grade (انتقل إلى الصف) --</option>
+              <optgroup label="المرحلة الثانوية (Secondary School)">
+                <option value="grade_3_secondary">الصف الثالث ثانوي (Secondary 3)</option>
+                <option value="grade_2_secondary">الصف الثاني ثانوي (Secondary 2)</option>
+                <option value="grade_1_secondary">الصف الأول ثانوي (Secondary 1)</option>
+              </optgroup>
+              <optgroup label="المرحلة المتوسطة (Intermediate School)">
+                <option value="grade_3_intermediate">الصف الثالث متوسط (Intermediate 3)</option>
+                <option value="grade_2_intermediate">الصف الثاني متوسط (Intermediate 2)</option>
+                <option value="grade_1_intermediate">الصف الأول متوسط (Intermediate 1)</option>
+              </optgroup>
+              <optgroup label="المرحلة الابتدائية (Primary School)">
+                <option value="grade_6_primary">الصف السادس ابتدائي (Primary 6)</option>
+                <option value="grade_5_primary">الصف الخامس ابتدائي (Primary 5)</option>
+                <option value="grade_4_primary">الصف الرابع ابتدائي (Primary 4)</option>
+                <option value="grade_3_primary">الصف الثالث ابتدائي (Primary 3)</option>
+                <option value="grade_2_primary">الصف الثاني ابتدائي (Primary 2)</option>
+                <option value="grade_1_primary">الصف الأول ابتدائي (Primary 1)</option>
+              </optgroup>
+            </select>
+          </div>
+          <span class="result-count" id="curriculum-overview-count">— lessons</span>
+        </div>
+
+        <!-- Stages & Grades Grid Overview -->
+        <div class="curriculum-stages-container" id="curriculum-stages-container">
+          <div class="empty">Loading curriculum stages and grades…</div>
+        </div>
+
+        <!-- Grade Detail View (Shown when a grade is selected) -->
+        <div class="panel grade-curriculum-panel" id="grade-curriculum-panel" hidden>
+          <div class="grade-head-banner">
+            <div class="grade-head-info">
+              <button class="back-link" id="curriculum-back-btn" type="button">← Back to Stages Overview</button>
+              <h2 id="curriculum-grade-title">Grade Title</h2>
+              <p id="curriculum-grade-meta" class="subheading">Stage · Lessons count</p>
+            </div>
+            <div class="grade-head-actions">
+              <button class="pagination button" id="grade-edit-keywords-btn" type="button">Edit Keywords</button>
+              <button class="primary-button" id="grade-add-lesson-btn" type="button">+ Add Lesson to Grade</button>
+            </div>
+          </div>
+
+          <div class="curriculum-keywords-bar" id="curriculum-keywords-bar"></div>
+
+          <div class="curriculum-lessons-list" id="curriculum-lessons-list">
+            <!-- Rendered dynamically -->
+          </div>
+          <section class="curriculum-lessons-list" id="treasure-island-panel" hidden>
+            <div class="lesson-section-heading">
+              <div>
+                <h3>Treasure Island</h3>
+                <p>Separate Grade 3 Secondary course. Students can ask for the available lesson titles and choose one.</p>
+              </div>
+              <button class="primary-button" id="add-treasure-island-lesson" type="button">+ Add Treasure Island Lesson</button>
+            </div>
+            <div id="treasure-island-lessons-list"></div>
+          </section>
+        </div>
+
+        <!-- Lesson Upload & Configuration Modal -->
+        <div class="modal-backdrop" id="lesson-modal" hidden>
+          <div class="modal-dialog lesson-modal-dialog">
+            <div class="modal-header">
+              <div>
+                <h2 id="lesson-modal-title">Upload &amp; Configure Lesson</h2>
+                <p class="subheading">Set stage, video, WhatsApp intro, task exercises, and AI answer keys.</p>
+              </div>
+              <button class="modal-close" id="close-lesson-modal-btn" type="button" aria-label="Close">✕</button>
+            </div>
+
+            <form class="lesson-modal-form" id="lesson-form">
+              <div class="form-row-grid">
+                <label for="lesson-form-grade">Stage &amp; Grade (المرحلة والصف)
+                  <select id="lesson-form-grade" required>
+                    <optgroup label="المرحلة الثانوية (Secondary School)">
+                      <option value="grade_3_secondary" selected>الصف الثالث ثانوي (Secondary 3)</option>
+                      <option value="grade_2_secondary">الصف الثاني ثانوي (Secondary 2)</option>
+                      <option value="grade_1_secondary">الصف الأول ثانوي (Secondary 1)</option>
+                    </optgroup>
+                    <optgroup label="المرحلة المتوسطة (Intermediate School)">
+                      <option value="grade_3_intermediate">الصف الثالث متوسط (Intermediate 3)</option>
+                      <option value="grade_2_intermediate">الصف الثاني متوسط (Intermediate 2)</option>
+                      <option value="grade_1_intermediate">الصف الأول متوسط (Intermediate 1)</option>
+                    </optgroup>
+                    <optgroup label="المرحلة الابتدائية (Primary School)">
+                      <option value="grade_6_primary">الصف السادس ابتدائي (Primary 6)</option>
+                      <option value="grade_5_primary">الصف الخامس ابتدائي (Primary 5)</option>
+                      <option value="grade_4_primary">الصف الرابع ابتدائي (Primary 4)</option>
+                      <option value="grade_3_primary">الصف الثالث ابتدائي (Primary 3)</option>
+                      <option value="grade_2_primary">الصف الثاني ابتدائي (Primary 2)</option>
+                      <option value="grade_1_primary">الصف الأول ابتدائي (Primary 1)</option>
+                    </optgroup>
+                  </select>
+                </label>
+                <label for="lesson-form-id">Lesson ID / Code (معرّف الحصة)
+                  <input type="text" id="lesson-form-id" placeholder="e.g. lesson_1" required>
+                  <small class="field-hint">e.g. lesson_1, lesson_2 (used for progress tracking)</small>
+                </label>
+                <label for="lesson-form-type">Lesson Type (نوع الحصة)
+                  <select id="lesson-form-type">
+                    <option value="sequential">Sequential Curriculum (منهج متسلسل)</option>
+                    <option value="standalone">Standalone / Review (حصة منفصلة / مراجعة)</option>
+                    <option value="treasure_island">Treasure Island Course (separate progress)</option>
+                  </select>
+                </label>
+              </div>
+
+              <label for="lesson-form-title">Lesson Title (عنوان الحصة)
+                <input type="text" id="lesson-form-title" placeholder="e.g. الحصة الأولى: المضارع البسيط المثبت مع المفرد (Present Simple Affirmative)" required>
+              </label>
+
+              <!-- Video Upload & Selection Section -->
+              <div class="curriculum-video-section">
+                <span class="section-sublabel">Lesson Video (فيديو الحصة)</span>
+                
+                <div class="video-options-tabs">
+                  <button type="button" class="tab-btn active" id="tab-video-upload">Upload New Video File</button>
+                  <button type="button" class="tab-btn" id="tab-video-existing">Pick Existing Video On Disk</button>
+                </div>
+
+                <!-- Video Upload Pane -->
+                <div class="video-upload-box" id="video-upload-pane">
+                  <div class="dropzone" id="lesson-video-dropzone">
+                    <span class="dropzone-icon">🎬</span>
+                    <strong>Click to select or drag &amp; drop video (.mp4, .mov, .webm)</strong>
+                    <small>Maximum size: 300 MB</small>
+                    <input type="file" id="lesson-video-file-input" accept="video/mp4,video/quicktime,video/webm,video/3gpp" style="display:none">
+                  </div>
+                  <div class="upload-progress-container" id="lesson-video-progress" hidden>
+                    <div class="progress-bar"><div class="progress-fill" id="lesson-video-progress-fill"></div></div>
+                    <span class="progress-text" id="lesson-video-progress-text">0%</span>
+                  </div>
+                </div>
+
+                <!-- Existing Video Selection Pane -->
+                <div class="video-existing-box" id="video-existing-pane" hidden>
+                  <select id="lesson-existing-video-select">
+                    <option value="">-- Choose a video found in this grade's media folder --</option>
+                  </select>
+                  <small class="field-hint">Files currently stored in media/lessons/&lt;grade&gt;/</small>
+                </div>
+
+                <!-- Selected Video Path Preview -->
+                <div class="selected-video-preview">
+                  <label for="lesson-form-video-path">Video Path:</label>
+                  <input type="text" id="lesson-form-video-path" placeholder="media/lessons/grade_3_secondary/lesson_1.mp4" readonly required>
+                  <span class="badge" id="selected-video-status">No video selected</span>
+                </div>
+              </div>
+
+              <!-- WhatsApp Messages Section -->
+              <div class="form-row-grid-2">
+                <label for="lesson-form-intro">WhatsApp Intro Message (رسالة التقديم)
+                  <textarea id="lesson-form-intro" rows="3" placeholder="يا هلا بيك! الحصة الأولى عن المضارع البسيط في الجملة المثبتة مع المفرد..."></textarea>
+                  <small class="field-hint">Sent to the student right before/with the video.</small>
+                </label>
+                <label for="lesson-form-caption">Video Caption (وصف الفيديو المرفق)
+                  <textarea id="lesson-form-caption" rows="3" placeholder="🎬 فيديو الحصة الأولى - الصف الثالث ثانوي | مستر مازن (eShool)"></textarea>
+                  <small class="field-hint">Appears under the video attachment on WhatsApp.</small>
+                </label>
+              </div>
+
+              <!-- Task / Exercises Section -->
+              <div class="curriculum-task-section">
+                <div class="task-head">
+                  <span class="section-sublabel">Task Questions &amp; Exercises (تمرين / واجب الحصة)</span>
+                  <button type="button" class="btn-micro" id="insert-task-template-btn">+ Insert Standard eShool Template</button>
+                </div>
+                <textarea id="lesson-form-task" rows="7" placeholder="📝 *تمرين الحصة (Task 1):*\n\n1. The analyst __________ (interpret) the survey results.\n2. A responsible engineer __________ (maintain) the equipment.\n\n✍️ رسل لي إجاباتك مرقّمة من 1 إلى 2 عشان أراجعها ليك." required></textarea>
+                <small class="field-hint">Delivered to the student on WhatsApp. The student will reply with their answers.</small>
+              </div>
+
+              <!-- AI Answer Key / Grading Rubric -->
+              <div class="curriculum-rubric-section">
+                <div class="rubric-head">
+                  <div>
+                    <span class="section-sublabel">AI Grading Rubric &amp; Answer Key (مفتاح الإجابات للتصحيح الآلي)</span>
+                    <small class="field-hint">Used by Mr. Mazen's AI evaluator to check answers and provide hints in Sudanese dialect.</small>
+                  </div>
+                  <div class="rubric-actions">
+                    <button type="button" class="btn-micro" id="add-rubric-item-btn">+ Add Question Key</button>
+                    <button type="button" class="btn-micro" id="toggle-rubric-mode-btn">Switch to Bulk Text</button>
+                  </div>
+                </div>
+
+                <div class="rubric-rows" id="rubric-rows-container">
+                  <!-- Dynamic answer rows -->
+                </div>
+
+                <div class="rubric-bulk-box" id="rubric-bulk-container" hidden>
+                  <textarea id="lesson-form-rubric-bulk" rows="6" placeholder="1. interprets — A singular subject; add -s.&#10;2. maintains — A singular subject; add -s."></textarea>
+                  <small class="field-hint">One question answer and explanation per line.</small>
+                </div>
+              </div>
+
+              <div class="modal-footer">
+                <span class="chat-message-status" id="lesson-form-status" aria-live="polite"></span>
+                <div class="footer-buttons">
+                  <button class="pagination button" id="cancel-lesson-modal-btn" type="button">Cancel</button>
+                  <button class="primary-button" id="save-lesson-btn" type="submit">Save &amp; Publish Lesson</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- WhatsApp Preview Modal -->
+        <div class="modal-backdrop" id="preview-modal" hidden>
+          <div class="modal-dialog preview-modal-dialog">
+            <div class="modal-header">
+              <h3>WhatsApp Delivery Preview · معاينة رسائل الطالب</h3>
+              <button class="modal-close" id="close-preview-modal-btn" type="button" aria-label="Close">✕</button>
+            </div>
+            <div class="phone-mockup">
+              <div class="phone-header">
+                <div class="phone-avatar">M</div>
+                <div class="phone-contact"><strong>مستر مازن (eShool)</strong><small>Online</small></div>
+              </div>
+              <div class="phone-chat" id="preview-chat-body"></div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -790,6 +1275,17 @@
     let esActivityJid = '';
     let esActivityName = '';
     let esActivityDays = 30;
+    let paymentCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    let paymentCalendarSelectedDate = new Date();
+    let paymentCalendarPayments = [];
+    const PAYMENT_MONTHLY_AMOUNT_SDG = 17000;
+    const PAYMENT_USD_RATE_STORAGE_KEY = 'eshool-payment-sdg-per-usd';
+    let paymentSdgPerUsd = '';
+    try {
+      paymentSdgPerUsd = localStorage.getItem(PAYMENT_USD_RATE_STORAGE_KEY) || '';
+    } catch (error) {
+      console.warn('[Payments] Could not read saved USD conversion rate:', error.message);
+    }
     let searchTimer;
     let contactSearchTimer;
     let pendingBroadcastAttachments = [];
@@ -806,6 +1302,17 @@
     let dashboardPollTimer = null;
     let agentPollTimer = null;
     let pendingAgentReplyMode = null;
+    let pendingAgentQueuePause = null;
+    const pendingQueueCancellations = new Set();
+    let showAllAgentMediaActivities = false;
+    const AGENT_MEDIA_PREVIEW_COUNT = 3;
+    const DASHBOARD_CACHE_PREFIX = 'eshool-dashboard-cache:v1:';
+    const DASHBOARD_CACHE_TTL_MS = 60_000;
+    const DASHBOARD_CACHE_MAX_ENTRY_CHARS = 500_000;
+    const DASHBOARD_CACHE_MAX_TOTAL_CHARS = 2_000_000;
+    const DASHBOARD_CACHE_MAX_ENTRIES = 24;
+    const dashboardApiRequests = new Map();
+    let dashboardCacheGeneration = 0;
     const $ = selector => document.querySelector(selector);
 
     function showError(message) {
@@ -842,20 +1349,137 @@
       }
     });
 
+    function dashboardApiCacheKey(path) {
+      const url = new URL(path, window.location.origin);
+      if (!/^\/api\/admin\/(overview|progress|es-contacts|blocked-contacts|curriculum(?:\/grade)?|payment-calendar|scheduled-lessons(?:\/options)?)$/.test(url.pathname)) {
+        return null;
+      }
+      return `${DASHBOARD_CACHE_PREFIX}${url.pathname}${url.search}`;
+    }
+
+    function clearDashboardApiCache() {
+      dashboardCacheGeneration += 1;
+      try {
+        for (const key of Array.from({ length: sessionStorage.length }, (_, index) =>
+          sessionStorage.key(index))) {
+          if (key?.startsWith(DASHBOARD_CACHE_PREFIX)) sessionStorage.removeItem(key);
+        }
+      } catch (error) {
+        console.warn('[Dashboard Cache] Could not clear browser session cache:', error.message);
+      }
+    }
+
+    function readDashboardApiCache(key) {
+      if (!key) return null;
+      try {
+        const serialized = sessionStorage.getItem(key);
+        if (!serialized) return null;
+        const entry = JSON.parse(serialized);
+        if (!Number.isFinite(entry.cachedAt) ||
+            Date.now() - entry.cachedAt > DASHBOARD_CACHE_TTL_MS ||
+            Date.now() < entry.cachedAt ||
+            !Object.hasOwn(entry, 'data')) {
+          sessionStorage.removeItem(key);
+          return null;
+        }
+        return entry.data;
+      } catch (error) {
+        console.warn('[Dashboard Cache] Could not read browser session cache:', error.message);
+        return null;
+      }
+    }
+
+    function writeDashboardApiCache(key, data) {
+      if (!key) return;
+      try {
+        const serialized = JSON.stringify({ cachedAt: Date.now(), data });
+        if (serialized.length > DASHBOARD_CACHE_MAX_ENTRY_CHARS) return;
+        const entries = Array.from({ length: sessionStorage.length }, (_, index) => {
+          const entryKey = sessionStorage.key(index);
+          if (!entryKey?.startsWith(DASHBOARD_CACHE_PREFIX)) return null;
+          const value = sessionStorage.getItem(entryKey);
+          return value === null ? null : { key: entryKey, value };
+        }).filter(Boolean);
+        for (const entry of entries) {
+          try {
+            const value = JSON.parse(entry.value);
+            if (!Number.isFinite(value.cachedAt) ||
+                Date.now() - value.cachedAt > DASHBOARD_CACHE_TTL_MS ||
+                Date.now() < value.cachedAt) {
+              sessionStorage.removeItem(entry.key);
+              entry.value = '';
+            }
+          } catch (error) {
+            console.warn('[Dashboard Cache] Removing invalid browser session cache:', error.message);
+            sessionStorage.removeItem(entry.key);
+            entry.value = '';
+          }
+        }
+        let activeEntries = entries.filter(entry => entry.value);
+        let totalChars = activeEntries.reduce((total, entry) => total + entry.value.length, 0);
+        while (activeEntries.some(entry => entry.key === key)) {
+          const existing = activeEntries.find(entry => entry.key === key);
+          totalChars -= existing.value.length;
+          sessionStorage.removeItem(existing.key);
+          activeEntries = activeEntries.filter(entry => entry !== existing);
+        }
+        while (activeEntries.length >= DASHBOARD_CACHE_MAX_ENTRIES ||
+               totalChars + serialized.length > DASHBOARD_CACHE_MAX_TOTAL_CHARS) {
+          const oldest = activeEntries.shift();
+          if (!oldest) break;
+          totalChars -= oldest.value.length;
+          sessionStorage.removeItem(oldest.key);
+        }
+        sessionStorage.setItem(key, serialized);
+      } catch (error) {
+        console.warn('[Dashboard Cache] Could not save browser session cache:', error.message);
+      }
+    }
+
     async function api(path, options = {}) {
-      const response = await fetch(path, {
-        headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
-        cache: 'no-store',
-        credentials: 'same-origin',
-        ...options
-      });
-      const data = await response.json();
-      if (response.status === 401) showAuthenticationScreen(false);
-      if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
-      return data;
+      const method = (options.method || 'GET').toUpperCase();
+      const cacheKey = method === 'GET' && !options.body
+        ? dashboardApiCacheKey(path)
+        : null;
+      if (cacheKey) {
+        const cachedData = readDashboardApiCache(cacheKey);
+        if (cachedData !== null) return cachedData;
+        if (dashboardApiRequests.has(cacheKey)) return dashboardApiRequests.get(cacheKey);
+      }
+
+      const cacheGeneration = dashboardCacheGeneration;
+      const request = (async () => {
+        const response = await fetch(path, {
+          headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
+          cache: 'no-store',
+          credentials: 'same-origin',
+          ...options
+        });
+        const data = await response.json();
+        if (response.status === 401) {
+          clearDashboardApiCache();
+          showAuthenticationScreen(false);
+        }
+        if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+        if (cacheKey && cacheGeneration === dashboardCacheGeneration) {
+          writeDashboardApiCache(cacheKey, data);
+        } else if (method !== 'GET') {
+          clearDashboardApiCache();
+        }
+        return data;
+      })();
+      if (cacheKey) dashboardApiRequests.set(cacheKey, request);
+      try {
+        return await request;
+      } finally {
+        if (cacheKey && dashboardApiRequests.get(cacheKey) === request) {
+          dashboardApiRequests.delete(cacheKey);
+        }
+      }
     }
 
     function showAuthenticationScreen(setupRequired) {
+      clearDashboardApiCache();
       if (dashboardEvents) dashboardEvents.close();
       dashboardEvents = null;
       if (dashboardPollTimer) clearInterval(dashboardPollTimer);
@@ -895,14 +1519,15 @@
       dashboardEvents.addEventListener('dashboard-update', event => {
         try {
           const update = JSON.parse(event.data);
+          clearDashboardApiCache();
           scheduleDashboardRefresh(Array.isArray(update.files) ? update.files : []);
         } catch (error) {
           showError(`Could not process dashboard update: ${error.message}`);
         }
       });
-      dashboardPollTimer = setInterval(refreshAll, 15000);
+      dashboardPollTimer = setInterval(() => refreshAll({ clearCache: true }), 15000);
       agentPollTimer = setInterval(() => {
-        if (handledChatsOnly) {
+        if (handledChatsOnly && !$('#agent-media-panel').hidden) {
           loadAgentLogs().catch(error => showError(`Could not refresh WhatsApp agent log: ${error.message}`));
           loadAgentConversation().catch(error => showError(`Could not refresh recent agent messages: ${error.message}`));
           loadAgentMediaActivity().catch(error => showError(`Could not refresh media delivery status: ${error.message}`));
@@ -921,7 +1546,7 @@
         if (!indicator) return;
         indicator.textContent = 'Live updates on';
         indicator.classList.remove('reconnecting');
-        refreshAll();
+        refreshAll({ clearCache: true });
       });
       dashboardEvents.addEventListener('dashboard-update', () => {
         const indicator = $('#live-update-status');
@@ -1021,6 +1646,10 @@
     }
 
     async function uploadBroadcastAttachment(file, { voiceNote = false, previewBlob = file } = {}) {
+      const maxFileBytes = 300 * 1024 * 1024;
+      if (file.size > maxFileBytes) {
+        throw new Error('Attachments must be 300 MB or smaller.');
+      }
       const mimeType = getFileMimeType(file);
       const previewUrl = previewBlob ? URL.createObjectURL(previewBlob) : '';
       const pendingAttachment = {
@@ -1244,6 +1873,43 @@
         : { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
     }
 
+    function formatSudanSchedule(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return 'Invalid time';
+      return new Intl.DateTimeFormat(undefined, {
+        timeZone: 'Africa/Khartoum',
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      }).format(date);
+    }
+
+    function sudanDateTimeInput(value) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Khartoum',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23'
+      }).formatToParts(new Date(value));
+      const fields = Object.fromEntries(parts.filter(part => part.type !== 'literal')
+        .map(part => [part.type, part.value]));
+      return `${fields.year}-${fields.month}-${fields.day}T${fields.hour}:${fields.minute}`;
+    }
+
+    function paymentCalendarDateKey(date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    function paymentCoverageEnd(paidAt) {
+      const paidDate = new Date(paidAt);
+      const nextMonth = new Date(paidDate.getFullYear(), paidDate.getMonth() + 1, 1);
+      const finalDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+      nextMonth.setDate(Math.min(paidDate.getDate(), finalDay));
+      return nextMonth;
+    }
+
     function presenceMarkup(presence, { alwaysShow = false } = {}) {
       if (presence?.status === 'online') {
         return '<span class="presence-state online" title="WhatsApp presence is subject to the contact’s privacy settings."><i></i>Online</span>';
@@ -1280,14 +1946,14 @@
         throw new Error('Weekly chat activity data is incomplete.');
       }
       const width = 760;
-      const height = 230;
+      const height = 250;
       const left = 42;
       const right = 18;
-      const top = 18;
-      const bottom = 46;
+      const top = 30;
+      const bottom = 56;
       const plotWidth = width - left - right;
       const plotHeight = height - top - bottom;
-      const maximum = Math.max(1, ...days.map(day => day.chats));
+      const maximum = Math.max(1, ...days.flatMap(day => [day.chats, day.newChats]));
       const ticks = [...new Set([0, Math.ceil(maximum / 2), maximum])];
       const grid = ticks.map(value => {
         const y = top + plotHeight - (value / maximum) * plotHeight;
@@ -1296,27 +1962,31 @@
       const points = days.map((day, index) => {
         const x = left + index * (plotWidth / (days.length - 1));
         const y = top + plotHeight - (day.chats / maximum) * plotHeight;
-        return { ...day, x, y };
+        const newY = top + plotHeight - (day.newChats / maximum) * plotHeight;
+        return { ...day, x, y, newY };
       });
       const line = points.map(point => `${point.x},${point.y}`).join(' ');
+      const newLine = points.map(point => `${point.x},${point.newY}`).join(' ');
       const marks = points.map(point => {
         const labelDate = new Intl.DateTimeFormat(undefined, {
           month: 'numeric',
           day: 'numeric',
           timeZone: 'UTC'
         }).format(new Date(`${point.date}T00:00:00Z`));
-        const description = `${point.day}, ${labelDate}: ${point.chats} ${point.chats === 1 ? 'chat' : 'chats'}`;
-        return `<circle class="weekly-chat-point" cx="${point.x}" cy="${point.y}" r="5"><title>${escapeHtml(description)}</title></circle><text x="${point.x}" y="${height - 23}" text-anchor="middle">${escapeHtml(point.day)}</text><text x="${point.x}" y="${height - 9}" text-anchor="middle">${escapeHtml(labelDate)}</text>`;
+        const description = `${point.day}, ${labelDate}: ${point.chats} active ${point.chats === 1 ? 'chat' : 'chats'}, ${point.newChats} new`;
+        return `<circle class="weekly-chat-point" cx="${point.x}" cy="${point.y}" r="5"><title>${escapeHtml(description)}</title></circle><circle class="weekly-chat-new-point" cx="${point.x}" cy="${point.newY}" r="4"><title>${escapeHtml(description)}</title></circle><text class="weekly-chat-count weekly-chat-count-all" x="${point.x}" y="${point.y - 10}" text-anchor="middle">${point.chats}</text><text class="weekly-chat-count weekly-chat-count-new" x="${point.x}" y="${point.newY + 16}" text-anchor="middle">${point.newChats}</text><text x="${point.x}" y="${height - 23}" text-anchor="middle">${escapeHtml(point.day)}</text><text x="${point.x}" y="${height - 9}" text-anchor="middle">${escapeHtml(labelDate)}</text>`;
       }).join('');
       container.innerHTML = `
-        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Number of unique chats with incoming messages for each of the last seven days">
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Daily active chats and new conversations for the last seven days">
           ${grid}
           <polyline class="weekly-chat-line" points="${line}"></polyline>
+          <polyline class="weekly-chat-new-line" points="${newLine}"></polyline>
           ${marks}
         </svg>`;
       const total = days.reduce((sum, day) => sum + day.chats, 0);
+      const newTotal = days.reduce((sum, day) => sum + day.newChats, 0);
       $('#weekly-chat-summary').textContent =
-        `${total.toLocaleString()} chat-days over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
+        `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
     }
 
     async function loadOverview() {
@@ -1789,6 +2459,19 @@
       $('#agent-status-dot').className = `agent-status-dot ${status.connectionState}`;
       $('#agent-disconnect').disabled =
         !['connected', 'connecting'].includes(status.connectionState);
+      const queueToggle = $('#agent-queue-toggle');
+      if (pendingAgentQueuePause !== null &&
+          (status.connectionState !== 'connected' || status.queuePaused === pendingAgentQueuePause)) {
+        pendingAgentQueuePause = null;
+      }
+      queueToggle.disabled = status.connectionState !== 'connected' || pendingAgentQueuePause !== null;
+      queueToggle.textContent = pendingAgentQueuePause !== null
+        ? pendingAgentQueuePause ? 'Pausing…' : 'Resuming…'
+        : status.queuePaused ? 'Resume handling' : 'Pause handling';
+      queueToggle.setAttribute('aria-label', status.queuePaused
+        ? 'Resume handling queued student chats'
+        : 'Pause handling new student chats');
+      $('#agent-queue-paused').hidden = !status.queuePaused;
       const repliesButton = $('#agent-replies');
       if (pendingAgentReplyMode !== null &&
           (status.connectionState !== 'connected' || status.respondingEnabled === pendingAgentReplyMode)) {
@@ -1864,9 +2547,16 @@
       const detail = document.createElement('div');
       detail.className = 'agent-queue-detail';
       identity.append(name, detail);
+      const actions = document.createElement('div');
+      actions.className = 'agent-queue-actions';
       const state = document.createElement('span');
       state.className = 'agent-queue-state';
-      item.append(position, identity, state);
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'agent-queue-cancel';
+      cancel.textContent = 'Cancel';
+      actions.append(state, cancel);
+      item.append(position, identity, actions);
       return item;
     }
 
@@ -1901,9 +2591,14 @@
         item.querySelector('.agent-queue-position').textContent = `#${row.position}`;
         item.querySelector('.agent-queue-name').textContent = row.name || row.jid;
         item.querySelector('.agent-queue-detail').textContent = row.active
-          ? `Handling · ${formatQueueDuration(row.startedAt || row.queuedAt)}`
-          : `Waiting · ${formatQueueDuration(row.queuedAt)}`;
+          ? `Started ${formatDate(row.startedAt || row.queuedAt)} · handling ${formatQueueDuration(row.startedAt || row.queuedAt)}`
+          : `Received ${formatDate(row.queuedAt)} · waiting ${formatQueueDuration(row.queuedAt)}`;
         item.querySelector('.agent-queue-state').textContent = row.active ? 'Handling now' : 'Waiting';
+        const cancelButton = item.querySelector('.agent-queue-cancel');
+        cancelButton.hidden = row.active;
+        cancelButton.dataset.cancelQueueJid = row.active ? '' : row.jid;
+        cancelButton.disabled = pendingQueueCancellations.has(row.jid);
+        cancelButton.textContent = pendingQueueCancellations.has(row.jid) ? 'Cancelling…' : 'Cancel';
         nextItems.push(item);
       }
 
@@ -1937,15 +2632,34 @@
 
     async function loadAgentQueue() {
       if (!handledChatsOnly) return;
-      renderAgentQueue(await api('/api/admin/chat-queue'));
+      const queue = await api('/api/admin/chat-queue');
+      const waitingJids = new Set((queue.waiting || []).map(entry => entry.jid));
+      for (const jid of pendingQueueCancellations) {
+        if (!waitingJids.has(jid)) pendingQueueCancellations.delete(jid);
+      }
+      renderAgentQueue(queue);
+      $('#agent-queue-paused').hidden = !queue.paused;
+      const queueToggle = $('#agent-queue-toggle');
+      if (pendingAgentQueuePause !== null && queue.paused === pendingAgentQueuePause) {
+        pendingAgentQueuePause = null;
+      }
+      queueToggle.disabled = pendingAgentQueuePause !== null;
+      if (pendingAgentQueuePause !== null) {
+        queueToggle.textContent = pendingAgentQueuePause ? 'Pausing…' : 'Resuming…';
+      } else {
+        queueToggle.textContent = queue.paused ? 'Resume handling' : 'Pause handling';
+      }
     }
 
     async function loadAgentMediaActivity() {
       if (!handledChatsOnly) return;
       const { activities } = await api('/api/admin/agent-media');
       const container = $('#agent-media-list');
+      const moreButton = $('#agent-media-more');
       if (!activities.length) {
         container.innerHTML = '<div class="agent-media-empty">No video or media has been sent since activity tracking was enabled.</div>';
+        moreButton.hidden = true;
+        moreButton.setAttribute('aria-expanded', 'false');
         return;
       }
 
@@ -1960,9 +2674,13 @@
         queued: 'Queued',
         uploading: 'Uploading',
         sent: 'Sent',
-        failed: 'Failed'
+        failed: 'Failed',
+        retrying: 'Retrying'
       };
-      container.innerHTML = activities.map(activity => {
+      const visibleActivities = showAllAgentMediaActivities
+        ? activities
+        : activities.slice(0, AGENT_MEDIA_PREVIEW_COUNT);
+      container.innerHTML = visibleActivities.map(activity => {
         const percent = Number.isFinite(activity.percent)
           ? Math.max(0, Math.min(100, activity.percent))
           : null;
@@ -1973,13 +2691,164 @@
           ? 'Preparing upload…'
           : `${percent}% · ${size}`;
         const mediaName = labels[activity.mediaType] || 'Media';
+        const studentName = activity.studentName || activity.recipientJid || 'Student';
+        const canRetry = activity.status === 'failed' && activity.retryAvailable;
+        const retryError = activity.retryError
+          ? `<span class="agent-media-error">${escapeHtml(activity.retryError)}</span>`
+          : '';
         return `
           <div class="agent-media-item ${escapeHtml(activity.status)}">
-            <div class="agent-media-top"><span>${escapeHtml(mediaName)} · ${escapeHtml(activity.description || 'WhatsApp media')}</span><span class="agent-media-status">${escapeHtml(statuses[activity.status] || activity.status)}</span></div>
-            <div class="agent-media-progress" role="progressbar" aria-label="${escapeHtml(mediaName)} upload progress" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div>
+            <div class="agent-media-top"><span>${escapeHtml(studentName)} · ${escapeHtml(mediaName)} · ${escapeHtml(activity.description || 'WhatsApp media')}</span><span class="agent-media-status">${escapeHtml(statuses[activity.status] || activity.status)}</span></div>
+            <div class="agent-media-progress" role="progressbar" aria-label="${escapeHtml(studentName)} ${escapeHtml(mediaName)} upload progress" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div>
             <div class="agent-media-meta"><span>${escapeHtml(activity.recipientJid || 'Recipient unavailable')}</span><span>${escapeHtml(progressLabel)} · ${formatDate(activity.updatedAt)}</span></div>
+            ${canRetry || retryError ? `<div class="agent-media-actions">${canRetry ? `<button class="agent-media-retry" type="button" data-retry-id="${escapeHtml(activity.id)}">Resend video</button>` : '<span></span>'}${retryError}</div>` : ''}
           </div>`;
       }).join('');
+      moreButton.hidden = activities.length <= AGENT_MEDIA_PREVIEW_COUNT;
+      moreButton.setAttribute('aria-expanded', String(showAllAgentMediaActivities));
+      moreButton.textContent = showAllAgentMediaActivities
+        ? 'Show less'
+        : `Show more (${activities.length - AGENT_MEDIA_PREVIEW_COUNT})`;
+      container.onclick = async event => {
+        const button = event.target.closest('.agent-media-retry');
+        if (!button) return;
+        const activityId = button.dataset.retryId;
+        button.disabled = true;
+        button.textContent = 'Queuing…';
+        try {
+          await api(`/api/admin/agent-media/${encodeURIComponent(activityId)}/retry`, {
+            method: 'POST',
+            body: JSON.stringify({})
+          });
+          await loadAgentMediaActivity();
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = 'Resend video';
+          const row = button.closest('.agent-media-item');
+          const actions = button.closest('.agent-media-actions');
+          let message = actions.querySelector('.agent-media-error');
+          if (!message) {
+            message = document.createElement('span');
+            message.className = 'agent-media-error';
+            actions.append(message);
+          }
+          message.textContent = error.message;
+          row?.classList.add('failed');
+        }
+      };
+    }
+
+    function renderPaymentCalendar() {
+      const monthLabel = new Intl.DateTimeFormat(undefined, {
+        month: 'long',
+        year: 'numeric'
+      }).format(paymentCalendarMonth);
+      $('#payment-calendar-month').textContent = monthLabel;
+      renderPaymentSummary(monthLabel);
+      const selectedKey = paymentCalendarDateKey(paymentCalendarSelectedDate);
+      const paymentsByDate = new Map();
+      for (const payment of paymentCalendarPayments) {
+        const date = new Date(payment.paidAt);
+        if (Number.isNaN(date.getTime())) continue;
+        const key = paymentCalendarDateKey(date);
+        if (!paymentsByDate.has(key)) paymentsByDate.set(key, []);
+        paymentsByDate.get(key).push(payment);
+      }
+
+      const weekdays = Array.from({ length: 7 }, (_, index) =>
+        new Intl.DateTimeFormat(undefined, { weekday: 'short' })
+          .format(new Date(2024, 0, 7 + index)));
+      const firstOfMonth = new Date(
+        paymentCalendarMonth.getFullYear(),
+        paymentCalendarMonth.getMonth(),
+        1
+      );
+      const start = new Date(
+        firstOfMonth.getFullYear(),
+        firstOfMonth.getMonth(),
+        1 - firstOfMonth.getDay()
+      );
+      const cells = Array.from({ length: 42 }, (_, index) => {
+        const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
+        const key = paymentCalendarDateKey(date);
+        const payments = paymentsByDate.get(key) || [];
+        const outsideMonth = date.getMonth() !== paymentCalendarMonth.getMonth();
+        const dayLabel = new Intl.DateTimeFormat(undefined, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }).format(date);
+        const countLabel = payments.length
+          ? `${payments.length} student${payments.length === 1 ? '' : 's'} marked paid`
+          : 'No payments marked';
+        return `<button class="payment-calendar-day${outsideMonth ? ' outside-month' : ''}${payments.length ? ' has-payments' : ''}${key === selectedKey ? ' selected' : ''}" type="button" data-payment-date="${key}" aria-label="${escapeHtml(dayLabel)} · ${escapeHtml(countLabel)}" aria-pressed="${key === selectedKey}"><span>${date.getDate()}</span>${payments.length ? `<span class="payment-calendar-count">${payments.length} paid</span>` : ''}</button>`;
+      });
+      $('#payment-calendar-grid').innerHTML = [
+        ...weekdays.map(day => `<span class="payment-calendar-weekday">${escapeHtml(day)}</span>`),
+        ...cells
+      ].join('');
+
+      const selectedDate = paymentCalendarDateKey(paymentCalendarSelectedDate);
+      $('#payment-calendar-selected-date').textContent = new Intl.DateTimeFormat(undefined, {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }).format(paymentCalendarSelectedDate);
+      const selectedPayments = (paymentsByDate.get(selectedDate) || [])
+        .sort((left, right) => Date.parse(right.paidAt) - Date.parse(left.paidAt));
+      $('#payment-calendar-list').innerHTML = selectedPayments.length
+        ? selectedPayments.map(payment => {
+          const coverageEnd = paymentCoverageEnd(payment.paidAt);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const coverageStatus = coverageEnd < today
+            ? 'One-month period ended'
+            : 'One-month period through';
+          return `<article class="payment-calendar-entry"><div><strong>${escapeHtml(payment.studentName || payment.phoneNumber)}</strong><small>${escapeHtml(payment.phoneNumber)} · Marked paid ${escapeHtml(formatDate(payment.paidAt))}</small></div><small>${coverageStatus} ${escapeHtml(formatDate(coverageEnd, false))}</small></article>`;
+        }).join('')
+        : '<div class="payment-calendar-empty">No students were marked paid on this date.</div>';
+    }
+
+    function renderPaymentSummary(monthLabel) {
+      const monthPayments = paymentCalendarPayments.filter(payment => {
+        const paidAt = new Date(payment.paidAt);
+        return !Number.isNaN(paidAt.getTime()) &&
+          paidAt.getFullYear() === paymentCalendarMonth.getFullYear() &&
+          paidAt.getMonth() === paymentCalendarMonth.getMonth();
+      });
+      const paidStudents = new Set(monthPayments.map(payment =>
+        payment.phoneNumber || payment.jid
+      ).filter(Boolean));
+      const count = paidStudents.size;
+      const totalSdg = count * PAYMENT_MONTHLY_AMOUNT_SDG;
+      const formatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+      const usdFormatter = new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: 'USD'
+      });
+      const rate = Number(paymentSdgPerUsd);
+
+      $('#payment-month-student-count').textContent = formatter.format(count);
+      $('#payment-month-sdg-total').textContent = `${formatter.format(totalSdg)} SDG`;
+      $('#payment-usd-rate').value = paymentSdgPerUsd;
+      $('#payment-rate-status').textContent = '';
+      if (Number.isFinite(rate) && rate > 0) {
+        $('#payment-month-usd-total').textContent = usdFormatter.format(totalSdg / rate);
+      } else {
+        $('#payment-month-usd-total').textContent = 'Enter rate';
+        $('#payment-rate-status').textContent = 'Enter a rate greater than zero to calculate the USD equivalent.';
+      }
+      $('#payment-month-student-count').parentElement.setAttribute(
+        'aria-label',
+        `${formatter.format(count)} student${count === 1 ? '' : 's'} paid in ${monthLabel}`
+      );
+    }
+
+    async function loadPaymentCalendar() {
+      const { payments } = await api('/api/admin/payment-calendar');
+      paymentCalendarPayments = payments;
+      renderPaymentCalendar();
     }
 
     async function loadAgentQr() {
@@ -2127,12 +2996,13 @@
       const { blockedNumbers } = await api('/api/admin/blocked-contacts');
       $('#blocked-contact-rows').innerHTML = blockedNumbers.length ? blockedNumbers.map(record => `
         <tr>
+          <td>${escapeHtml(record.name || 'Unknown contact')}</td>
           <td dir="ltr">${escapeHtml(record.number)}</td>
           <td>${record.reason === 'deleted' ? 'Deleted locally and blocked' : 'Banned'}</td>
           <td>${escapeHtml(formatDate(record.blockedAt))}</td>
           <td><button type="button" data-contact-action="unblock" data-phone-number="${escapeHtml(record.number)}">Allow again</button></td>
         </tr>`).join('') :
-        '<tr><td colspan="4" class="empty">No banned or deleted numbers.</td></tr>';
+        '<tr><td colspan="5" class="empty">No banned or deleted numbers.</td></tr>';
     }
 
     function selectedRecipientCount() {
@@ -2150,7 +3020,78 @@
       }).join('') : '<div class="empty">No bulk messages queued.</div>';
     }
 
-    async function refreshAll() {
+    async function loadScheduledLessons() {
+      const { schedules } = await api('/api/admin/scheduled-lessons');
+      $('#scheduled-lessons-list').innerHTML = schedules.length ? schedules.map(schedule => {
+        const active = schedule.status === 'scheduled';
+        const actions = active
+          ? `<button type="button" data-scheduled-action="reschedule" data-scheduled-id="${escapeHtml(schedule.id)}">Edit time</button><button type="button" data-scheduled-action="send_now" data-scheduled-id="${escapeHtml(schedule.id)}">Send now</button><button type="button" data-scheduled-action="cancel" data-scheduled-id="${escapeHtml(schedule.id)}">Cancel</button>`
+          : '';
+        return `<div class="broadcast-job"><div><strong>${escapeHtml(schedule.lessonTitle)} · ${escapeHtml(schedule.studentName || schedule.jid)}</strong><small>${escapeHtml(schedule.status.replaceAll('_', ' '))} · ${escapeHtml(formatSudanSchedule(schedule.scheduledAt))} Sudan time · ${escapeHtml(schedule.gradeKey)}</small>${schedule.error ? `<small>${escapeHtml(schedule.error)}</small>` : ''}</div><div class="top-actions">${actions}</div></div>`;
+      }).join('') : '<div class="empty">No lesson deliveries are scheduled.</div>';
+    }
+
+    let manualScheduleOptions = { students: [], lessons: [] };
+
+    function updateManualScheduleLessons() {
+      const student = manualScheduleOptions.students.find(item =>
+        item.jid === $('#manual-schedule-student').value);
+      const lessons = student?.gradeKey
+        ? manualScheduleOptions.lessons.filter(lesson => lesson.gradeKey === student.gradeKey)
+        : manualScheduleOptions.lessons;
+      const select = $('#manual-schedule-lesson');
+      select.innerHTML = lessons.length
+        ? `<option value="">Choose a lesson…</option>${lessons.map(lesson =>
+          `<option value="${escapeHtml(lesson.gradeKey)}|${escapeHtml(lesson.lessonId)}">${escapeHtml(lesson.gradeName)} · ${escapeHtml(lesson.title)}</option>`
+        ).join('')}`
+        : '<option value="">No configured lessons available for this student</option>';
+      select.disabled = lessons.length === 0;
+    }
+
+    async function loadManualScheduleOptions() {
+      try {
+        const result = await api('/api/admin/scheduled-lessons/options');
+        manualScheduleOptions = result;
+        const select = $('#manual-schedule-student');
+        const selectedJid = select.value;
+        select.innerHTML = result.students.length
+          ? `<option value="">Choose a student…</option>${result.students.map(student =>
+            `<option value="${escapeHtml(student.jid)}">${escapeHtml(student.name)}${student.gradeKey ? ` · ${escapeHtml(student.gradeKey)}` : ''}</option>`
+          ).join('')}`
+          : '<option value="">No direct-chat students found</option>';
+        if (result.students.some(student => student.jid === selectedJid)) {
+          select.value = selectedJid;
+        }
+        updateManualScheduleLessons();
+        const time = $('#manual-schedule-time');
+        if (!time.value) {
+          time.min = sudanDateTimeInput(new Date());
+          time.value = sudanDateTimeInput(new Date(Date.now() + 60 * 60_000));
+        }
+      } catch (error) {
+        $('#manual-schedule-status').textContent = `Could not load students and lessons: ${error.message}`;
+      }
+    }
+
+    function parseSudanScheduleInput(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+      if (!match) throw new Error('Choose a valid date and time in Sudan time.');
+      const [year, month, day, hour, minute] = match.slice(1).map(Number);
+      const utcMilliseconds = Date.UTC(year, month - 1, day, hour - 2, minute);
+      const sudanTime = new Date(utcMilliseconds + 2 * 60 * 60_000);
+      if (sudanTime.getUTCFullYear() !== year ||
+          sudanTime.getUTCMonth() !== month - 1 ||
+          sudanTime.getUTCDate() !== day ||
+          sudanTime.getUTCHours() !== hour ||
+          sudanTime.getUTCMinutes() !== minute) {
+        throw new Error('Choose a valid date and time in Sudan time.');
+      }
+      if (utcMilliseconds <= Date.now()) throw new Error('Choose a time in the future.');
+      return new Date(utcMilliseconds).toISOString();
+    }
+
+    async function refreshAll({ clearCache = false } = {}) {
+      if (clearCache) clearDashboardApiCache();
       showError('');
       try {
         await Promise.all([
@@ -2160,8 +3101,11 @@
           loadEsContacts(),
           loadBlockedContacts(),
           loadBroadcastJobs(),
+          loadScheduledLessons(),
+          loadManualScheduleOptions(),
           loadAgentStatus(),
-          loadWorkbookStatus()
+          loadWorkbookStatus(),
+          loadCurriculumOverview().catch(() => {})
         ]);
         if (selectedJid) await loadConversation(selectedJid);
       } catch (error) {
@@ -2194,18 +3138,24 @@
         }
         if (has('contacts.json', 'followup_state.json', 'blocked_contacts.json', 'contact_gender.json', 'contact_payment_labels.json')) {
           tasks.push(loadOverview(), loadEsContacts(), loadBlockedContacts());
+          if (document.querySelector('#section-payment-calendar').classList.contains('active')) {
+            tasks.push(loadPaymentCalendar());
+          }
         }
         if (has('student_progress.json', 'lessons.json')) {
-            tasks.push(loadOverview(), loadProgress(), loadWorkbookStatus());
+            tasks.push(loadOverview(), loadProgress(), loadWorkbookStatus(), loadCurriculumOverview());
         }
           if (has('contacts.json', 'chat_history.json', 'students.xlsx')) tasks.push(loadWorkbookStatus());
         if (has('agent_status.json')) tasks.push(loadAgentStatus());
         if (has('agent_qr.json') && handledChatsOnly) tasks.push(loadAgentQr());
-        if (has('agent_media_activity.json') && handledChatsOnly) tasks.push(loadAgentMediaActivity());
+        if (has('agent_media_activity.json') &&
+            handledChatsOnly &&
+            !$('#agent-media-panel').hidden) tasks.push(loadAgentMediaActivity());
         if (has('incoming_chat_queue.json') && handledChatsOnly) tasks.push(loadAgentQueue());
         if (has('agent.log') && handledChatsOnly) tasks.push(loadAgentLogs());
         if (has('chat_read_state.json') && !handledChatsOnly) tasks.push(loadChats());
         if (has('broadcast_requests.json', 'broadcast_state.json')) tasks.push(loadBroadcastJobs());
+        if (has('scheduled_lessons.json')) tasks.push(loadScheduledLessons());
         if (has('message_requests.json', 'broadcast_state.json')) tasks.push(loadDirectMessageStatuses());
         if (tasks.length === 0) return;
 
@@ -2227,16 +3177,78 @@
       if (name === 'progress') {
         loadWorkbookStatus().catch(error => showError(`Could not load student workbook status: ${error.message}`));
       }
+      if (name === 'curriculum') {
+        loadCurriculumOverview().catch(error => showError(`Could not load curriculum: ${error.message}`));
+      }
+      if (name === 'payment-calendar') {
+        loadPaymentCalendar().catch(error => showError(`Could not load payment calendar: ${error.message}`));
+      }
+      if (name === 'scheduled-lessons') {
+        loadScheduledLessons().catch(error => showError(`Could not load scheduled lessons: ${error.message}`));
+      }
       const titles = {
         overview: ['Overview', 'A quick view of chat activity and student progress.'],
         chats: ['Chats', 'Search and review locally saved conversations.'],
         agent: ['WhatsApp agent', 'A readable live view of incoming messages and the agent’s replies, alongside its terminal log.'],
         'es-contacts': ['Es contacts', 'Review Es contacts synced from your phone book.'],
-        progress: ['Student progress', 'Review students and their current lesson status.']
+        progress: ['Student progress', 'Review students and their current lesson status.'],
+        'payment-calendar': ['Payments', 'Review the students marked paid and their one-month coverage dates.'],
+        'scheduled-lessons': ['Scheduled lessons', 'Create and manage one-time lesson deliveries. Times use Sudan time.'],
+        curriculum: ['Curriculum & Lessons', 'Upload lesson videos, configure tasks, and establish answer keys by stage and school year.']
       };
       $('#page-title').textContent = titles[name][0];
       $('#page-subtitle').textContent = titles[name][1];
     }
+
+    $('#payment-calendar-previous').addEventListener('click', () => {
+      paymentCalendarMonth = new Date(
+        paymentCalendarMonth.getFullYear(),
+        paymentCalendarMonth.getMonth() - 1,
+        1
+      );
+      paymentCalendarSelectedDate = new Date(
+        paymentCalendarMonth.getFullYear(),
+        paymentCalendarMonth.getMonth(),
+        1
+      );
+      renderPaymentCalendar();
+    });
+    $('#payment-calendar-next').addEventListener('click', () => {
+      paymentCalendarMonth = new Date(
+        paymentCalendarMonth.getFullYear(),
+        paymentCalendarMonth.getMonth() + 1,
+        1
+      );
+      paymentCalendarSelectedDate = new Date(
+        paymentCalendarMonth.getFullYear(),
+        paymentCalendarMonth.getMonth(),
+        1
+      );
+      renderPaymentCalendar();
+    });
+    $('#payment-calendar-grid').addEventListener('click', event => {
+      const day = event.target.closest('[data-payment-date]');
+      if (!day) return;
+      const [year, month, date] = day.dataset.paymentDate.split('-').map(Number);
+      paymentCalendarSelectedDate = new Date(year, month - 1, date);
+      paymentCalendarMonth = new Date(year, month - 1, 1);
+      renderPaymentCalendar();
+    });
+    $('#payment-usd-rate').addEventListener('input', event => {
+      paymentSdgPerUsd = event.target.value;
+      try {
+        if (paymentSdgPerUsd) {
+          localStorage.setItem(PAYMENT_USD_RATE_STORAGE_KEY, paymentSdgPerUsd);
+        } else {
+          localStorage.removeItem(PAYMENT_USD_RATE_STORAGE_KEY);
+        }
+        $('#payment-rate-status').textContent = '';
+      } catch (error) {
+        console.warn('[Payments] Could not save USD conversion rate:', error.message);
+        $('#payment-rate-status').textContent = 'Could not save the rate in this browser; it may reset when you leave.';
+      }
+      renderPaymentSummary($('#payment-calendar-month').textContent);
+    });
 
     function openChats(activeOnly = false) {
       activeChatsOnly = activeOnly;
@@ -2287,6 +3299,39 @@
           method: 'POST',
           body: JSON.stringify({ action: 'cancel', id: cancelButton.dataset.cancelBroadcast })
         }).then(loadBroadcastJobs).catch(error => showError(error.message));
+      }
+      const scheduledButton = event.target.closest('[data-scheduled-action]');
+      if (scheduledButton) {
+        const action = scheduledButton.dataset.scheduledAction;
+        const id = scheduledButton.dataset.scheduledId;
+        (async () => {
+          let body = { action, id };
+          if (action === 'cancel' &&
+              !window.confirm('Cancel this scheduled lesson delivery?')) return;
+          if (action === 'send_now' &&
+              !window.confirm('Send this lesson as soon as the WhatsApp agent can process it?')) return;
+          if (action === 'reschedule') {
+            const schedule = (await api('/api/admin/scheduled-lessons')).schedules
+              .find(item => item.id === id);
+            if (!schedule) throw new Error('Scheduled lesson not found.');
+            const value = window.prompt(
+              'Enter the new Sudan-local time as YYYY-MM-DDTHH:mm (24-hour clock):',
+              sudanDateTimeInput(schedule.scheduledAt)
+            );
+            if (value === null) return;
+            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value.trim())) {
+              throw new Error('Use YYYY-MM-DDTHH:mm, for example 2026-10-20T16:30.');
+            }
+            const timestamp = Date.parse(`${value.trim()}:00+02:00`);
+            if (!Number.isFinite(timestamp)) throw new Error('The new date and time are invalid.');
+            body = { action, id, scheduledAt: new Date(timestamp).toISOString() };
+          }
+          await api('/api/admin/scheduled-lessons', {
+            method: 'POST',
+            body: JSON.stringify(body)
+          });
+          await loadScheduledLessons();
+        })().catch(error => showError(`Could not update scheduled lesson: ${error.message}`));
       }
     });
     $('#contact-rows').addEventListener('click', event => {
@@ -2800,7 +3845,38 @@
         updateBroadcastControls();
       }
     });
-    $('#refresh').addEventListener('click', refreshAll);
+    $('#refresh').addEventListener('click', () => refreshAll({ clearCache: true }));
+    $('#refresh-scheduled-lessons').addEventListener('click', () =>
+      Promise.all([loadScheduledLessons(), loadManualScheduleOptions()]).catch(error =>
+        showError(`Could not refresh scheduled lessons: ${error.message}`)));
+    $('#manual-schedule-student').addEventListener('change', updateManualScheduleLessons);
+    $('#manual-schedule-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = $('#manual-schedule-submit');
+      const status = $('#manual-schedule-status');
+      const [gradeKey, lessonId] = $('#manual-schedule-lesson').value.split('|');
+      status.textContent = '';
+      button.disabled = true;
+      try {
+        const scheduledAt = parseSudanScheduleInput($('#manual-schedule-time').value);
+        const result = await api('/api/admin/scheduled-lessons/manual', {
+          method: 'POST',
+          body: JSON.stringify({
+            jid: $('#manual-schedule-student').value,
+            gradeKey,
+            lessonId,
+            scheduledAt
+          })
+        });
+        status.textContent =
+          `Scheduled ${result.schedule.lessonTitle} for ${result.schedule.studentName} at ${formatSudanSchedule(result.schedule.scheduledAt)} Sudan time.`;
+        await loadScheduledLessons();
+      } catch (error) {
+        status.textContent = `Could not schedule lesson: ${error.message}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
     $('#auth-form').addEventListener('submit', async event => {
       event.preventDefault();
       const password = $('#auth-password').value;
@@ -2900,6 +3976,1088 @@
         await loadAgentStatus().catch(() => {});
       }
     });
+    $('#agent-queue-toggle').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const paused = button.textContent === 'Pause handling';
+      pendingAgentQueuePause = paused;
+      button.disabled = true;
+      button.textContent = paused ? 'Pausing…' : 'Resuming…';
+      try {
+        await api('/api/admin/chat-queue-control', {
+          method: 'POST',
+          body: JSON.stringify({ paused })
+        });
+        await Promise.all([loadAgentStatus(), loadAgentQueue()]);
+      } catch (error) {
+        pendingAgentQueuePause = null;
+        button.disabled = false;
+        showError(`Could not ${paused ? 'pause' : 'resume'} chat handling: ${error.message}`);
+        await Promise.all([
+          loadAgentStatus().catch(() => {}),
+          loadAgentQueue().catch(() => {})
+        ]);
+      }
+    });
+    $('#agent-queue-list').addEventListener('click', async event => {
+      const button = event.target.closest('[data-cancel-queue-jid]');
+      if (!button || !button.dataset.cancelQueueJid) return;
+      const jid = button.dataset.cancelQueueJid;
+      const name = button.closest('.agent-queue-item')
+        .querySelector('.agent-queue-name').textContent;
+      if (!window.confirm(
+        `Cancel the queued response for ${name}? Incoming messages remain saved, but the agent will skip handling this waiting batch.`
+      )) return;
+      pendingQueueCancellations.add(jid);
+      button.disabled = true;
+      button.textContent = 'Cancelling…';
+      $('#agent-control-message').textContent = `Requesting cancellation for ${name}…`;
+      try {
+        await api('/api/admin/chat-queue-cancel', {
+          method: 'POST',
+          body: JSON.stringify({ jid })
+        });
+        $('#agent-control-message').textContent =
+          `Cancellation requested for ${name}. The student’s incoming messages remain saved.`;
+        await loadAgentQueue();
+      } catch (error) {
+        pendingQueueCancellations.delete(jid);
+        showError(`Could not cancel queued handling for ${name}: ${error.message}`);
+        await loadAgentQueue().catch(() => {});
+      }
+    });
+    $('#agent-media-more').addEventListener('click', () => {
+      showAllAgentMediaActivities = !showAllAgentMediaActivities;
+      loadAgentMediaActivity().catch(error =>
+        showError(`Could not update media delivery history: ${error.message}`));
+    });
+    /* ====================================================================
+       CURRICULUM & LESSONS MANAGEMENT CLIENT LOGIC
+       ==================================================================== */
+    let curriculumOverviewData = null;
+    let selectedGradeKey = null;
+    let selectedGradeCurriculum = null;
+    let activeStageFilter = 'all';
+    let rubricRows = [];
+    let rubricBulkMode = false;
+
+    const DEFAULT_STAGES = [
+      {
+        id: 'secondary',
+        name: 'المرحلة الثانوية',
+        nameEn: 'Secondary School',
+        grades: [
+          { key: 'grade_3_secondary', name: 'الصف الثالث ثانوي', nameEn: 'Secondary 3', lessonCount: 2, totalLessons: 3, diskVideoCount: 9 },
+          { key: 'grade_2_secondary', name: 'الصف الثاني ثانوي', nameEn: 'Secondary 2', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 },
+          { key: 'grade_1_secondary', name: 'الصف الأول ثانوي', nameEn: 'Secondary 1', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 }
+        ]
+      },
+      {
+        id: 'intermediate',
+        name: 'المرحلة المتوسطة',
+        nameEn: 'Intermediate School',
+        grades: [
+          { key: 'grade_3_intermediate', name: 'الصف الثالث متوسط', nameEn: 'Intermediate 3', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 },
+          { key: 'grade_2_intermediate', name: 'الصف الثاني متوسط', nameEn: 'Intermediate 2', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 },
+          { key: 'grade_1_intermediate', name: 'الصف الأول متوسط', nameEn: 'Intermediate 1', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 }
+        ]
+      },
+      {
+        id: 'primary',
+        name: 'المرحلة الابتدائية',
+        nameEn: 'Primary School',
+        grades: [
+          { key: 'grade_6_primary', name: 'الصف السادس ابتدائي', nameEn: 'Primary 6', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 },
+          { key: 'grade_5_primary', name: 'الصف الخامس ابتدائي', nameEn: 'Primary 5', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 },
+          { key: 'grade_4_primary', name: 'الصف الرابع ابتدائي', nameEn: 'Primary 4', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 },
+          { key: 'grade_3_primary', name: 'الصف الثالث ابتدائي', nameEn: 'Primary 3', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 },
+          { key: 'grade_2_primary', name: 'الصف الثاني ابتدائي', nameEn: 'Primary 2', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 },
+          { key: 'grade_1_primary', name: 'الصف الأول ابتدائي', nameEn: 'Primary 1', lessonCount: 0, totalLessons: 0, diskVideoCount: 0 }
+        ]
+      }
+    ];
+
+    function populateGradeDropdowns(data = null) {
+      const stages = (data?.stages && data.stages.length > 0) ? data.stages : DEFAULT_STAGES;
+
+      // Populate modal grade selector
+      const gradeSelect = $('#lesson-form-grade');
+      if (gradeSelect) {
+        const savedVal = gradeSelect.value || selectedGradeKey || 'grade_3_secondary';
+        gradeSelect.innerHTML = stages.map(stage => `
+          <optgroup label="${escapeHtml(stage.name)} (${escapeHtml(stage.nameEn)})">
+            ${stage.grades.map(g => `<option value="${escapeHtml(g.key)}">${escapeHtml(g.name)}${Number.isFinite(g.lessonCount) ? ` (${g.lessonCount} lessons)` : ''}</option>`).join('')}
+          </optgroup>
+        `).join('');
+        if (savedVal) gradeSelect.value = savedVal;
+      }
+
+      // Populate toolbar quick-jump selector
+      const quickSelect = $('#curriculum-grade-quick-select');
+      if (quickSelect) {
+        const savedVal = quickSelect.value || selectedGradeKey || '';
+        quickSelect.innerHTML = '<option value="">-- Jump to Grade (انتقل إلى الصف) --</option>' +
+          stages.map(stage => `
+            <optgroup label="${escapeHtml(stage.name)} (${escapeHtml(stage.nameEn)})">
+              ${stage.grades.map(g => `<option value="${escapeHtml(g.key)}">${escapeHtml(g.name)}${Number.isFinite(g.lessonCount) ? ` (${g.lessonCount} lessons)` : ''}</option>`).join('')}
+            </optgroup>
+          `).join('');
+        if (savedVal) quickSelect.value = savedVal;
+      }
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes || !Number.isFinite(bytes)) return '0 B';
+      if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+      return `${bytes} B`;
+    }
+
+    async function loadCurriculumOverview() {
+      try {
+        const data = await api('/api/admin/curriculum');
+        curriculumOverviewData = data;
+        $('#curriculum-overview-count').textContent =
+          `${data.totalLessons} ${data.totalLessons === 1 ? 'lesson' : 'lessons'} · ${data.gradesWithLessons} of ${data.totalGrades} grades configured`;
+
+        populateGradeDropdowns(data);
+        renderCurriculumStages();
+
+        if (selectedGradeKey) {
+          await openGradeCurriculum(selectedGradeKey, false);
+        }
+      } catch (error) {
+        populateGradeDropdowns(curriculumOverviewData || { stages: DEFAULT_STAGES });
+        renderCurriculumStages();
+        if (error.message.includes('404') || error.message.includes('Failed to fetch')) {
+          showError(`Curriculum API needs server restart: ${error.message}. Please restart the dashboard terminal (npm run admin).`);
+        } else {
+          showError(`Could not load curriculum: ${error.message}`);
+        }
+      }
+    }
+
+    function renderCurriculumStages() {
+      const container = $('#curriculum-stages-container');
+      if (!container) return;
+      const stages = (curriculumOverviewData?.stages && curriculumOverviewData.stages.length > 0)
+        ? curriculumOverviewData.stages
+        : DEFAULT_STAGES;
+
+      container.innerHTML = stages.map(stage => {
+        const isVisible = activeStageFilter === 'all' || activeStageFilter === stage.id;
+        const stageLessonsTotal = stage.grades.reduce((sum, g) => sum + (g.totalLessons || 0), 0);
+        return `
+          <div class="stage-section" data-stage-id="${escapeHtml(stage.id)}" ${isVisible ? '' : 'hidden'}>
+            <div class="stage-title-head">
+              <h3>${escapeHtml(stage.name)} <small style="font-weight:400;color:var(--muted);font-size:12px">· ${escapeHtml(stage.nameEn)}</small></h3>
+              <span class="stage-badge">${stageLessonsTotal} lessons across ${stage.grades.length} grades</span>
+            </div>
+            <div class="grades-grid">
+              ${stage.grades.map(grade => `
+                <div class="grade-card" data-open-grade="${escapeHtml(grade.key)}">
+                  <div class="grade-card-top">
+                    <div>
+                      <h4 class="grade-card-title">${escapeHtml(grade.name)}</h4>
+                      <span class="grade-card-subtitle">${escapeHtml(grade.key)}</span>
+                    </div>
+                    <span class="stage-badge">${grade.year ? `الصف ${grade.year}` : ''}</span>
+                  </div>
+                  <div class="grade-card-metrics">
+                    <span class="metric-chip ${(grade.lessonCount || 0) > 0 ? 'has-lessons' : ''}">
+                      📚 ${grade.lessonCount || 0} sequential ${grade.lessonCount === 1 ? 'lesson' : 'lessons'}
+                    </span>
+                    ${(grade.standaloneLessonCount || 0) > 0 ? `<span class="metric-chip">⭐ ${grade.standaloneLessonCount} standalone</span>` : ''}
+                    <span class="metric-chip ${(grade.diskVideoCount || 0) > 0 ? 'has-videos' : ''}">
+                      🎬 ${grade.diskVideoCount || 0} ${grade.diskVideoCount === 1 ? 'video' : 'videos'} on disk
+                    </span>
+                    <span class="metric-chip">
+                      🔑 ${grade.keywordsCount || 0} keywords
+                    </span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function openGradeCurriculum(gradeKey, switchView = true) {
+      try {
+        const data = await api(`/api/admin/curriculum/grade?key=${encodeURIComponent(gradeKey)}`);
+        selectedGradeKey = gradeKey;
+        selectedGradeCurriculum = data;
+
+        const quickSelect = $('#curriculum-grade-quick-select');
+        if (quickSelect) quickSelect.value = gradeKey;
+
+        $('#curriculum-grade-title').textContent = data.name;
+        $('#curriculum-grade-meta').textContent =
+          `${data.stageName} (${data.stageNameEn}) · ${data.lessons.length} sequential lessons · ${data.standaloneLessons.length} standalone`;
+
+        // Render keywords
+        const keywordsBar = $('#curriculum-keywords-bar');
+        if (keywordsBar) {
+          keywordsBar.innerHTML = `
+            <strong style="margin-right:4px">Student Matching Keywords:</strong>
+            ${data.keywords.length
+              ? data.keywords.map(kw => `<span class="curriculum-keyword-tag">${escapeHtml(kw)}</span>`).join('')
+              : '<span style="font-size:10px;color:var(--muted)">No keywords set</span>'}
+          `;
+        }
+
+        // Render lessons list
+        const lessonsList = $('#curriculum-lessons-list');
+        if (lessonsList) {
+          if (data.lessons.length === 0 && data.standaloneLessons.length === 0) {
+            lessonsList.innerHTML = `
+              <div class="lesson-empty-card">
+                <div style="font-size:36px;margin-bottom:8px">📖</div>
+                <h3 style="margin:0 0 4px">No Lessons Uploaded Yet for ${escapeHtml(data.name)}</h3>
+                <p>Upload a video lesson, attach homework exercises, and establish an AI answer key to activate this grade.</p>
+                <button class="primary-button" type="button" data-add-first-lesson="${escapeHtml(gradeKey)}">+ Upload First Lesson</button>
+              </div>
+            `;
+          } else {
+            let html = '';
+            if (data.lessons.length > 0) {
+              html += `<div style="font-size:12px;font-weight:750;color:var(--ink);margin-bottom:8px">Sequential Course Lessons (${data.lessons.length})</div>`;
+              html += data.lessons.map((lesson, index) => `
+                <div class="lesson-card" data-lesson-id="${escapeHtml(lesson.id)}">
+                  <div class="lesson-card-head">
+                    <div class="lesson-card-title-group">
+                      <span class="lesson-order-num">${index + 1}</span>
+                      <div>
+                        <h4>${escapeHtml(lesson.title)}</h4>
+                        <small style="color:var(--muted);font-family:monospace">${escapeHtml(lesson.id)}</small>
+                      </div>
+                    </div>
+                    <div class="lesson-actions">
+                      <button class="btn-action" type="button" data-preview-lesson="${escapeHtml(lesson.id)}" data-is-standalone="false">Preview WhatsApp</button>
+                      ${lesson.videoExists ? `<button class="btn-action" type="button" data-broadcast-lesson="${escapeHtml(lesson.id)}" data-is-standalone="false">Send to inactive Es</button>` : ''}
+                      <button class="btn-action" type="button" data-edit-lesson="${escapeHtml(lesson.id)}" data-is-standalone="false">Edit</button>
+                      <button class="btn-action" type="button" data-move-lesson="${escapeHtml(lesson.id)}" data-direction="up" ${index === 0 ? 'disabled style="opacity:.4"' : ''}>▲</button>
+                      <button class="btn-action" type="button" data-move-lesson="${escapeHtml(lesson.id)}" data-direction="down" ${index === data.lessons.length - 1 ? 'disabled style="opacity:.4"' : ''}>▼</button>
+                      <button class="btn-action btn-danger" type="button" data-delete-lesson="${escapeHtml(lesson.id)}" data-is-standalone="false">Delete</button>
+                    </div>
+                  </div>
+                  <div class="lesson-badges">
+                    <span class="metric-chip ${lesson.videoExists ? 'has-lessons' : ''}">
+                      🎬 ${escapeHtml(lesson.videoFile)} ${lesson.videoExists ? `(${formatFileSize(lesson.videoSizeBytes)})` : '⚠️ Missing file'}
+                    </span>
+                    <span class="metric-chip">
+                      📝 ${lesson.answerCount} Exercise items
+                    </span>
+                    <span class="metric-chip has-videos">
+                      🤖 AI Grader Ready
+                    </span>
+                  </div>
+                </div>
+              `).join('');
+            }
+
+            if (data.standaloneLessons.length > 0) {
+              html += `<div style="font-size:12px;font-weight:750;color:var(--ink);margin:20px 0 8px">Standalone / Review Lessons (${data.standaloneLessons.length})</div>`;
+              html += data.standaloneLessons.map(lesson => `
+                <div class="lesson-card" data-lesson-id="${escapeHtml(lesson.id)}">
+                  <div class="lesson-card-head">
+                    <div class="lesson-card-title-group">
+                      <span class="lesson-order-num" style="background:#eef0fb;color:#4f568e">⭐</span>
+                      <div>
+                        <h4>${escapeHtml(lesson.title)}</h4>
+                        <small style="color:var(--muted);font-family:monospace">${escapeHtml(lesson.id)}</small>
+                      </div>
+                    </div>
+                    <div class="lesson-actions">
+                      <button class="btn-action" type="button" data-preview-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Preview WhatsApp</button>
+                      ${lesson.videoExists ? `<button class="btn-action" type="button" data-broadcast-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Send to inactive Es</button>` : ''}
+                      <button class="btn-action" type="button" data-edit-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Edit</button>
+                      <button class="btn-action btn-danger" type="button" data-delete-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Delete</button>
+                    </div>
+                  </div>
+                  <div class="lesson-badges">
+                    <span class="metric-chip ${lesson.videoExists ? 'has-lessons' : ''}">
+                      🎬 ${escapeHtml(lesson.videoFile)} ${lesson.videoExists ? `(${formatFileSize(lesson.videoSizeBytes)})` : '⚠️ Missing file'}
+                    </span>
+                    <span class="metric-chip">
+                      📝 ${lesson.answerCount} Exercise items
+                    </span>
+                  </div>
+                </div>
+              `).join('');
+            }
+
+            // Unassigned disk videos helper section
+            const unusedVideos = (data.availableVideos || []).filter(v => !v.isUsed);
+            if (unusedVideos.length > 0) {
+              html += `
+                <div style="margin-top:24px;padding:16px;background:#f8faf8;border:1px dashed var(--line);border-radius:11px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+                    <strong style="font-size:12px;color:#284f3e">📁 Unused Video Files in this Grade's Folder (${unusedVideos.length})</strong>
+                    <small style="color:var(--muted)">Found in media/lessons/${escapeHtml(gradeKey)}/</small>
+                  </div>
+                  <div style="display:grid;gap:6px">
+                    ${unusedVideos.map(v => `
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:white;padding:8px 12px;border:1px solid var(--line);border-radius:7px;font-size:11px">
+                        <span>🎬 <strong>${escapeHtml(v.fileName)}</strong> <small style="color:var(--muted)">(${formatFileSize(v.sizeBytes)})</small></span>
+                        <button class="btn-micro" type="button" data-create-lesson-from-video="${escapeHtml(v.relativePath)}" data-video-name="${escapeHtml(v.fileName)}">+ Create Lesson for this Video</button>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }
+
+            lessonsList.innerHTML = html;
+          }
+        }
+
+        const treasureIslandPanel = $('#treasure-island-panel');
+        treasureIslandPanel.hidden = gradeKey !== 'grade_3_secondary';
+        if (!treasureIslandPanel.hidden) {
+          const treasureLessons = data.collections
+            ?.find(collection => collection.id === 'treasure_island')?.lessons || [];
+          $('#treasure-island-lessons-list').innerHTML = treasureLessons.length
+            ? treasureLessons.map((lesson, index) => `
+              <div class="lesson-card" data-lesson-id="${escapeHtml(lesson.id)}">
+                <div class="lesson-card-head">
+                  <div class="lesson-card-title-group">
+                    <span class="lesson-order-num" style="background:#eef0fb;color:#4f568e">${index + 1}</span>
+                    <div>
+                      <h4>${escapeHtml(lesson.title)}</h4>
+                      <small style="color:var(--muted);font-family:monospace">${escapeHtml(lesson.id)}</small>
+                    </div>
+                  </div>
+                  <div class="lesson-actions">
+                    ${lesson.videoExists ? '<span class="metric-chip has-videos">Ready for student selection</span>' : '<span class="blocked-label">Video missing</span>'}
+                    <button class="btn-action" type="button" data-edit-collection-lesson="${escapeHtml(lesson.id)}">Edit</button>
+                    <button class="btn-action btn-danger" type="button" data-delete-collection-lesson="${escapeHtml(lesson.id)}">Delete</button>
+                  </div>
+                </div>
+                <div class="lesson-badges">
+                  <span class="metric-chip ${lesson.videoExists ? 'has-lessons' : ''}">🎬 ${escapeHtml(lesson.videoFile)} ${lesson.videoExists ? `(${formatFileSize(lesson.videoSizeBytes)})` : '⚠️ Missing file'}</span>
+                  <span class="metric-chip">📝 ${lesson.answerCount} exercise items</span>
+                </div>
+              </div>`).join('')
+            : '<div class="lesson-empty-card"><p>No Treasure Island lessons are configured yet. Add a titled video, exercise, and answer key to make it available for students.</p></div>';
+        }
+
+        if (switchView) {
+          $('#curriculum-stages-container').hidden = true;
+          $('#grade-curriculum-panel').hidden = false;
+          $('#grade-curriculum-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      } catch (error) {
+        showError(`Could not load grade lessons: ${error.message}`);
+      }
+    }
+
+    function openLessonModal({
+      gradeKey = null,
+      lesson = null,
+      isStandalone = false,
+      collectionId = null,
+      prefillVideo = ''
+    } = {}) {
+      const modal = $('#lesson-modal');
+      const form = $('#lesson-form');
+      if (!modal || !form) return;
+
+      form.reset();
+      $('#lesson-form-status').textContent = '';
+      $('#lesson-video-progress').hidden = true;
+
+      populateGradeDropdowns(curriculumOverviewData);
+      const targetGradeKey = gradeKey || selectedGradeKey || curriculumOverviewData?.stages?.[0]?.grades?.[0]?.key || 'grade_3_secondary';
+      $('#lesson-form-grade').value = targetGradeKey;
+      const typeSelect = $('#lesson-form-type');
+      const treasureIslandOption = typeSelect.querySelector('option[value="treasure_island"]');
+      treasureIslandOption.hidden = targetGradeKey !== 'grade_3_secondary';
+      if (lesson?.collectionId) collectionId = lesson.collectionId;
+      const lessonType = collectionId || (isStandalone ? 'standalone' : 'sequential');
+
+      if (lesson) {
+        $('#lesson-modal-title').textContent = `Edit Lesson: ${lesson.title}`;
+        $('#lesson-form-id').value = lesson.id;
+        $('#lesson-form-id').readOnly = true;
+        typeSelect.value = lessonType;
+        typeSelect.disabled = true;
+        $('#lesson-form-title').value = lesson.title;
+        $('#lesson-form-intro').value = lesson.introMessage || '';
+        $('#lesson-form-caption').value = lesson.caption || '';
+        $('#lesson-form-video-path').value = lesson.videoFile || '';
+        $('#lesson-form-task').value = lesson.taskMessage || '';
+
+        rubricRows = (lesson.answerKey || []).map((text, idx) => ({ id: idx + 1, text }));
+        if (rubricRows.length === 0) rubricRows = [{ id: 1, text: '' }];
+      } else {
+        $('#lesson-modal-title').textContent = 'Upload & Configure New Lesson';
+        $('#lesson-form-id').readOnly = false;
+        typeSelect.value = lessonType;
+        typeSelect.disabled = false;
+
+        // Auto determine next sequential lesson number
+        const existingCount = collectionId
+          ? selectedGradeCurriculum?.collections?.find(item => item.id === collectionId)?.lessons?.length || 0
+          : isStandalone
+            ? selectedGradeCurriculum?.standaloneLessons?.length || 0
+            : selectedGradeCurriculum?.lessons?.length || 0;
+        $('#lesson-form-id').value = `lesson_${existingCount + 1}`;
+        $('#lesson-form-title').value = '';
+        $('#lesson-form-intro').value = 'يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇';
+        $('#lesson-form-caption').value = '🎬 فيديو الحصة | مستر مازن (eShool)';
+        $('#lesson-form-video-path').value = prefillVideo || '';
+        $('#lesson-form-task').value = '';
+        rubricRows = [{ id: 1, text: '' }];
+      }
+
+      // Update video status badge
+      const currentVideoPath = $('#lesson-form-video-path').value;
+      const videoStatus = $('#selected-video-status');
+      if (currentVideoPath) {
+        videoStatus.textContent = `🟢 Video attached: ${currentVideoPath.split('/').pop()}`;
+        videoStatus.style.background = '#e4f4ea';
+        videoStatus.style.color = '#156d46';
+      } else {
+        videoStatus.textContent = 'No video selected';
+        videoStatus.style.background = '#f0f5f2';
+        videoStatus.style.color = '#53645a';
+      }
+
+      // Populate existing videos on disk select
+      const existingSelect = $('#lesson-existing-video-select');
+      if (existingSelect) populateLessonVideoOptions(selectedGradeCurriculum);
+
+      // Reset tabs to upload
+      $('#tab-video-upload').classList.add('active');
+      $('#tab-video-existing').classList.remove('active');
+      $('#video-upload-pane').hidden = false;
+      $('#video-existing-pane').hidden = true;
+
+      // Rubric mode reset
+      rubricBulkMode = false;
+      $('#rubric-rows-container').hidden = false;
+      $('#rubric-bulk-container').hidden = true;
+      $('#toggle-rubric-mode-btn').textContent = 'Switch to Bulk Text';
+      renderRubricRows();
+
+      modal.hidden = false;
+    }
+
+    function populateLessonVideoOptions(gradeData) {
+      const existingSelect = $('#lesson-existing-video-select');
+      if (!existingSelect) return;
+      const isTreasureIsland = $('#lesson-form-type').value === 'treasure_island';
+      const prefix = 'media/lessons/grade_3_secondary/treasure_island/';
+      const available = (gradeData?.availableVideos || [])
+        .filter(video => !isTreasureIsland || video.relativePath.startsWith(prefix));
+      existingSelect.innerHTML = '<option value="">-- Choose a video found in this grade\'s media folder --</option>' +
+        available.map(video => `<option value="${escapeHtml(video.relativePath)}">${escapeHtml(video.fileName)} (${formatFileSize(video.sizeBytes)})${video.isUsed ? ' [Already in use]' : ''}</option>`).join('');
+    }
+
+    function clearSelectedLessonVideo() {
+      $('#lesson-form-video-path').value = '';
+      const status = $('#selected-video-status');
+      status.textContent = 'No video selected';
+      status.style.background = '#f0f5f2';
+      status.style.color = '#53645a';
+    }
+
+    function renderRubricRows() {
+      const container = $('#rubric-rows-container');
+      if (!container) return;
+      container.innerHTML = rubricRows.map((item, index) => `
+        <div class="rubric-row" data-rubric-idx="${index}">
+          <span class="rubric-num">${index + 1}.</span>
+          <input type="text" placeholder="Answer (e.g. interprets)" value="${escapeHtml(item.text.split('—')[0]?.trim() || item.text)}" data-rubric-ans="${index}" required>
+          <input type="text" placeholder="Explanation / Hint (e.g. Singular subject; add -s)" value="${escapeHtml(item.text.includes('—') ? item.text.split('—').slice(1).join('—').trim() : '')}" data-rubric-hint="${index}">
+          <button class="rubric-delete-btn" type="button" data-delete-rubric="${index}" title="Remove question key">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function syncRubricRowsFromInputs() {
+      const rows = $('#rubric-rows-container').querySelectorAll('.rubric-row');
+      rubricRows = [...rows].map((row, idx) => {
+        const ans = row.querySelector('[data-rubric-ans]')?.value.trim() || '';
+        const hint = row.querySelector('[data-rubric-hint]')?.value.trim() || '';
+        const full = hint ? `${ans} — ${hint}` : ans;
+        return { id: idx + 1, text: full };
+      });
+    }
+
+    function addRubricRow(text = '') {
+      syncRubricRowsFromInputs();
+      rubricRows.push({ id: rubricRows.length + 1, text });
+      renderRubricRows();
+    }
+
+    function deleteRubricRow(index) {
+      syncRubricRowsFromInputs();
+      if (rubricRows.length <= 1) {
+        rubricRows = [{ id: 1, text: '' }];
+      } else {
+        rubricRows.splice(index, 1);
+      }
+      renderRubricRows();
+    }
+
+    function uploadLessonVideoFile(file) {
+      const gradeKey = $('#lesson-form-grade').value;
+      if (!gradeKey) {
+        showError('Please select a stage & grade first.');
+        return;
+      }
+      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+      if (!['.mp4', '.mov', '.webm', '.3gp', '.m4v'].includes(ext)) {
+        showError('Please choose a supported video file (.mp4, .mov, or .webm).');
+        return;
+      }
+      if (file.size > 300 * 1024 * 1024) {
+        showError('Video file exceeds the 300 MB limit.');
+        return;
+      }
+
+      const progressContainer = $('#lesson-video-progress');
+      const progressFill = $('#lesson-video-progress-fill');
+      const progressText = $('#lesson-video-progress-text');
+      progressContainer.hidden = false;
+      progressFill.style.width = '0%';
+      progressText.textContent = '0%';
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/admin/curriculum/video');
+      xhr.setRequestHeader('x-grade-key', encodeURIComponent(gradeKey));
+      const collectionId = $('#lesson-form-type').value === 'treasure_island'
+        ? 'treasure_island'
+        : '';
+      if (collectionId) xhr.setRequestHeader('x-collection-id', encodeURIComponent(collectionId));
+      xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name));
+      xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          progressFill.style.width = `${percent}%`;
+          progressText.textContent = `${percent}%`;
+        }
+      };
+
+      xhr.onload = () => {
+        progressContainer.hidden = true;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const res = JSON.parse(xhr.responseText);
+          $('#lesson-form-video-path').value = res.relativePath;
+          const status = $('#selected-video-status');
+          status.textContent = `🟢 Uploaded: ${res.fileName} (${formatFileSize(res.sizeBytes)})`;
+          status.style.background = '#e4f4ea';
+          status.style.color = '#156d46';
+        } else {
+          let err = 'Upload failed';
+          try { err = JSON.parse(xhr.responseText).error || err; } catch {}
+          showError(`Video upload error: ${err}`);
+        }
+      };
+      xhr.onerror = () => {
+        progressContainer.hidden = true;
+        showError('Network error uploading video file.');
+      };
+      xhr.send(file);
+    }
+
+    function openWhatsAppPreviewModal(lesson) {
+      const modal = $('#preview-modal');
+      const chatBody = $('#preview-chat-body');
+      if (!modal || !chatBody || !lesson) return;
+
+      const formattedTask = escapeHtml(lesson.taskMessage || '')
+        .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+        .replace(/_(.*?)_/g, '<em>$1</em>')
+        .replace(/~([^~]+)~/g, '<del>$1</del>')
+        .replace(/```([^`]+)```/g, '<code style="display:block;white-space:pre-wrap">$1</code>');
+
+      chatBody.innerHTML = `
+        <div class="preview-bubble">${escapeHtml(lesson.introMessage || 'يا هلا بيك! دي الحصة برسل ليك الفيديو والتمرين هسي 👇')}</div>
+        <div class="preview-bubble video-card">
+          <div class="preview-video-placeholder">
+            <span>▶️</span>
+            <strong>${escapeHtml(lesson.title)}</strong>
+            <small style="opacity:.8">Video File · ${escapeHtml(lesson.videoFile || '')}</small>
+          </div>
+          <div class="preview-caption-text">${escapeHtml(lesson.caption || '')}</div>
+        </div>
+        <div class="preview-bubble">${formattedTask}</div>
+      `;
+      modal.hidden = false;
+    }
+
+    // Curriculum Event Listeners Setup
+    document.addEventListener('DOMContentLoaded', () => {
+      // Stage pills filter
+      const stageTabs = $('#curriculum-stage-tabs');
+      if (stageTabs) {
+        stageTabs.addEventListener('click', event => {
+          const pill = event.target.closest('.stage-pill');
+          if (!pill) return;
+          stageTabs.querySelectorAll('.stage-pill').forEach(p => p.classList.remove('active'));
+          pill.classList.add('active');
+          activeStageFilter = pill.dataset.stage;
+          renderCurriculumStages();
+        });
+      }
+
+      // Populate grade dropdowns immediately with default structure
+      populateGradeDropdowns(null);
+
+      // Grade quick jump dropdown in curriculum header
+      const quickGradeSelect = $('#curriculum-grade-quick-select');
+      if (quickGradeSelect) {
+        quickGradeSelect.addEventListener('change', () => {
+          const key = quickGradeSelect.value;
+          if (!key) {
+            $('#grade-curriculum-panel').hidden = true;
+            $('#curriculum-stages-container').hidden = false;
+            selectedGradeKey = null;
+            selectedGradeCurriculum = null;
+          } else {
+            openGradeCurriculum(key);
+          }
+        });
+      }
+
+      // Grade change in Lesson Modal
+      const modalGradeSelect = $('#lesson-form-grade');
+      if (modalGradeSelect) {
+        modalGradeSelect.addEventListener('change', async () => {
+          const newKey = modalGradeSelect.value;
+          if (!newKey) return;
+          const typeSelect = $('#lesson-form-type');
+          const treasureOption = typeSelect.querySelector('option[value="treasure_island"]');
+          treasureOption.hidden = newKey !== 'grade_3_secondary';
+          if (newKey !== 'grade_3_secondary' && typeSelect.value === 'treasure_island') {
+            typeSelect.value = 'sequential';
+          }
+          if (!$('#lesson-form-video-path').value.startsWith(`media/lessons/${newKey}/`)) {
+            clearSelectedLessonVideo();
+          }
+          try {
+            const gradeData = await api(`/api/admin/curriculum/grade?key=${encodeURIComponent(newKey)}`);
+            selectedGradeCurriculum = gradeData;
+            populateLessonVideoOptions(gradeData);
+            if (!$('#lesson-form-id').readOnly) {
+              const count = gradeData.lessons?.length || 0;
+              $('#lesson-form-id').value = `lesson_${count + 1}`;
+            }
+          } catch {
+            // Non-blocking fallback
+          }
+        });
+      }
+
+      $('#lesson-form-type')?.addEventListener('change', () => {
+        populateLessonVideoOptions(selectedGradeCurriculum);
+        const selectedVideo = $('#lesson-form-video-path').value;
+        if ($('#lesson-form-type').value === 'treasure_island' &&
+            !selectedVideo.startsWith('media/lessons/grade_3_secondary/treasure_island/')) {
+          clearSelectedLessonVideo();
+        }
+        if ($('#lesson-form-id').readOnly) return;
+        const gradeData = selectedGradeCurriculum;
+        const type = $('#lesson-form-type').value;
+        const count = type === 'treasure_island'
+          ? gradeData?.collections?.find(item => item.id === 'treasure_island')?.lessons?.length || 0
+          : type === 'standalone'
+            ? gradeData?.standaloneLessons?.length || 0
+            : gradeData?.lessons?.length || 0;
+        $('#lesson-form-id').value = `lesson_${count + 1}`;
+      });
+
+      // Back button from grade view to stages overview
+      const backBtn = $('#curriculum-back-btn');
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          $('#grade-curriculum-panel').hidden = true;
+          $('#curriculum-stages-container').hidden = false;
+          selectedGradeKey = null;
+          selectedGradeCurriculum = null;
+          if (quickGradeSelect) quickGradeSelect.value = '';
+        });
+      }
+
+      // Global or Grade Add Lesson buttons
+      const openModalBtn = $('#open-new-lesson-btn');
+      if (openModalBtn) openModalBtn.addEventListener('click', () => openLessonModal());
+      const gradeAddBtn = $('#grade-add-lesson-btn');
+      if (gradeAddBtn) gradeAddBtn.addEventListener('click', () => openLessonModal({ gradeKey: selectedGradeKey }));
+
+      // Modal close & cancel buttons
+      const closeModalBtn = $('#close-lesson-modal-btn');
+      if (closeModalBtn) closeModalBtn.addEventListener('click', () => $('#lesson-modal').hidden = true);
+      const cancelModalBtn = $('#cancel-lesson-modal-btn');
+      if (cancelModalBtn) cancelModalBtn.addEventListener('click', () => $('#lesson-modal').hidden = true);
+
+      // Preview modal close button
+      const closePreviewBtn = $('#close-preview-modal-btn');
+      if (closePreviewBtn) closePreviewBtn.addEventListener('click', () => $('#preview-modal').hidden = true);
+
+      // Video option tabs
+      const tabUpload = $('#tab-video-upload');
+      const tabExisting = $('#tab-video-existing');
+      if (tabUpload && tabExisting) {
+        tabUpload.addEventListener('click', () => {
+          tabUpload.classList.add('active');
+          tabExisting.classList.remove('active');
+          $('#video-upload-pane').hidden = false;
+          $('#video-existing-pane').hidden = true;
+        });
+        tabExisting.addEventListener('click', () => {
+          tabExisting.classList.add('active');
+          tabUpload.classList.remove('active');
+          $('#video-existing-pane').hidden = false;
+          $('#video-upload-pane').hidden = true;
+        });
+      }
+
+      // Existing video select change
+      const existingSelect = $('#lesson-existing-video-select');
+      if (existingSelect) {
+        existingSelect.addEventListener('change', () => {
+          const val = existingSelect.value;
+          if (val) {
+            $('#lesson-form-video-path').value = val;
+            const status = $('#selected-video-status');
+            status.textContent = `🟢 Selected: ${val.split('/').pop()}`;
+            status.style.background = '#eef2fa';
+            status.style.color = '#2b5597';
+          }
+        });
+      }
+
+      // Video dropzone & file input
+      const dropzone = $('#lesson-video-dropzone');
+      const fileInput = $('#lesson-video-file-input');
+      if (dropzone && fileInput) {
+        dropzone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+          if (fileInput.files.length) uploadLessonVideoFile(fileInput.files[0]);
+        });
+        dropzone.addEventListener('dragover', event => {
+          event.preventDefault();
+          dropzone.classList.add('dragover');
+        });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+        dropzone.addEventListener('drop', event => {
+          event.preventDefault();
+          dropzone.classList.remove('dragover');
+          if (event.dataTransfer.files.length) {
+            uploadLessonVideoFile(event.dataTransfer.files[0]);
+          }
+        });
+      }
+
+      // Rubric rows actions (Add, Delete)
+      const addRubricBtn = $('#add-rubric-item-btn');
+      if (addRubricBtn) addRubricBtn.addEventListener('click', () => addRubricRow());
+      const rubricContainer = $('#rubric-rows-container');
+      if (rubricContainer) {
+        rubricContainer.addEventListener('click', event => {
+          const delBtn = event.target.closest('[data-delete-rubric]');
+          if (delBtn) deleteRubricRow(Number(delBtn.dataset.deleteRubric));
+        });
+      }
+
+      // Toggle Rubric mode (Structured vs Bulk text)
+      const toggleRubricBtn = $('#toggle-rubric-mode-btn');
+      if (toggleRubricBtn) {
+        toggleRubricBtn.addEventListener('click', () => {
+          rubricBulkMode = !rubricBulkMode;
+          if (rubricBulkMode) {
+            syncRubricRowsFromInputs();
+            $('#lesson-form-rubric-bulk').value = rubricRows.map((r, i) => `${i + 1}. ${r.text}`).join('\n');
+            $('#rubric-rows-container').hidden = true;
+            $('#rubric-bulk-container').hidden = false;
+            toggleRubricBtn.textContent = 'Switch to Question Rows';
+          } else {
+            const bulkText = $('#lesson-form-rubric-bulk').value;
+            const lines = bulkText.split('\n').map(l => l.replace(/^\d+[\.\:\)]\s*/, '').trim()).filter(Boolean);
+            rubricRows = lines.length ? lines.map((text, idx) => ({ id: idx + 1, text })) : [{ id: 1, text: '' }];
+            $('#rubric-rows-container').hidden = false;
+            $('#rubric-bulk-container').hidden = true;
+            toggleRubricBtn.textContent = 'Switch to Bulk Text';
+            renderRubricRows();
+          }
+        });
+      }
+
+      // Insert Task Template button
+      const insertTemplateBtn = $('#insert-task-template-btn');
+      if (insertTemplateBtn) {
+        insertTemplateBtn.addEventListener('click', () => {
+          const template = `📝 *تمرين الحصة (Task):*\n\n1. The analyst __________ (interpret) the survey results.\n2. A responsible engineer __________ (maintain) the equipment regularly.\n3. The report __________ (reflect) the most recent findings.\n\n✍️ رسل لي إجاباتك هنا عشان أصححها ليك يا بطل.`;
+          $('#lesson-form-task').value = template;
+        });
+      }
+
+      $('#add-treasure-island-lesson')?.addEventListener('click', () => {
+        openLessonModal({ gradeKey: 'grade_3_secondary', collectionId: 'treasure_island' });
+      });
+
+      // Lesson Form Submit
+      const lessonForm = $('#lesson-form');
+      if (lessonForm) {
+        lessonForm.addEventListener('submit', async event => {
+          event.preventDefault();
+          const formStatus = $('#lesson-form-status');
+          const saveBtn = $('#save-lesson-btn');
+          formStatus.textContent = 'Saving lesson…';
+          saveBtn.disabled = true;
+
+          try {
+            const gradeKey = $('#lesson-form-grade').value;
+            const id = $('#lesson-form-id').value.trim();
+            const lessonType = $('#lesson-form-type').value;
+            const isStandalone = lessonType === 'standalone';
+            const collectionId = lessonType === 'treasure_island' ? 'treasure_island' : null;
+            const title = $('#lesson-form-title').value.trim();
+            const introMessage = $('#lesson-form-intro').value.trim();
+            const caption = $('#lesson-form-caption').value.trim();
+            const videoFile = $('#lesson-form-video-path').value.trim();
+            const taskMessage = $('#lesson-form-task').value.trim();
+
+            let answerKey = [];
+            if (rubricBulkMode) {
+              answerKey = $('#lesson-form-rubric-bulk').value
+                .split('\n')
+                .map(l => l.trim())
+                .filter(Boolean);
+            } else {
+              syncRubricRowsFromInputs();
+              answerKey = rubricRows.map(r => r.text.trim()).filter(Boolean);
+            }
+
+            if (answerKey.length === 0) {
+              throw new Error('Please enter at least one answer key item.');
+            }
+
+            await api('/api/admin/curriculum/lesson', {
+              method: 'POST',
+              body: JSON.stringify({
+                gradeKey,
+                isStandalone,
+                collectionId,
+                lesson: {
+                  id,
+                  title,
+                  videoFile,
+                  caption,
+                  introMessage,
+                  taskMessage,
+                  answerKey
+                }
+              })
+            });
+
+            $('#lesson-modal').hidden = true;
+            await loadCurriculumOverview();
+            await openGradeCurriculum(gradeKey);
+          } catch (error) {
+            formStatus.textContent = `Error: ${error.message}`;
+            showError(`Could not save lesson: ${error.message}`);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+      }
+
+      // Edit Keywords button
+      const editKeywordsBtn = $('#grade-edit-keywords-btn');
+      if (editKeywordsBtn) {
+        editKeywordsBtn.addEventListener('click', async () => {
+          if (!selectedGradeCurriculum) return;
+          const current = (selectedGradeCurriculum.keywords || []).join(', ');
+          const input = window.prompt(`Edit search keywords for ${selectedGradeCurriculum.name} (comma-separated):`, current);
+          if (input === null) return;
+          const newKeywords = input.split(',').map(k => k.trim()).filter(Boolean);
+          try {
+            await api('/api/admin/curriculum/grade', {
+              method: 'POST',
+              body: JSON.stringify({
+                gradeKey: selectedGradeKey,
+                keywords: newKeywords
+              })
+            });
+            await openGradeCurriculum(selectedGradeKey);
+          } catch (error) {
+            showError(`Could not update keywords: ${error.message}`);
+          }
+        });
+      }
+
+      // Delegate Grade cards clicks & lesson actions
+      document.addEventListener('click', async event => {
+        // Open Grade from card
+        const gradeCard = event.target.closest('[data-open-grade]');
+        if (gradeCard) {
+          await openGradeCurriculum(gradeCard.dataset.openGrade);
+          return;
+        }
+
+        // Add first lesson from empty card
+        const addFirstBtn = event.target.closest('[data-add-first-lesson]');
+        if (addFirstBtn) {
+          openLessonModal({ gradeKey: addFirstBtn.dataset.addFirstLesson });
+          return;
+        }
+
+        // Create lesson from unused video shortcut
+        const createFromVideoBtn = event.target.closest('[data-create-lesson-from-video]');
+        if (createFromVideoBtn) {
+          const videoPath = createFromVideoBtn.dataset.createLessonFromVideo;
+          const videoName = createFromVideoBtn.dataset.videoName;
+          const idMatch = /^lesson_(\d+)/i.exec(videoName);
+          openLessonModal({
+            gradeKey: selectedGradeKey,
+            prefillVideo: videoPath,
+            lesson: idMatch ? { id: `lesson_${idMatch[1]}`, title: `الحصة ${idMatch[1]}`, videoFile: videoPath } : null
+          });
+          return;
+        }
+
+        const broadcastLessonBtn = event.target.closest('[data-broadcast-lesson]');
+        if (broadcastLessonBtn) {
+          const lessonId = broadcastLessonBtn.dataset.broadcastLesson;
+          const isStandalone = broadcastLessonBtn.dataset.isStandalone === 'true';
+          broadcastLessonBtn.disabled = true;
+          const originalText = broadcastLessonBtn.textContent;
+          broadcastLessonBtn.textContent = 'Checking recipients…';
+          try {
+            const query = new URLSearchParams({
+              gradeKey: selectedGradeKey,
+              lessonId,
+              isStandalone: String(isStandalone)
+            });
+            const preview = await api(`/api/admin/curriculum/lesson-broadcast?${query}`);
+            if (!preview.total) {
+              window.alert('No eligible eShool contacts have saved WhatsApp activity older than 10 days. Contacts without a saved activity timestamp are excluded.');
+              return;
+            }
+            const confirmed = window.confirm(
+              `Queue "${preview.title}" for ${preview.total.toLocaleString()} eligible eShool contacts whose last recorded WhatsApp activity is more than 10 days ago?\n\nContacts with no saved activity are excluded. The video will be sent individually with a 5-second gap; a large list may take hours.`
+            );
+            if (!confirmed) return;
+            broadcastLessonBtn.textContent = 'Queueing video…';
+            const result = await api('/api/admin/curriculum/lesson-broadcast', {
+              method: 'POST',
+              body: JSON.stringify({ previewId: preview.previewId })
+            });
+            window.alert(`Video broadcast queued for ${result.total.toLocaleString()} students. You can monitor or stop it in Broadcasts.`);
+          } catch (error) {
+            showError(`Could not queue lesson video: ${error.message}`);
+          } finally {
+            broadcastLessonBtn.disabled = false;
+            broadcastLessonBtn.textContent = originalText;
+          }
+          return;
+        }
+
+          // Preview lesson WhatsApp mockup
+          const previewBtn = event.target.closest('[data-preview-lesson]');
+        if (previewBtn) {
+          const lessonId = previewBtn.dataset.previewLesson;
+          const isStandalone = previewBtn.dataset.isStandalone === 'true';
+          const list = isStandalone ? selectedGradeCurriculum.standaloneLessons : selectedGradeCurriculum.lessons;
+          const lesson = list.find(l => l.id === lessonId);
+          if (lesson) openWhatsAppPreviewModal(lesson);
+          return;
+        }
+
+        // Edit lesson
+        const editBtn = event.target.closest('[data-edit-lesson]');
+        if (editBtn) {
+          const lessonId = editBtn.dataset.editLesson;
+          const isStandalone = editBtn.dataset.isStandalone === 'true';
+          const list = isStandalone ? selectedGradeCurriculum.standaloneLessons : selectedGradeCurriculum.lessons;
+          const lesson = list.find(l => l.id === lessonId);
+          if (lesson) openLessonModal({ gradeKey: selectedGradeKey, lesson, isStandalone });
+          return;
+        }
+
+        const editCollectionBtn = event.target.closest('[data-edit-collection-lesson]');
+        if (editCollectionBtn) {
+          const lesson = selectedGradeCurriculum?.collections
+            ?.find(collection => collection.id === 'treasure_island')
+            ?.lessons.find(item => item.id === editCollectionBtn.dataset.editCollectionLesson);
+          if (lesson) openLessonModal({ gradeKey: selectedGradeKey, lesson, collectionId: 'treasure_island' });
+          return;
+        }
+
+        const deleteCollectionBtn = event.target.closest('[data-delete-collection-lesson]');
+        if (deleteCollectionBtn) {
+          const lessonId = deleteCollectionBtn.dataset.deleteCollectionLesson;
+          if (!window.confirm(`Remove Treasure Island lesson "${lessonId}"?`)) return;
+          try {
+            await api(`/api/admin/curriculum/lesson?gradeKey=${encodeURIComponent(selectedGradeKey)}&lessonId=${encodeURIComponent(lessonId)}&collectionId=treasure_island`, {
+              method: 'DELETE'
+            });
+            await loadCurriculumOverview();
+            await openGradeCurriculum(selectedGradeKey);
+          } catch (error) {
+            showError(`Could not delete Treasure Island lesson: ${error.message}`);
+          }
+          return;
+        }
+
+        // Delete lesson
+        const deleteBtn = event.target.closest('[data-delete-lesson]');
+        if (deleteBtn) {
+          const lessonId = deleteBtn.dataset.deleteLesson;
+          const isStandalone = deleteBtn.dataset.isStandalone === 'true';
+          if (!window.confirm(`Are you sure you want to remove lesson "${lessonId}"?`)) return;
+          try {
+            await api(`/api/admin/curriculum/lesson?gradeKey=${encodeURIComponent(selectedGradeKey)}&lessonId=${encodeURIComponent(lessonId)}&isStandalone=${isStandalone}`, {
+              method: 'DELETE'
+            });
+            await loadCurriculumOverview();
+            await openGradeCurriculum(selectedGradeKey);
+          } catch (error) {
+            showError(`Could not delete lesson: ${error.message}`);
+          }
+          return;
+        }
+
+        // Move lesson (reorder)
+        const moveBtn = event.target.closest('[data-move-lesson]');
+        if (moveBtn) {
+          const lessonId = moveBtn.dataset.moveLesson;
+          const direction = moveBtn.dataset.direction;
+          const lessons = [...(selectedGradeCurriculum?.lessons || [])];
+          const index = lessons.findIndex(l => l.id === lessonId);
+          if (index < 0) return;
+          const targetIndex = direction === 'up' ? index - 1 : index + 1;
+          if (targetIndex < 0 || targetIndex >= lessons.length) return;
+
+          const temp = lessons[index];
+          lessons[index] = lessons[targetIndex];
+          lessons[targetIndex] = temp;
+
+          const lessonIds = lessons.map(l => l.id);
+          try {
+            await api('/api/admin/curriculum/reorder', {
+              method: 'POST',
+              body: JSON.stringify({
+                gradeKey: selectedGradeKey,
+                lessonIds
+              })
+            });
+            await openGradeCurriculum(selectedGradeKey);
+          } catch (error) {
+            showError(`Could not reorder lessons: ${error.message}`);
+          }
+          return;
+        }
+      });
+    });
+
     async function initializeDashboardAuth() {
       try {
         const response = await fetch('/api/admin/auth/status', {

@@ -12,7 +12,6 @@ import { buildContactInsertArgs, getPhoneJid, isTermuxAndroid, openContactInsert
 import { sendHumanizedMessage } from './humanization.js';
 import { config } from './config.js';
 import { historyManager } from './history.js';
-import { generateClientResponse, learnFromTeacherReply } from './ai.js';
 import { sudaneseArabicLearner } from './sudanese_arabic_learning.js';
 import {
   hasLessonDeliveryConsent,
@@ -23,15 +22,14 @@ import { contactSyncManager } from './contact_sync.js';
 import { followUpManager, isFollowUpOptOutRequest } from './followup_manager.js';
 import { broadcastManager } from './broadcast_manager.js';
 import {
-  grammarTutor,
-  isGrammarCourseControlRequest,
-  isGrammarCourseStartRequest
-} from './grammar_tutor.js';
-import {
   createIncomingMessageDeduplicator,
   shouldProcessIncomingUpsert
 } from './incoming_message_utils.js';
 import { IncomingChatQueue } from './incoming_chat_queue.js';
+import { readAgentMediaActivities, writeAgentMediaActivity } from './agent_media_activity.js';
+import {
+  consumeAgentMediaRetryRequests
+} from './agent_media_retry.js';
 import { whatsappChatActivityStore } from './whatsapp_chat_activity.js';
 import {
   WhatsAppPresenceManager
@@ -54,11 +52,149 @@ import {
   reportMediaUploadProgress,
   wrapSocketWithMediaUploadProgress
 } from './media_upload_progress.js';
+import {
+  createScheduledLessonStore,
+  formatScheduledDateTime,
+  isLessonScheduleRequest,
+  isRecurringLessonScheduleRequest,
+  looksLikeScheduleDateTime,
+  parseScheduledDateTime,
+  getNextDailyLessonTime
+} from './scheduled_lessons.js';
 
 // Debounce queue for client messages: Map<jid, { timer: NodeJS.Timeout, texts: string[], images: Array<{ data: Buffer, mimeType: string }>, pushName: string }>
 installAgentLogCapture();
 const debounceMap = new Map();
 const isDuplicateIncomingMessage = createIncomingMessageDeduplicator();
+const scheduledLessonStore = createScheduledLessonStore();
+let scheduledLessonTimer = null;
+let processingScheduledLessons = false;
+
+function isScheduleConfirmation(text) {
+  return /^(?:yes|yeah|yep|sure|okay|ok|confirm|please do|ايوة|أيوة|ايوه|أيوه|ايوا|اي|نعم|تمام|ماشي|موافق|موافقه|موافقة)[.!؟\s]*$/i
+    .test(text.trim());
+}
+
+function isScheduleRejection(text) {
+  return /^(?:no|nope|cancel|not now|لا|الغاء|إلغاء|ما داير|ما دايره)[.!؟\s]*$/i
+    .test(text.trim());
+}
+
+function hasArabicText(text) {
+  return /[\u0600-\u06FF]/.test(text);
+}
+
+function getSchedulableLesson(student, gradeKey, jid, phoneJid) {
+  if (!gradeKey) return null;
+  const lessons = lessonManager.lessonsConfig[gradeKey]?.lessons || [];
+  let lessonIndex = 0;
+  if (student && lessonManager.hasActiveLesson(jid, phoneJid)) {
+    lessonIndex = student.currentLessonIndex;
+  } else if (student?.currentLessonId) {
+    if (!/^lesson_\d+$/.test(student.currentLessonId)) return null;
+    const next = lessonManager.getNextSequentialLesson(gradeKey, student.currentLessonId);
+    if (next.status !== 'ready') return null;
+    lessonIndex = next.lessonIndex;
+  }
+  const lesson = lessons[lessonIndex];
+  if (!lesson?.videoFile || typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
+      !Array.isArray(lesson.answerKey) || !lesson.answerKey.length) {
+    return null;
+  }
+  return { lessonIndex, lesson };
+}
+
+function scheduleClarification(parsed, arabic) {
+  if (parsed.status === 'ambiguous') {
+    return parsed.missing?.includes('date')
+      ? arabic
+        ? 'حدد اليوم كمان، والساعة دي تقصدها صباحاً ولا مساءً؟'
+        : 'Please also give the date and clarify whether that time is morning or evening.'
+      : arabic
+        ? 'تقصد الساعة دي صباحاً ولا مساءً؟'
+        : 'Do you mean that time in the morning or evening?';
+  }
+  if (parsed.status === 'past') {
+    return arabic
+      ? 'الوقت دا فات. أرسل لي موعد جاي بالتاريخ والساعة بتوقيت السودان.'
+      : 'That time has already passed. Please send a future date and time in Sudan time.';
+  }
+  if (parsed.status === 'invalid') {
+    return arabic
+      ? 'ما قدرت أحدد الساعة. أرسلها مثلاً ٤:٣٠ مساءً أو 16:30.'
+      : 'I could not read the time. Please send it as 4:30 pm or 16:30.';
+  }
+  if (parsed.status === 'incomplete' && parsed.missing?.length === 1) {
+    return parsed.missing[0] === 'date'
+      ? arabic
+        ? 'حدد اليوم والتاريخ المطلوب، مثلاً: بكرة أو يوم الخميس، بتوقيت السودان.'
+        : 'Please specify the date, for example tomorrow or Thursday, in Sudan time.'
+      : arabic
+        ? 'حدد الساعة بالدقيقة وهل هي صباحاً أو مساءً، بتوقيت السودان.'
+        : 'Please specify the exact time and whether it is am or pm, in Sudan time.';
+  }
+  return arabic
+    ? 'حدد اليوم والساعة بالتحديد بتوقيت السودان، مثلاً: بكرة الساعة ٤ مساءً.'
+    : 'Please give me the exact date and time in Sudan time, for example: tomorrow at 4 pm.';
+}
+
+async function processDueScheduledLessons(sock) {
+  if (processingScheduledLessons) return;
+  processingScheduledLessons = true;
+  try {
+    let schedule;
+    while ((schedule = scheduledLessonStore.claimDue())) {
+      const phoneJid = getPhoneJid(schedule.jid, schedule.phoneJid);
+      const phoneNumber = phoneJid?.slice(0, -'@s.whatsapp.net'.length).split(':')[0] || '';
+      const lastLessonDelivery = lessonManager.getLatestLessonDeliveryAt(schedule.jid, schedule.phoneJid);
+      if (lastLessonDelivery !== null &&
+          Date.now() - lastLessonDelivery < 24 * 60 * 60 * 1000) {
+        try {
+          scheduledLessonStore.reschedule(
+            schedule.id,
+            getNextDailyLessonTime(lastLessonDelivery)
+          );
+          console.log(`[Scheduled Lesson] Deferred ${schedule.lessonTitle} for ${schedule.studentName} until the 24-hour lesson interval has passed.`);
+        } catch (error) {
+          scheduledLessonStore.complete(schedule.id, 'failed', error.message);
+          console.error(`[Scheduled Lesson] Could not defer ${schedule.lessonTitle}:`, error.message);
+        }
+        continue;
+      }
+      const contact = Object.entries(historyManager.contacts).find(([jid, item]) =>
+        jid === schedule.jid || getPhoneJid(jid, item.jid) === phoneJid)?.[1];
+      const ownPhone = sock.user?.id?.split('@')[0].split(':')[0];
+      const optedOut = (followUpManager.state.optedOutJids || []).some(jid =>
+        jid === schedule.jid || (phoneJid && getPhoneJid(jid, historyManager.contacts[jid]?.jid) === phoneJid));
+      if (!phoneNumber || !config.shouldReplyTo(phoneNumber) || contact?.ownerBlocked ||
+          optedOut || phoneNumber === ownPhone) {
+        scheduledLessonStore.complete(schedule.id, 'failed', 'Student is unavailable, blocked, opted out, or not eligible for automated delivery.');
+        continue;
+      }
+
+      try {
+        const delivered = await lessonManager.deliverLesson(
+          sock,
+          schedule.jid,
+          schedule.gradeKey,
+          schedule.lessonIndex,
+          schedule.phoneJid
+        );
+        scheduledLessonStore.complete(
+          schedule.id,
+          delivered ? 'sent' : 'failed',
+          delivered ? null : 'Lesson delivery did not complete successfully.'
+        );
+        console.log(`[Scheduled Lesson] ${schedule.lessonTitle} for ${schedule.studentName}: ${delivered ? 'sent' : 'failed'}.`);
+      } catch (error) {
+        scheduledLessonStore.complete(schedule.id, 'failed', error.message);
+        console.error(`[Scheduled Lesson] Could not deliver ${schedule.lessonTitle} to ${phoneNumber.slice(-4)}:`, error.message);
+      }
+    }
+  } finally {
+    processingScheduledLessons = false;
+  }
+}
 const MAX_INCOMING_IMAGE_BYTES = 10 * 1024 * 1024;
 let paymentLabelTimer = null;
 let processingPaymentLabels = false;
@@ -66,8 +202,10 @@ let agentConnectionState = 'starting';
 let lastConnectedAt;
 let agentAccount = null;
 let agentHeartbeatTimer = null;
+let mediaRetryTimer = null;
 let dashboardDisconnectRequested = false;
 let agentRespondingEnabled = true;
+let agentQueuePaused = false;
 const contactPaymentLabels = createContactPaymentLabelsStore();
 const whatsappPresenceManager = new WhatsAppPresenceManager();
 
@@ -102,7 +240,14 @@ function updateAgentStatus(connectionState = agentConnectionState, account = age
   if (account) agentAccount = account;
   if (newlyConnected) lastConnectedAt = new Date().toISOString();
   try {
-    writeAgentStatus(agentConnectionState, lastConnectedAt, agentAccount, undefined, agentRespondingEnabled);
+    writeAgentStatus(
+      agentConnectionState,
+      lastConnectedAt,
+      agentAccount,
+      undefined,
+      agentRespondingEnabled,
+      agentQueuePaused
+    );
   } catch (error) {
     console.error('[Agent Status] Could not save WhatsApp connection status:', error.message);
   }
@@ -171,11 +316,33 @@ async function startAgent() {
     try {
       const action = consumeAgentControlRequest();
       if (!action) return;
+      if (typeof action === 'object' && action.action === 'cancel_queued_chat') {
+        const pendingChat = debounceMap.get(action.jid);
+        const cancelledEntry = incomingChatQueue.cancelWaiting(action.jid);
+        if (cancelledEntry) {
+          if (pendingChat?.queueEntry === cancelledEntry) {
+            clearTimeout(pendingChat.timer);
+            debounceMap.delete(action.jid);
+          }
+          console.log(`[Agent Queue] Cancelled queued handling for ${cancelledEntry.pushName || action.jid}; incoming messages remain saved.`);
+        } else {
+          console.log(`[Agent Queue] Could not cancel ${action.jid}; it is no longer waiting in the queue.`);
+        }
+        updateAgentStatus();
+        return;
+      }
       if (action === 'disconnect') {
         dashboardDisconnectRequested = true;
         updateAgentStatus('disconnecting');
         console.log('[Connection] Dashboard requested an agent disconnect; keeping the WhatsApp device linked.');
         sock.end(new Error('Agent disconnected from the dashboard.'));
+        return;
+      }
+      if (action === 'pause_queue' || action === 'resume_queue') {
+        agentQueuePaused = action === 'pause_queue';
+        incomingChatQueue.setPaused(agentQueuePaused);
+        updateAgentStatus();
+        console.log(`[Agent Queue] New chat handling ${agentQueuePaused ? 'paused' : 'resumed'}; the current chat will finish normally.`);
         return;
       }
       agentRespondingEnabled = action === 'resume_replies';
@@ -186,6 +353,35 @@ async function startAgent() {
     }
   }, 1000);
   disconnectRequestTimer.unref?.();
+  let processingMediaRetries = false;
+  mediaRetryTimer = setInterval(async () => {
+    if (processingMediaRetries) return;
+    processingMediaRetries = true;
+    try {
+      const requests = consumeAgentMediaRetryRequests();
+      for (const request of requests) {
+        const activity = readAgentMediaActivities().find(item => item.id === request.activityId);
+        if (!activity || activity.status !== 'retrying') continue;
+        try {
+          await lessonManager.resendMediaActivity(sock, activity);
+        } catch (error) {
+          console.error(`[Media retry] Could not resend activity ${activity.id}:`, error.message);
+          const latestActivity = readAgentMediaActivities().find(item => item.id === activity.id) || activity;
+          writeAgentMediaActivity({
+            ...latestActivity,
+            status: 'failed',
+            retryError: error.message,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[Media retry] Could not process queued video retries:', error.message);
+    } finally {
+      processingMediaRetries = false;
+    }
+  }, 1000);
+  mediaRetryTimer.unref?.();
   const incomingChatQueue = new IncomingChatQueue();
   let processingChatQueue = false;
   const processNextQueuedChat = async () => {
@@ -253,6 +449,10 @@ async function startAgent() {
         statusCode !== DisconnectReason.loggedOut;
 
       clearInterval(disconnectRequestTimer);
+      if (mediaRetryTimer) clearInterval(mediaRetryTimer);
+      mediaRetryTimer = null;
+      if (scheduledLessonTimer) clearInterval(scheduledLessonTimer);
+      scheduledLessonTimer = null;
       followUpManager.stop(sock);
       broadcastManager.stop(sock);
       contactSyncManager.stop(sock);
@@ -289,6 +489,19 @@ async function startAgent() {
       console.log('==================================================\n');
       followUpManager.start(sock);
       broadcastManager.start(sock);
+      try {
+        scheduledLessonStore.recoverInterrupted();
+      } catch (error) {
+        console.error('[Scheduled Lesson] Could not recover the persisted schedule queue:', error.message);
+      }
+      if (scheduledLessonTimer) clearInterval(scheduledLessonTimer);
+      scheduledLessonTimer = setInterval(() => {
+        processDueScheduledLessons(sock).catch(error =>
+          console.error('[Scheduled Lesson] Queue processing failed:', error.message));
+      }, 5000);
+      scheduledLessonTimer.unref?.();
+      processDueScheduledLessons(sock).catch(error =>
+        console.error('[Scheduled Lesson] Queue processing failed:', error.message));
       contactSyncManager.start(sock);
       whatsappPresenceManager.start(sock);
       if (paymentLabelTimer) clearInterval(paymentLabelTimer);
@@ -312,9 +525,13 @@ async function startAgent() {
         const jid = msg.key?.remoteJid;
         if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
 
-        const text = msg.message?.conversation ||
-                     msg.message?.extendedTextMessage?.text ||
-                     msg.message?.imageMessage?.caption ||
+        const messageContent = normalizeMessageContent(msg.message);
+        const videoCaption = messageContent?.videoMessage?.caption;
+        const text = messageContent?.conversation ||
+                     messageContent?.extendedTextMessage?.text ||
+                     messageContent?.imageMessage?.caption ||
+                     videoCaption ||
+                     messageContent?.documentMessage?.caption ||
                      '';
         if (text) {
           const role = msg.key.fromMe ? 'agent' : 'client';
@@ -322,7 +539,10 @@ async function startAgent() {
             ? msg.messageTimestamp * 1000
             : Date.now();
           const contactName = msg.pushName || '';
-          historyManager.addMessage(jid, role, text, timestamp, contactName);
+          const savedText = role === 'agent' && videoCaption
+            ? `🎬 [فيديو: ${videoCaption}]\n${videoCaption}`
+            : text;
+          historyManager.addMessage(jid, role, savedText, timestamp, contactName);
         }
       }
     }
@@ -350,18 +570,11 @@ async function startAgent() {
         console.error('[WhatsApp Chat Activity] Could not save message timestamp:', error.message);
       }
 
-      // 2. When message is sent by yourself, learn from your reply!
+      // 2. Save messages sent by the account owner.
       if (msg.key.fromMe) {
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
         if (text && !jid.endsWith('@g.us')) {
-          const recentClientMessages = (historyManager.history[jid] || []).filter(m => m.role === 'client');
-          const lastClientMsg = recentClientMessages.length > 0 ? recentClientMessages[recentClientMessages.length - 1].text : '';
-
           historyManager.addMessage(jid, 'agent', text);
-
-          if (lastClientMsg) {
-            learnFromTeacherReply(lastClientMsg, text).catch(() => {});
-          }
         }
         continue;
       }
@@ -510,6 +723,7 @@ async function startAgent() {
         const queuedEntry = {
           jid,
           pushName: currentEntry.pushName,
+          hadPriorConversation,
           texts: currentEntry.texts,
           images: currentEntry.images,
           senderNumber: currentEntry.senderNumber,
@@ -553,28 +767,185 @@ async function startAgent() {
           }
 
           try {
-            const grammarStudent = grammarTutor.getStudent(jid, phoneJid);
-            if (grammarStudent &&
-                (grammarTutor.isActive(jid, phoneJid) ||
-                  isGrammarCourseControlRequest(aggregatedText))) {
-              const grammarGrade = lessonManager.detectGrade(aggregatedText) || grammarStudent.gradeKey;
-              const grammarHandled = await grammarTutor.handleMessage(
-                sock, jid, aggregatedText, grammarGrade, phoneJid
-              );
-              if (grammarHandled) return;
+            const hasScheduledLessonConversation = Boolean(scheduledLessonStore.getPending(jid)) ||
+              isLessonScheduleRequest(aggregatedText);
+
+            const replyForSchedule = async text => {
+              await sendHumanizedMessage(sock, jid, text, config.typingWordsPerMinute);
+              historyManager.addMessage(jid, 'agent', text);
+            };
+            let pendingSchedule = scheduledLessonStore.getPending(jid);
+            const schedulingRequest = isLessonScheduleRequest(aggregatedText);
+            const isScheduleResponse = isScheduleConfirmation(aggregatedText) ||
+              isScheduleRejection(aggregatedText);
+            if (pendingSchedule && !schedulingRequest && !isScheduleResponse &&
+                !looksLikeScheduleDateTime(aggregatedText) &&
+                !(pendingSchedule.step === 'awaiting_grade' && lessonManager.detectGrade(aggregatedText))) {
+              scheduledLessonStore.clearPending(jid);
+              pendingSchedule = null;
+            }
+            if (!pendingSchedule && schedulingRequest &&
+                isRecurringLessonScheduleRequest(aggregatedText)) {
+              await replyForSchedule(hasArabicText(aggregatedText)
+                ? 'حالياً بقدر أجدول إرسال حصة واحدة لمرة واحدة. أرسل لي اليوم والساعة لو داير موعد واحد.'
+                : 'I can schedule a lesson one time at the moment. Tell me the date and time if you want a one-time delivery.');
+              return;
+            }
+            if (pendingSchedule || schedulingRequest) {
+              const arabic = hasArabicText(aggregatedText);
+              if (pendingSchedule) pendingSchedule.arabic = arabic;
+              if (!pendingSchedule) {
+                pendingSchedule = {
+                  jid,
+                  phoneJid,
+                  studentName: queuedEntry.pushName,
+                  arabic,
+                  requestText: aggregatedText,
+                  createdAt: new Date().toISOString()
+                };
+              }
+
+              if (pendingSchedule.step === 'confirm' && isScheduleConfirmation(aggregatedText)) {
+                let saved;
+                try {
+                  saved = scheduledLessonStore.create(pendingSchedule);
+                } catch (error) {
+                  console.error('[Scheduled Lesson] Could not save the confirmed delivery:', error.message);
+                  await replyForSchedule(arabic
+                    ? 'ما قدرت أحفظ الموعد. جرّب تطلب الجدولة مرة تانية بعد شوية.'
+                    : 'I could not save that delivery. Please try scheduling it again in a little while.');
+                  return;
+                }
+                const when = formatScheduledDateTime(saved.scheduledAt, arabic ? 'ar-SD' : 'en-GB');
+                const response = arabic
+                  ? `تمام، حأرسل ليك "${saved.lessonTitle}" يوم ${when} بتوقيت السودان.`
+                  : `Done. I’ll send "${saved.lessonTitle}" on ${when} Sudan time.`;
+                await replyForSchedule(response);
+                console.log(`[Scheduled Lesson] Confirmed ${saved.lessonTitle} for ${saved.studentName} at ${saved.scheduledAt}.`);
+                return;
+              }
+              if (pendingSchedule.step === 'confirm' && isScheduleRejection(aggregatedText)) {
+                scheduledLessonStore.clearPending(jid);
+                await replyForSchedule(arabic
+                  ? 'تمام، ما حأجدول الحصة.'
+                  : 'Okay, I will not schedule the lesson.');
+                return;
+              }
+              if (pendingSchedule.step === 'confirm') {
+                await replyForSchedule(arabic
+                  ? 'رد بنعم لتأكيد الموعد أو لا لإلغائه. لو داير وقت مختلف، ألغِ الموعد واطلبه من جديد.'
+                  : 'Reply yes to confirm or no to cancel. To choose a different time, cancel and request it again.');
+                return;
+              }
+
+              const knownStudent = lessonManager.getStudent(jid, phoneJid);
+              const requestedGrade = lessonManager.detectGrade(aggregatedText) ||
+                pendingSchedule.gradeKey ||
+                knownStudent?.grade;
+              if (!requestedGrade) {
+                pendingSchedule.step = 'awaiting_grade';
+                if (pendingSchedule.requestText !== aggregatedText) {
+                  pendingSchedule.requestText = `${pendingSchedule.requestText}\n${aggregatedText}`;
+                }
+                scheduledLessonStore.setPending(jid, pendingSchedule);
+                await replyForSchedule(arabic
+                  ? 'أكيد. إنت في أي صف ومرحلة؟'
+                  : 'Sure. Which grade and school stage are you in?');
+                return;
+              }
+
+              const lessonStudent = knownStudent?.grade === requestedGrade ? knownStudent : null;
+              const selectedLesson = getSchedulableLesson(lessonStudent, requestedGrade, jid, phoneJid);
+              if (!selectedLesson) {
+                scheduledLessonStore.clearPending(jid);
+                await replyForSchedule(arabic
+                  ? 'ما لقيت حصة جاهزة بتمارينها للصف دا عشان أجدولها حالياً.'
+                  : 'I could not find a configured lesson with its exercise to schedule for that grade yet.');
+                return;
+              }
+
+              const combinedRequest = pendingSchedule.requestText === aggregatedText
+                ? aggregatedText
+                : `${pendingSchedule.requestText}\n${aggregatedText}`;
+              const parsed = parseScheduledDateTime(combinedRequest);
+              pendingSchedule = {
+                ...pendingSchedule,
+                step: parsed.status === 'valid' ? 'confirm' : 'awaiting_time',
+                gradeKey: requestedGrade,
+                lessonIndex: selectedLesson.lessonIndex,
+                lessonId: selectedLesson.lesson.id,
+                lessonTitle: selectedLesson.lesson.title || selectedLesson.lesson.id,
+                requestText: combinedRequest,
+                ...(parsed.status === 'valid' ? { scheduledAt: parsed.scheduledAt } : {})
+              };
+              scheduledLessonStore.setPending(jid, pendingSchedule);
+              if (parsed.status !== 'valid') {
+                await replyForSchedule(scheduleClarification(parsed, arabic));
+                return;
+              }
+
+              const when = formatScheduledDateTime(parsed.scheduledAt, arabic ? 'ar-SD' : 'en-GB');
+              const confirmation = arabic
+                ? `أجدول ليك "${pendingSchedule.lessonTitle}" يوم ${when} بتوقيت السودان؟ رد بنعم أو لا.`
+                : `Should I schedule "${pendingSchedule.lessonTitle}" for ${when} Sudan time? Reply yes or no.`;
+              await replyForSchedule(confirmation);
+              return;
             }
 
-            if (queuedEntry.images.length === 0 && lessonManager.isLessonVideoRequest(aggregatedText)) {
+            const resendVideo = queuedEntry.images.length === 0 &&
+              lessonManager.isLessonVideoRequest(aggregatedText);
+            const resendTask = queuedEntry.images.length === 0 &&
+              lessonManager.isLessonTaskRequest(aggregatedText);
+            if (resendVideo || resendTask) {
               await sock.sendPresenceUpdate('composing', jid);
-              const resent = await lessonManager.resendCurrentLessonVideo(sock, jid, phoneJid);
-              await sock.sendPresenceUpdate('paused', jid);
-              if (resent) return;
+              try {
+                let handled = false;
+                if (resendVideo) {
+                  handled = await lessonManager.resendCurrentLessonVideo(sock, jid, phoneJid) || handled;
+                }
+                if (resendTask) {
+                  handled = await lessonManager.resendCurrentLessonTask(sock, jid, phoneJid) || handled;
+                }
+                if (handled) return;
+              } finally {
+                await sock.sendPresenceUpdate('paused', jid);
+              }
             }
 
-            if (lessonManager.hasActiveLesson(jid, phoneJid) && queuedEntry.images.length === 0) {
+            if (queuedEntry.images.length === 0 &&
+                await lessonManager.handleTreasureIslandMessage(
+                  sock, jid, aggregatedText, queuedEntry.pushName, phoneJid
+                )) {
+              return;
+            }
+
+            if (lessonManager.hasActiveLesson(jid, phoneJid) &&
+                !lessonManager.hasActiveTreasureIslandLesson(jid, phoneJid) &&
+                queuedEntry.images.length === 0) {
               await sock.sendPresenceUpdate('composing', jid);
               const isHandled = await lessonManager.handleTaskSubmission(
-                sock, jid, aggregatedText, queuedEntry.pushName, phoneJid
+                sock,
+                jid,
+                aggregatedText,
+                queuedEntry.pushName,
+                phoneJid,
+                async ({ gradeKey, lessonIndex, lesson, studentName }) => {
+                  const pending = scheduledLessonStore.list().find(schedule =>
+                    schedule.jid === jid &&
+                    schedule.lessonId === lesson.id &&
+                    ['scheduled', 'sending'].includes(schedule.status));
+                  if (pending) return pending;
+                  return scheduledLessonStore.create({
+                    jid,
+                    phoneJid,
+                    studentName,
+                    gradeKey,
+                    lessonIndex,
+                    lessonId: lesson.id,
+                    lessonTitle: lesson.title,
+                    scheduledAt: getNextDailyLessonTime()
+                  });
+                }
               );
               await sock.sendPresenceUpdate('paused', jid);
               if (isHandled) return;
@@ -582,31 +953,6 @@ async function startAgent() {
 
             const detectedGrade = lessonManager.detectGrade(aggregatedText);
             let student = lessonManager.getStudent(jid, phoneJid);
-            if (isGrammarCourseStartRequest(aggregatedText)) {
-              if (lessonManager.hasActiveLesson(jid, phoneJid)) {
-                await sendHumanizedMessage(
-                  sock,
-                  jid,
-                  'Finish the video lesson exercise you already have first. Then ask me to start the grammar course.',
-                  config.typingWordsPerMinute
-                );
-                return;
-              }
-              await grammarTutor.handleMessage(
-                sock,
-                jid,
-                aggregatedText,
-                detectedGrade ||
-                  [...(historyManager.history[jid] || [])]
-                    .reverse()
-                    .filter(message => message.role === 'client')
-                    .map(message => lessonManager.detectGrade(message.text))
-                    .find(Boolean) ||
-                  student?.grade,
-                phoneJid
-              );
-              return;
-            }
 
             const chatHistory = historyManager.history[jid] || [];
             const previousAgentMessage = [...chatHistory]
@@ -626,11 +972,14 @@ async function startAgent() {
               .map(message => lessonManager.detectGrade(message.text))
               .find(Boolean);
             const requestedGrade = detectedGrade || gradeFromHistory || student?.grade;
+            if (requestedGrade && (!student || student.status === 'consulting')) {
+              student = lessonManager.reconcileProgressFromHistory(jid, phoneJid, requestedGrade);
+            }
             const gradeLessons = requestedGrade ? lessonManager.lessonsConfig[requestedGrade]?.lessons : null;
             const firstConfiguredLesson = requestedGrade
               ? lessonManager.getWelcomeSampleLesson(requestedGrade)
               : null;
-            const nextConfiguredLesson = student?.status === 'awaiting_content' &&
+            const nextConfiguredLesson = ['awaiting_content', 'completed'].includes(student?.status) &&
               student.grade === requestedGrade && requestedGrade
               ? lessonManager.getNextSequentialLesson(
                 requestedGrade,
@@ -638,29 +987,20 @@ async function startAgent() {
               )
               : null;
             const welcomeState = historyManager.getWelcomeSampleState(jid, alternateJid, phoneJid);
-            let welcomeSampleMode = null;
             let shouldSendWelcomeSample = false;
             if (welcomeState === 'pending_grade') {
-              if (!requestedGrade) {
-                welcomeSampleMode = 'ask_grade';
-              } else {
-                const canStartFreshSequence = !student || student.status === 'consulting' ||
-                  (detectedGrade && student.grade !== detectedGrade);
+              if (requestedGrade) {
+                const canStartFreshSequence = ((!student || student.status === 'consulting') &&
+                  !queuedEntry.hadPriorConversation) ||
+                  (detectedGrade && student && student.grade !== detectedGrade);
                 if (firstConfiguredLesson) {
                   if (canStartFreshSequence && !lessonManager.hasActiveLesson(jid, phoneJid) &&
                       queuedEntry.images.length === 0) {
-                    welcomeSampleMode = 'sample';
                     shouldSendWelcomeSample = true;
                   } else {
-                    if (lessonManager.hasActiveLesson(jid, phoneJid) || queuedEntry.images.length > 0) {
-                      welcomeSampleMode = 'deferred';
-                    }
                     historyManager.setWelcomeSampleState('deferred', jid, alternateJid, phoneJid);
                   }
                 } else {
-                  if (canStartFreshSequence) {
-                    welcomeSampleMode = 'unavailable';
-                  }
                   historyManager.setWelcomeSampleState(
                     canStartFreshSequence ? 'unavailable' : 'deferred',
                     jid,
@@ -675,9 +1015,12 @@ async function startAgent() {
               requestedGrade &&
               queuedEntry.images.length === 0 &&
               !lessonManager.hasActiveLesson(jid, phoneJid) &&
-              ((firstConfiguredLesson && (!student || student.status === 'consulting' || wantsLessonNow ||
-                (detectedGrade && student.grade !== detectedGrade))) ||
-                nextConfiguredLesson?.status === 'ready');
+              !lessonManager.hasActiveTreasureIslandLesson(jid, phoneJid) &&
+              ((firstConfiguredLesson && ((!student || student.status === 'consulting') &&
+                !queuedEntry.hadPriorConversation ||
+                (detectedGrade && student && student.grade !== detectedGrade))) ||
+                (nextConfiguredLesson?.status === 'ready' &&
+                  (student.status !== 'completed' || wantsLessonNow)));
             const lessonIndexToStart = nextConfiguredLesson?.status === 'ready'
               ? nextConfiguredLesson.lessonIndex
               : 0;
@@ -692,27 +1035,47 @@ async function startAgent() {
               console.log(`[Lesson Setup] No lessons are configured yet for ${requestedGrade}. Continuing the conversation without sending a different grade's lesson.`);
             }
 
-            console.log(`[Agent] Generating response for ${queuedEntry.pushName}...`);
-            const reply = await generateClientResponse(
-              jid,
-              queuedEntry.pushName,
-              aggregatedText,
-              queuedEntry.images,
-              requestedGrade || student?.grade || null,
-              Boolean(shouldStartAfterReply || shouldSendWelcomeSample),
-              Boolean(hasLessonConsent),
-              phoneJid,
-              grammarStudent && grammarTutor.isActive(jid, phoneJid)
-                ? grammarTutor.getCurrentLesson(jid, phoneJid)?.title || null
-                : null,
-              welcomeSampleMode
-            );
-            if (!agentRespondingEnabled) {
-              console.log(`[Agent Control] Skipped generated reply to ${queuedEntry.pushName}; automatic replies were paused.`);
+            if (student?.historyReconciled &&
+                ['awaiting_content', 'completed'].includes(student.status) &&
+                wantsLessonNow && nextConfiguredLesson?.status !== 'ready') {
+              const response = hasArabicText(aggregatedText)
+                ? 'إنت أرسلت ليك كل الحصص المتوفرة حالياً. أول ما أجهز الحصة الجديدة وتمارينها حأرسلها ليك.'
+                : 'You have already received all configured lessons for your grade. I’ll send the next lesson once its video and exercise are ready.';
+              await sendHumanizedMessage(sock, jid, response, config.typingWordsPerMinute);
+              historyManager.addMessage(jid, 'agent', response);
               return;
             }
+
+            if (!agentRespondingEnabled) {
+              console.log(`[Agent Control] Skipped lesson reply to ${queuedEntry.pushName}; automatic replies were paused.`);
+              return;
+            }
+            const arabic = hasArabicText(aggregatedText);
+            let reply;
+            if (shouldSendWelcomeSample || shouldStartAfterReply) {
+              reply = arabic
+                ? 'أهلاً بيك، حأرسل ليك فيديو الحصة والتمرين هسي.'
+                : 'Welcome! I’ll send your lesson video and exercise now.';
+            } else if (!requestedGrade) {
+              reply = arabic
+                ? 'أنا بساعدك بفيديوهات الدروس وتمارينها وتصحيح الإجابات. أرسل لي صفك ومرحلتك عشان أختار ليك الدرس المناسب.'
+                : 'I help with lesson videos, exercises, and marking answers. Tell me your grade and school stage so I can choose the right lesson.';
+            } else if (lessonManager.hasActiveLesson(jid, phoneJid) ||
+                lessonManager.hasActiveTreasureIslandLesson(jid, phoneJid)) {
+              reply = arabic
+                ? 'أنا مركز معاك في الدرس الحالي. أرسل إجابات التمرين عشان أصححها ليك.'
+                : 'Let’s focus on your current lesson. Send your exercise answers and I’ll mark them.';
+            } else if (!gradeLessons?.length) {
+              reply = arabic
+                ? 'ما عندي فيديوهات وتمارين جاهزة للصف دا حالياً.'
+                : 'There are no configured lesson videos and exercises for this grade yet.';
+            } else {
+              reply = arabic
+                ? 'دوري حالياً إرسال الدروس وتمارينها وتصحيح إجاباتك. أرسل طلب الدرس أو إجابات التمرين الحالي.'
+                : 'I’m currently set up to send lessons and exercises and mark your answers. Ask for a lesson or send your current exercise answers.';
+            }
             await sendHumanizedMessage(sock, jid, reply, config.typingWordsPerMinute);
-            console.log(`[Agent -> ${queuedEntry.pushName}]: "${reply}"`);
+            console.log(`[Agent -> ${queuedEntry.pushName}]: sent lesson-only response.`);
             historyManager.addMessage(jid, 'agent', reply);
             if (shouldSendWelcomeSample) {
               historyManager.setWelcomeSampleState('delivering', jid, alternateJid, phoneJid);

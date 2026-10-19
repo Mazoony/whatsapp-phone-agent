@@ -73,9 +73,23 @@ export function createContactPaymentLabelsStore(filePath = CONTACT_PAYMENT_LABEL
           !['paid', 'unpaid'].includes(record.label) ||
           typeof record.reportedAt !== 'string' ||
           typeof record.jid !== 'string' ||
+          (record.paymentHistory != null && (!Array.isArray(record.paymentHistory) ||
+            record.paymentHistory.some(payment =>
+              !payment ||
+              typeof payment !== 'object' ||
+              typeof payment.paidAt !== 'string' ||
+              !Number.isFinite(Date.parse(payment.paidAt)) ||
+              typeof payment.jid !== 'string'))) ||
           (record.whatsappAppliedAt !== null && typeof record.whatsappAppliedAt !== 'string') ||
           (record.whatsappAction != null && !['add', 'remove'].includes(record.whatsappAction)))) {
       throw new Error(`Invalid contact payment labels file: ${filePath}`);
+    }
+    for (const record of Object.values(parsed)) {
+      if (record.source === 'manual' &&
+          record.label === 'paid' &&
+          !Array.isArray(record.paymentHistory)) {
+        record.paymentHistory = [{ paidAt: record.reportedAt, jid: record.jid }];
+      }
     }
     return parsed;
   }
@@ -137,11 +151,16 @@ export function createContactPaymentLabelsStore(filePath = CONTACT_PAYMENT_LABEL
       }
       const labels = read();
       const previous = labels[normalizedNumber];
+      const paidAt = status === 'paid' ? new Date().toISOString() : null;
       const record = {
         label: status,
         source: 'manual',
         reportedAt: previous?.reportedAt || new Date().toISOString(),
         jid,
+        paymentHistory: [
+          ...(previous?.paymentHistory || []),
+          ...(paidAt ? [{ paidAt, jid }] : [])
+        ],
         whatsappAppliedAt: null,
         whatsappAction: status === 'paid' ? 'add' : 'remove'
       };

@@ -12,6 +12,8 @@ import {
   readLastConnectedAt,
   renderAgentQrSvg,
   requestAgentDisconnect,
+  requestAgentQueueCancellation,
+  requestAgentQueueMode,
   requestAgentResponseMode,
   writeAgentQr,
   writeAgentStatus
@@ -67,6 +69,39 @@ test('dashboard reply-mode requests are validated and can be consumed once', () 
     assert.equal(consumeAgentControlRequest(controlFile), 'pause_replies');
     assert.equal(requestAgentResponseMode(true, controlFile).action, 'resume_replies');
     assert.equal(consumeAgentControlRequest(controlFile), 'resume_replies');
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard queue pause requests are validated and can be consumed once', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-queue-mode-test-'));
+  const controlFile = path.join(temporaryDirectory, 'agent_control.json');
+
+  try {
+    assert.throws(() => requestAgentQueueMode('paused', controlFile), TypeError);
+    assert.equal(requestAgentQueueMode(true, controlFile).action, 'pause_queue');
+    assert.equal(consumeAgentControlRequest(controlFile), 'pause_queue');
+    assert.equal(requestAgentQueueMode(false, controlFile).action, 'resume_queue');
+    assert.equal(consumeAgentControlRequest(controlFile), 'resume_queue');
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard queue cancellation requests validate direct chats and are consumed once', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-queue-cancel-test-'));
+  const controlFile = path.join(temporaryDirectory, 'agent_control.json');
+
+  try {
+    assert.throws(() => requestAgentQueueCancellation('1001@g.us', controlFile), TypeError);
+    const request = requestAgentQueueCancellation('1001@s.whatsapp.net', controlFile);
+    assert.deepEqual(JSON.parse(fs.readFileSync(controlFile, 'utf8')), request);
+    assert.deepEqual(consumeAgentControlRequest(controlFile), {
+      action: 'cancel_queued_chat',
+      jid: '1001@s.whatsapp.net'
+    });
+    assert.equal(consumeAgentControlRequest(controlFile), false);
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }

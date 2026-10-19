@@ -71,6 +71,55 @@ test('paid labels persist by phone number and track WhatsApp label application',
   }
 });
 
+test('manual paid marks are retained as monthly payment history after status changes', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'contact-payment-history-'));
+  const filePath = path.join(directory, 'payment-labels.json');
+  try {
+    const store = createContactPaymentLabelsStore(filePath);
+    const phoneNumber = '249123456789';
+    const jid = `${phoneNumber}@s.whatsapp.net`;
+    const firstPayment = store.setManualStatus(phoneNumber, jid, 'paid');
+    assert.equal(firstPayment.paymentHistory.length, 1);
+    assert.ok(Number.isFinite(Date.parse(firstPayment.paymentHistory[0].paidAt)));
+    assert.equal(firstPayment.paymentHistory[0].jid, jid);
+
+    const unpaid = store.setManualStatus(phoneNumber, jid, 'unpaid');
+    assert.equal(unpaid.paymentHistory.length, 1);
+    const secondPayment = store.setManualStatus(phoneNumber, jid, 'paid');
+    assert.equal(secondPayment.paymentHistory.length, 2);
+    assert.deepEqual(
+      secondPayment.paymentHistory.map(payment => payment.jid),
+      [jid, jid]
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('legacy manual paid labels use their saved mark date in payment history', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'contact-payment-legacy-history-'));
+  const filePath = path.join(directory, 'payment-labels.json');
+  const reportedAt = '2026-10-16T22:33:19.819Z';
+  const phoneNumber = '249123456789';
+  const jid = `${phoneNumber}@s.whatsapp.net`;
+  try {
+    fs.writeFileSync(filePath, JSON.stringify({
+      [phoneNumber]: {
+        label: 'paid',
+        source: 'manual',
+        reportedAt,
+        jid,
+        whatsappAppliedAt: null,
+        whatsappAction: null
+      }
+    }));
+    const store = createContactPaymentLabelsStore(filePath);
+    assert.deepEqual(store.list()[phoneNumber].paymentHistory, [{ paidAt: reportedAt, jid }]);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('WhatsApp paid label is created and associated with the chat', async () => {
   const calls = [];
   const socket = {

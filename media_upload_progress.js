@@ -92,13 +92,13 @@ export function createMediaUploadProgress({
     }
 
     const sendMessage = sock.sendMessage.bind(sock);
-    sock.sendMessage = async (jid, content, options) => {
+    sock.sendMessage = async (jid, content, options, activityOptions = {}) => {
       const mediaType = Object.keys(MEDIA_LABELS).find(key =>
         content && typeof content === 'object' && key in content);
       if (!mediaType) return sendMessage(jid, content, options);
 
       const activity = {
-        id: `${Date.now()}-${++nextActivityId}`,
+        id: activityOptions.activityId || `${Date.now()}-${++nextActivityId}`,
         mediaType,
         label: MEDIA_LABELS[mediaType],
         recipientJid: jid,
@@ -110,6 +110,7 @@ export function createMediaUploadProgress({
         startedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
+      if (activityOptions.retry) activity.retry = activityOptions.retry;
       persistActivity(activity);
 
       let releaseUpload;

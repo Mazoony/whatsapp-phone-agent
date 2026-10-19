@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 const DATA_DIR = path.resolve('data');
 export const BROADCAST_MEDIA_DIRECTORY = path.join(DATA_DIR, 'broadcast_media');
-export const MAX_BROADCAST_MEDIA_BYTES = 20 * 1024 * 1024;
+export const MAX_BROADCAST_MEDIA_BYTES = 300 * 1024 * 1024;
 export const MAX_BROADCAST_ATTACHMENTS = 5;
 
 const ALLOWED_MEDIA = new Map([
@@ -61,7 +61,7 @@ export function validateBroadcastMedia({ fileName, mimeType, size, voiceNote = f
     throw new Error('This file type is not supported for bulk messages.');
   }
   if (!Number.isInteger(size) || size < 1 || size > MAX_BROADCAST_MEDIA_BYTES) {
-    throw new Error('Attachments must be between 1 byte and 20 MB.');
+    throw new Error(`Attachments must be between 1 byte and ${Math.round(MAX_BROADCAST_MEDIA_BYTES / (1024 * 1024))} MB.`);
   }
   if (voiceNote && !normalizedMimeType.startsWith('audio/')) {
     throw new Error('A voice note must be an audio recording.');

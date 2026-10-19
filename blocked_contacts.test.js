@@ -16,13 +16,15 @@ test('blocked contact store normalizes, persists, updates, and unblocks phone nu
     assert.equal(normalizePhoneNumber('+249 123-456-789'), '249123456789');
     assert.deepEqual(store.list(), []);
 
-    store.block('+249 123-456-789', 'banned');
+    store.block('+249 123-456-789', 'banned', 'Test Student');
     assert.equal(store.has('249123456789'), true);
     assert.equal(createBlockedContactsStore(filePath).has('249123456789'), true);
+    assert.equal(store.list()[0].name, 'Test Student');
 
     store.block('249123456789', 'deleted');
     assert.equal(store.list().length, 1);
     assert.equal(store.list()[0].reason, 'deleted');
+    assert.equal(store.list()[0].name, 'Test Student');
     assert.equal(store.unblock('249123456789'), true);
     assert.equal(store.unblock('249123456789'), false);
     assert.deepEqual(store.list(), []);

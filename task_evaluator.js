@@ -12,6 +12,22 @@ function getGenAI(apiKey) {
 }
 
 const MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+const TASK_EVALUATION_FORMAT = {
+  type: 'object',
+  properties: {
+    isTaskSubmission: { type: 'boolean' },
+    allCorrect: { type: 'boolean' }
+  },
+  required: ['isTaskSubmission', 'allCorrect'],
+  additionalProperties: false
+};
+
+function getTaskFeedback(isTaskSubmission, allCorrect) {
+  if (!isTaskSubmission) return '';
+  return allCorrect
+    ? 'ما شاء الله عليك، إجاباتك كلها صحيحة.'
+    : 'شغلك كويس، في إجابة محتاجة مراجعة. ركز في المطلوب وحاول تاني.';
+}
 
 /**
  * Evaluates student's task submission using Gemini.
@@ -23,50 +39,27 @@ const MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flas
  * @returns {Promise<{ isTaskSubmission: boolean, allCorrect: boolean, feedback: string }>}
  */
 export async function evaluateStudentTask(lesson, studentSubmission, studentName = 'الطالب') {
-  if (!studentSubmission || studentSubmission.trim().length < 2) {
+  if (typeof studentSubmission !== 'string' || !studentSubmission.trim()) {
     return { isTaskSubmission: false, allCorrect: false, feedback: '' };
+  }
+  if (typeof lesson?.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
+      !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0) {
+    throw new Error('Cannot grade a lesson without configured questions and an answer key.');
   }
 
   const prompt = `
-You are Mr. Mazen (مستر مازن), an encouraging English teacher from Sudan running the eShool educational platform.
-A student (${studentName}) sent a WhatsApp message after being assigned a task.
+You are an encouraging Sudanese English teacher. Mark ${studentName}'s attempt using this lesson:
+QUESTIONS: ${lesson.taskMessage}
+ANSWER KEY: ${JSON.stringify(lesson.answerKey)}
+STUDENT: "${studentSubmission}"
 
-=== CURRENT LESSON ===
-Title: ${lesson.title}
+If the message is unrelated to this exercise, return isTaskSubmission=false.
+Otherwise compare every answer with its question and the answer key. Judge meaning and the grammar being tested, not exact wording. Accept correct paraphrases, synonyms, valid equivalent forms, contractions, concise answers, and minor typos that do not change meaning. A one-word answer can be complete. Match unnumbered answers in order only when the order is clear. Reject answers that change meaning or use the wrong form when that form is tested. If meaning is ambiguous, do not assume correctness; ask for clarification. allCorrect is true only when every answer is correct.
 
-=== ASSIGNED TASK QUESTIONS ===
-${lesson.taskMessage}
-
-=== CORRECT ANSWER KEY & EXPLANATIONS ===
-${JSON.stringify(lesson.answerKey, null, 2)}
-
-=== STUDENT'S MESSAGE ===
-"${studentSubmission}"
-
-=== YOUR GOAL ===
-1. Determine if this message is an attempt to solve the homework / exercise questions above.
-   - If it's just general chat, greeting, question about fees, or unrelated talk -> isTaskSubmission = false.
-   - If they are attempting to answer the questions -> isTaskSubmission = true.
-
-2. If isTaskSubmission is true:
-   - Mark the answers based on the Answer Key.
-   - Set allCorrect = true ONLY if all questions are answered correctly.
-   - If ANY answer is wrong or incomplete, set allCorrect = false.
-
-3. Write the teacher's feedback strictly in warm, polite Sudanese Arabic (اللهجة السودانية الدارجة المهذبة والمشجعة):
-   - If allCorrect is false:
-     * Praise the parts they got right enthusiastically (ما شاء الله عليك، شغلك ممتاز).
-     * For the incorrect questions, do NOT give away the final answer! Instead, point out which question was wrong and give a gentle hint in Sudanese Arabic (e.g. "ركز في زمن الجملة", "شوف الكلمة الدالة"), and kindly ask them to reattempt and send their answer again so they can move to the next lesson.
-   - If allCorrect is true:
-     * Celebrate their full success warmly without childish nicknames (ما شاء الله، إجاباتك كلها صحيحة 100% وكفيت ووفيت).
-     * Tell them they are ready for the next lesson and it is being sent to them right now!
-
-=== OUTPUT FORMAT ===
-Return ONLY a valid JSON object without markdown fences, matching this structure:
+Return only this JSON shape. Do not generate feedback; the app sends it:
 {
   "isTaskSubmission": boolean,
-  "allCorrect": boolean,
-  "feedback": "Your Sudanese Arabic feedback here"
+  "allCorrect": boolean
 }
 `;
 
@@ -87,14 +80,17 @@ Return ONLY a valid JSON object without markdown fences, matching this structure
         const rawText = res.response.text()?.trim();
         const cleaned = rawText.replace(/^```json/i, '').replace(/```$/i, '').trim();
         const parsed = JSON.parse(cleaned);
+        if (typeof parsed.isTaskSubmission !== 'boolean' ||
+            typeof parsed.allCorrect !== 'boolean') {
+          throw new Error('Gemini returned task grading in an invalid format.');
+        }
 
         if (keyIndex > 0) {
           console.log(`[Grader] Used API key ${keyIndex + 1} for task evaluation.`);
         }
         return {
-          isTaskSubmission: !!parsed.isTaskSubmission,
-          allCorrect: !!parsed.allCorrect,
-          feedback: parsed.feedback || ''
+          ...parsed,
+          feedback: getTaskFeedback(parsed.isTaskSubmission, parsed.allCorrect)
         };
       } catch (err) {
         lastError = err;
@@ -106,17 +102,21 @@ Return ONLY a valid JSON object without markdown fences, matching this structure
   try {
     const rawText = await generateLocalResponse(prompt, {
       systemInstruction: 'Evaluate the student answer using the provided rubric. Follow the requested JSON format exactly.',
-      format: 'json'
+      format: TASK_EVALUATION_FORMAT,
+      numPredict: 128
     });
     const parsed = JSON.parse(rawText);
+    if (typeof parsed.isTaskSubmission !== 'boolean' ||
+        typeof parsed.allCorrect !== 'boolean') {
+      throw new Error('Ollama returned task grading in an invalid format.');
+    }
     console.log('[Grader] Task evaluated using local Ollama.');
     return {
-      isTaskSubmission: !!parsed.isTaskSubmission,
-      allCorrect: !!parsed.allCorrect,
-      feedback: typeof parsed.feedback === 'string' ? parsed.feedback : ''
+      ...parsed,
+      feedback: getTaskFeedback(parsed.isTaskSubmission, parsed.allCorrect)
     };
   } catch (localError) {
     console.error('[Grader Error] Gemini and local Ollama failed:', localError.message, lastError?.message || '');
-    return { isTaskSubmission: false, allCorrect: false, feedback: '' };
+    throw new Error(`Could not evaluate the student's task: ${localError.message}`);
   }
 }

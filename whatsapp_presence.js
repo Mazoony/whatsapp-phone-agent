@@ -19,6 +19,9 @@ function readJsonFile(filePath, fallback) {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (error) {
     if (error.code === 'ENOENT') return fallback;
+    if (error instanceof SyntaxError) {
+      error.message = `Invalid JSON in ${filePath}: ${error.message}`;
+    }
     throw error;
   }
 }
@@ -38,6 +41,19 @@ function writeJsonFile(filePath, value) {
       }
     }
     throw error;
+  }
+}
+
+function readPresenceState(filePath, fallback) {
+  try {
+    return readJsonFile(filePath, fallback);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    const backupPath = `${filePath}.corrupt-${Date.now()}-${process.pid}.bak`;
+    fs.copyFileSync(filePath, backupPath, fs.constants.COPYFILE_EXCL);
+    writeJsonFile(filePath, fallback);
+    console.error(`[WhatsApp Presence] Invalid presence JSON was preserved at ${backupPath}; starting with empty presence data.`);
+    return fallback;
   }
 }
 
@@ -119,7 +135,7 @@ export class WhatsAppPresenceManager {
   recordPresenceUpdate(update, now = Date.now()) {
     if (!update || !isPresenceJid(update.id) ||
         !update.presences || typeof update.presences !== 'object') return 0;
-    const state = readJsonFile(this.presenceFile, { presences: {} });
+    const state = readPresenceState(this.presenceFile, { presences: {}, history: {} });
     if (!state || typeof state.presences !== 'object' || Array.isArray(state.presences)) {
       throw new Error('WhatsApp presence data file is invalid.');
     }
@@ -173,7 +189,7 @@ export class WhatsAppPresenceManager {
     if (!Array.isArray(jids) || ![30, 90].includes(days)) {
       throw new Error('Presence metrics require direct chat IDs and a 30- or 90-day range.');
     }
-    const state = readJsonFile(this.presenceFile, { presences: {}, history: {} });
+    const state = readPresenceState(this.presenceFile, { presences: {}, history: {} });
     if (!state || typeof state.presences !== 'object' || Array.isArray(state.presences) ||
         (state.history && (typeof state.history !== 'object' || Array.isArray(state.history)))) {
       throw new Error('WhatsApp presence history file is invalid.');
@@ -268,7 +284,7 @@ export class WhatsAppPresenceManager {
   }
 
   getPresence(...jids) {
-    const state = readJsonFile(this.presenceFile, { presences: {} });
+    const state = readPresenceState(this.presenceFile, { presences: {}, history: {} });
     if (!state || typeof state.presences !== 'object' || Array.isArray(state.presences)) {
       throw new Error('WhatsApp presence data file is invalid.');
     }

@@ -4,7 +4,7 @@ import path from 'node:path';
 export const INCOMING_CHAT_QUEUE_FILE = path.resolve('data', 'incoming_chat_queue.json');
 
 function emptySnapshot() {
-  return { active: null, waiting: [], updatedAt: new Date().toISOString() };
+  return { active: null, waiting: [], paused: false, updatedAt: new Date().toISOString() };
 }
 
 export function readIncomingChatQueue(filePath = INCOMING_CHAT_QUEUE_FILE) {
@@ -21,6 +21,15 @@ export class IncomingChatQueue {
     this.filePath = filePath;
     this.active = null;
     this.waiting = [];
+    this.paused = false;
+    this.persist();
+  }
+
+  setPaused(paused) {
+    if (typeof paused !== 'boolean') {
+      throw new TypeError('Incoming chat queue pause state must be a boolean.');
+    }
+    this.paused = paused;
     this.persist();
   }
 
@@ -54,8 +63,16 @@ export class IncomingChatQueue {
     this.persist();
   }
 
+  cancelWaiting(jid) {
+    const index = this.waiting.findIndex(entry => entry.jid === jid);
+    if (index < 0) return null;
+    const [entry] = this.waiting.splice(index, 1);
+    this.persist();
+    return entry;
+  }
+
   takeNext() {
-    if (this.active || this.waiting.length === 0 || !this.waiting[0].ready) return null;
+    if (this.paused || this.active || this.waiting.length === 0 || !this.waiting[0].ready) return null;
     this.active = this.waiting.shift();
     this.active.startedAt = new Date().toISOString();
     this.persist();
@@ -82,6 +99,7 @@ export class IncomingChatQueue {
       active: this.active ? describe(this.active, 1) : null,
       waiting: this.waiting.map((entry, index) =>
         describe(entry, index + (this.active ? 2 : 1))),
+      paused: this.paused,
       updatedAt: new Date().toISOString()
     };
   }

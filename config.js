@@ -2,17 +2,29 @@ import dotenv from 'dotenv';
 import { blockedContactsStore } from './blocked_contacts.js';
 dotenv.config();
 
-export const config = {
-  geminiApiKey: process.env.GEMINI_API_KEY || '',
-  geminiApiKeys: [...new Set([
-    process.env.GEMINI_API_KEY,
-    process.env.GEMINI_API_KEY_FALLBACK,
-    process.env.GEMINI_API_KEY_FALLBACK_2
+export function getGeminiApiKeys(env = process.env) {
+  const fallbackNames = Object.keys(env)
+    .map(name => {
+      const match = name.match(/^GEMINI_API_KEY_FALLBACK(?:_(\d+))?$/);
+      return match ? { name, order: Number(match[1] || 1) } : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
+
+  return [...new Set([
+    env.GEMINI_API_KEY,
+    ...fallbackNames.map(({ name }) => env[name])
   ].map(key => key?.trim()).filter(key =>
     key && key !== 'your_gemini_api_key_here'
-  ))],
+  ))];
+}
+
+export const config = {
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  geminiApiKeys: getGeminiApiKeys(),
   ollamaBaseUrl: (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/+$/, ''),
   ollamaModel: process.env.OLLAMA_MODEL || 'qwen3:4b',
+  ollamaVisionModel: process.env.OLLAMA_VISION_MODEL || '',
   ollamaTimeoutMs: Math.max(30_000, Number.parseInt(process.env.OLLAMA_TIMEOUT_MS || '180000', 10) || 180_000),
   ownerName: process.env.OWNER_NAME || 'مستر مازن',
   businessName: process.env.BUSINESS_NAME || 'eShool / English School',
@@ -24,7 +36,7 @@ export const config = {
   ignoreGroups: process.env.IGNORE_GROUPS !== 'false',
 
   // Student follow-up campaign settings
-  followUpsEnabled: process.env.FOLLOWUPS_ENABLED !== 'false',
+  followUpsEnabled: process.env.FOLLOWUPS_ENABLED === 'true',
   followUpIntervalMs: Math.max(1, parseInt(process.env.FOLLOWUP_INTERVAL_HOURS || '72', 10)) * 60 * 60 * 1000,
   followUpSendDelayMs: Math.max(0, parseInt(process.env.FOLLOWUP_SEND_DELAY_SECONDS || '30', 10)) * 1000,
   followUpStartDelayMs: Math.max(0, parseInt(process.env.FOLLOWUP_START_DELAY_SECONDS || '60', 10)) * 1000,
@@ -100,7 +112,7 @@ Your role: ${this.botRole}.
 حقائق ومعلومات المدرسة الأساسية:
 1. ابدأ بإرسال الدروس والفيديوهات والتمارين حسب احتياج الطالب، ولا تنتظر دفعاً أو إثبات تحويل.
 2. لا تطلب من الطالب دفع الرسوم أو التحويل أو إرسال إيصال، ولا تذكر بيانات الدفع من تلقاء نفسك.
-3. إذا سأل الطالب مباشرة عن الرسوم أو الدفع، أجب عن سؤاله فقط وباختصار، ثم ارجع للتركيز على تعلمه؛ لا تضغط عليه ولا تجعل الدفع شرطاً لإرسال الدروس.
+3. إذا سأل الطالب عن الرسوم، اذكر السعر الشهري المحدد له حسب رقم دولته. وإذا طلب طريقة الدفع أو رقم الحساب، اذكر بيانات حساب بنكك المحفوظة في معلومات المدرسة. إذا طلب الأمرين، أرسل السعر وبيانات الحساب معاً. لا تضغط عليه ولا تجعل الدفع شرطاً لإرسال الدروس.
 3. نظام الحصص:
    - الحصص يومية ما عدا الجمعة.
    - فيديوهات شرح مفصلة برسلها ليك هنا في الواتساب ومعاها تمارين طوالي واختبار كل أسبوع.

@@ -39,7 +39,12 @@ test('shows a live progress bar and serializes concurrent media sends', async ()
   assert.deepEqual(activities.map(activity => activity.status), [
     'queued', 'queued', 'uploading', 'uploading', 'sent', 'uploading', 'uploading', 'sent'
   ]);
-  assert.equal(activities.find(activity => activity.mediaType === 'video' && activity.percent === 50)?.recipientJid, 'student@s.whatsapp.net');
+  const videoProgressIndex = activities.findIndex(activity =>
+    activity.mediaType === 'video' && activity.percent === 50);
+  const videoSentIndex = activities.findIndex(activity =>
+    activity.mediaType === 'video' && activity.status === 'sent');
+  assert.ok(videoProgressIndex >= 0 && videoProgressIndex < videoSentIndex);
+  assert.equal(activities[videoProgressIndex].recipientJid, 'student@s.whatsapp.net');
   assert.equal(activities.find(activity => activity.mediaType === 'video' && activity.status === 'sent')?.percent, 100);
 });
 
@@ -79,6 +84,32 @@ test('reports failed uploads and propagates the send error', async () => {
   );
   assert.deepEqual(messages, ['[Media upload] Audio upload failed (0.0 MB).']);
   assert.equal(activities.at(-1).status, 'failed');
+});
+
+test('keeps the activity ID and lesson source when retrying a failed video', async () => {
+  const activities = [];
+  const progress = createMediaUploadProgress({
+    isTTY: () => false,
+    log: () => {},
+    onActivity: activity => activities.push(activity)
+  });
+  const sock = createSocket(progress, async () => 'sent');
+  progress.wrapSocket(sock);
+
+  await sock.sendMessage('student@s.whatsapp.net', {
+    video: Buffer.alloc(4),
+    caption: 'Lesson 1'
+  }, undefined, {
+    activityId: 'failed-activity',
+    retry: { gradeKey: 'grade_3_secondary', lessonId: 'lesson_1' }
+  });
+
+  assert.equal(activities[0].id, 'failed-activity');
+  assert.deepEqual(activities[0].retry, {
+    gradeKey: 'grade_3_secondary',
+    lessonId: 'lesson_1'
+  });
+  assert.equal(activities.at(-1).status, 'sent');
 });
 
 test('leaves text sends unqueued and does not display media progress', async () => {

@@ -100,3 +100,84 @@ test('new bursts merge into a waiting chat without changing its original positio
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });
+
+test('paused chat handling holds ready chats in FIFO order until resumed', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'incoming-chat-queue-paused-'));
+  const queue = new IncomingChatQueue(path.join(temporaryDirectory, 'queue.json'));
+  const first = {
+    jid: '1001@s.whatsapp.net',
+    pushName: 'Ali',
+    texts: ['first'],
+    images: [],
+    queuedAt: '2026-01-01T00:00:00.000Z',
+    process: async () => {}
+  };
+  const second = {
+    jid: '1002@s.whatsapp.net',
+    pushName: 'Sara',
+    texts: ['second'],
+    images: [],
+    queuedAt: '2026-01-01T00:00:01.000Z',
+    process: async () => {}
+  };
+
+  try {
+    queue.enqueue(first);
+    queue.enqueue(second);
+    queue.markReady(first);
+    queue.markReady(second);
+    queue.setPaused(true);
+    assert.equal(queue.takeNext(), null);
+    assert.equal(queue.snapshot().paused, true);
+    assert.deepEqual(queue.snapshot().waiting.map(item => item.queuedAt), [
+      first.queuedAt,
+      second.queuedAt
+    ]);
+
+    queue.setPaused(false);
+    assert.equal(queue.snapshot().paused, false);
+    assert.equal(queue.takeNext(), first);
+    queue.finish(first);
+    assert.equal(queue.takeNext(), second);
+    queue.finish(second);
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('cancelling a waiting chat removes it from the FIFO queue but cannot cancel the active chat', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'incoming-chat-queue-cancel-'));
+  const queue = new IncomingChatQueue(path.join(temporaryDirectory, 'queue.json'));
+  const first = {
+    jid: '1001@s.whatsapp.net',
+    pushName: 'Ali',
+    texts: ['first'],
+    images: [],
+    queuedAt: '2026-01-01T00:00:00.000Z',
+    process: async () => {}
+  };
+  const second = {
+    jid: '1002@s.whatsapp.net',
+    pushName: 'Sara',
+    texts: ['second'],
+    images: [],
+    queuedAt: '2026-01-01T00:00:01.000Z',
+    process: async () => {}
+  };
+
+  try {
+    queue.enqueue(first);
+    queue.enqueue(second);
+    queue.markReady(first);
+    queue.markReady(second);
+    assert.equal(queue.takeNext(), first);
+    assert.equal(queue.cancelWaiting(first.jid), null);
+    assert.equal(queue.cancelWaiting(second.jid), second);
+    assert.deepEqual(queue.snapshot().waiting, []);
+    assert.equal(queue.snapshot().active.name, 'Ali');
+    assert.equal(readIncomingChatQueue(queue.filePath).waiting.length, 0);
+    queue.finish(first);
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});

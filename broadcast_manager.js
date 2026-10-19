@@ -7,6 +7,7 @@ import { followUpManager } from './followup_manager.js';
 import { getEligibleBroadcastContacts } from './broadcast_utils.js';
 import { getPhoneJid } from './phonebook.js';
 import { BROADCAST_MEDIA_DIRECTORY, readBroadcastMedia } from './broadcast_media.js';
+import { LESSON_MEDIA_DIR } from './curriculum_manager.js';
 
 const DATA_DIR = path.resolve('data');
 const REQUESTS_FILE = path.join(DATA_DIR, 'broadcast_requests.json');
@@ -42,6 +43,46 @@ function ownPhoneNumber(sock) {
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+export async function sendLessonBroadcastVideo(
+  sock,
+  jid,
+  lessonVideo,
+  mediaDirectory = LESSON_MEDIA_DIR
+) {
+  const mediaRoot = fs.realpathSync(mediaDirectory);
+  const videoPath = fs.realpathSync(path.resolve(mediaRoot, lessonVideo.videoFile));
+  const relativePath = path.relative(mediaRoot, videoPath);
+  if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error('Lesson broadcast video path must be inside the lesson media directory.');
+  }
+  const extension = path.extname(videoPath).toLowerCase();
+  const mimetype = new Map([
+    ['.3gp', 'video/3gpp'],
+    ['.m4v', 'video/mp4'],
+    ['.mkv', 'video/x-matroska'],
+    ['.mov', 'video/quicktime'],
+    ['.mp4', 'video/mp4'],
+    ['.webm', 'video/webm']
+  ]).get(extension);
+  if (!mimetype) throw new Error('Lesson broadcast video format is not supported.');
+  const stats = fs.statSync(videoPath);
+  if (!stats.isFile() || stats.size === 0) {
+    throw new Error('Lesson broadcast video file is missing or empty.');
+  }
+  const buffer = fs.readFileSync(videoPath);
+  const canUpdatePresence = typeof sock.sendPresenceUpdate === 'function';
+  if (canUpdatePresence) await sock.sendPresenceUpdate('composing', jid);
+  try {
+    await sock.sendMessage(jid, {
+      video: buffer,
+      caption: lessonVideo.caption || lessonVideo.title || '',
+      mimetype
+    });
+  } finally {
+    if (canUpdatePresence) await sock.sendPresenceUpdate('paused', jid);
+  }
 }
 
 export async function sendBroadcastContent(
@@ -289,9 +330,14 @@ class BroadcastManager {
         if (Number.isFinite(activityAt)) {
           console.log(`[Broadcast] Sending to ${contact.phoneNumber.slice(-4)}; selected chat activity at ${new Date(activityAt).toISOString()} (${job.activityTimeZone || 'UTC'}, ${job.activityDate || 'date filter'}).`);
         }
-        await sendBroadcastContent(sock, jid, job.text, job.attachments || []);
+        if (job.lessonVideo) {
+          await sendLessonBroadcastVideo(sock, jid, job.lessonVideo);
+        } else {
+          await sendBroadcastContent(sock, jid, job.text, job.attachments || []);
+        }
         const historyText = [
           job.text,
+          ...(job.lessonVideo ? [`[Lesson video: ${job.lessonVideo.title}]`] : []),
           ...(job.attachments || []).map(attachment => `[Attachment: ${attachment.fileName}]`)
         ].filter(Boolean).join('\n');
         historyManager.addMessage(jid, 'agent', historyText);

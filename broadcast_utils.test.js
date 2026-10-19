@@ -3,6 +3,7 @@ import test from 'node:test';
 import { config } from './config.js';
 import {
   getEligibleBroadcastContacts,
+  getInactiveEligibleEsContacts,
   listEligibleBroadcastContacts,
   validateBroadcastRequest
 } from './broadcast_utils.js';
@@ -169,6 +170,63 @@ test('non-Es recipients include tracked unsaved chats but exclude Es aliases and
       jids: ['249111111111@s.whatsapp.net'],
       recipientType: 'other'
     }), /Recipient type/);
+  } finally {
+    config.allowedNumbers = previousAllowedNumbers;
+    config.blockedNumbers = previousBlockedNumbers;
+  }
+});
+
+test('inactive Es recipient filter requires saved activity older than the threshold', () => {
+  const previousAllowedNumbers = config.allowedNumbers;
+  const previousBlockedNumbers = config.blockedNumbers;
+  config.allowedNumbers = 'all';
+  config.blockedNumbers = [];
+  const now = Date.parse('2026-10-19T00:00:00.000Z');
+  const data = {
+    contacts: {
+      '249111111111@s.whatsapp.net': {
+        name: 'Inactive Es',
+        isEs: true,
+        savedInAddressBook: true
+      },
+      '249222222222@s.whatsapp.net': {
+        name: 'Recent Es',
+        isEs: true,
+        savedInAddressBook: true
+      },
+      '249333333333@s.whatsapp.net': {
+        name: 'Unknown Activity Es',
+        isEs: true,
+        savedInAddressBook: true
+      },
+      '249444444444@lid': {
+        jid: '249444444444@s.whatsapp.net',
+        name: 'Inactive Alias Es',
+        isEs: true,
+        savedInAddressBook: true
+      }
+    },
+    history: {},
+    whatsappChatActivity: {
+      '249111111111@s.whatsapp.net': now - 11 * 24 * 60 * 60 * 1000,
+      '249222222222@s.whatsapp.net': now - 9 * 24 * 60 * 60 * 1000,
+      '249444444444@lid': now - 12 * 24 * 60 * 60 * 1000
+    }
+  };
+
+  try {
+    assert.deepEqual(
+      getInactiveEligibleEsContacts(data, [], { inactiveDays: 10, now })
+        .map(contact => contact.phoneNumber),
+      ['249444444444', '249111111111']
+    );
+    assert.deepEqual(
+      getInactiveEligibleEsContacts(data, ['249111111111@s.whatsapp.net'], {
+        inactiveDays: 10,
+        now
+      }).map(contact => contact.phoneNumber),
+      ['249444444444']
+    );
   } finally {
     config.allowedNumbers = previousAllowedNumbers;
     config.blockedNumbers = previousBlockedNumbers;

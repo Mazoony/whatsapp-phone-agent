@@ -44,6 +44,66 @@ test('local model supports constrained JSON responses', async () => {
   assert.equal(requestBody.format, 'json');
 });
 
+test('local task grading can cap generated tokens', async () => {
+  let requestBody;
+  await generateLocalResponse('Mark this answer.', {
+    format: 'json',
+    numPredict: 256,
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({ message: { content: '{"ok":true}' } })
+      };
+    }
+  });
+
+  assert.deepEqual(requestBody.options, { num_predict: 256 });
+});
+
+test('local image requests use the configured vision model and attach image data', async () => {
+  const previousVisionModel = config.ollamaVisionModel;
+  config.ollamaVisionModel = 'test-vision-model';
+  let requestBody;
+  try {
+    await generateLocalResponse('Describe the image.', {
+      images: [{ data: Buffer.from('image-bytes'), mimeType: 'image/jpeg' }],
+      fetchImpl: async (_url, options) => {
+        requestBody = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: async () => ({ message: { content: 'A picture.' } })
+        };
+      }
+    });
+  } finally {
+    config.ollamaVisionModel = previousVisionModel;
+  }
+
+  assert.equal(requestBody.model, 'test-vision-model');
+  assert.deepEqual(requestBody.messages.at(-1), {
+    role: 'user',
+    content: 'Describe the image.',
+    images: [Buffer.from('image-bytes').toString('base64')]
+  });
+});
+
+test('local image requests explain when no vision model is configured', async () => {
+  const previousVisionModel = config.ollamaVisionModel;
+  config.ollamaVisionModel = '';
+  try {
+    await assert.rejects(
+      generateLocalResponse('Describe the image.', {
+        images: [{ data: Buffer.from('image-bytes'), mimeType: 'image/jpeg' }],
+        fetchImpl: async () => { throw new Error('Ollama should not be called'); }
+      }),
+      /OLLAMA_VISION_MODEL.*vision-capable model/
+    );
+  } finally {
+    config.ollamaVisionModel = previousVisionModel;
+  }
+});
+
 test('local model connection and HTTP failures have actionable errors', async () => {
   await assert.rejects(
     generateLocalResponse('Hello', {

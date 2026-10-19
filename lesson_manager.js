@@ -5,11 +5,14 @@ import { config } from './config.js';
 import { evaluateStudentTask } from './task_evaluator.js';
 import { sendHumanizedMessage } from './humanization.js';
 import { historyManager } from './history.js';
+import { findLessonForMediaActivity } from './lesson_media_retry.js';
+import { getPhoneJid } from './phonebook.js';
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve('data');
 const PROGRESS_FILE = path.join(DATA_DIR, 'student_progress.json');
 const LESSONS_FILE = path.resolve('lessons.json');
+const DAILY_LESSON_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function resolveLessonVideoPath(videoFile) {
   if (typeof videoFile !== 'string' || !videoFile.trim()) {
@@ -36,6 +39,55 @@ function normalizeLessonConsentMessage(message) {
     .replace(/[?!.,،؛]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeHistoricalLessonText(message) {
+  return message.toLowerCase()
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 1632))
+    .replace(/[ًٌٍَُِّْـ]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function inferSentLessonProgress(messages, lessons) {
+  if (!Array.isArray(messages) || !Array.isArray(lessons)) return null;
+  const sentMessages = messages
+    .filter(message => message?.role === 'agent' && typeof message.text === 'string')
+    .map(message => normalizeHistoricalLessonText(message.text))
+    .filter(Boolean);
+  let latestMatch = null;
+
+  for (const [lessonIndex, lesson] of lessons.entries()) {
+    const taskMessage = typeof lesson.taskMessage === 'string'
+      ? normalizeHistoricalLessonText(lesson.taskMessage)
+      : '';
+    const title = typeof lesson.title === 'string'
+      ? normalizeHistoricalLessonText(lesson.title)
+      : '';
+    const lessonId = typeof lesson.id === 'string'
+      ? normalizeHistoricalLessonText(lesson.id)
+      : '';
+    const videoMarker = title ? `فيديو ${title}` : '';
+    const markerWithoutEmoji = title ? `[فيديو ${title}]` : '';
+    const taskIsUnique = taskMessage &&
+      lessons.filter(candidate => typeof candidate.taskMessage === 'string' &&
+        normalizeHistoricalLessonText(candidate.taskMessage) === taskMessage).length === 1;
+    const taskWasSent = taskIsUnique && taskMessage.length >= 12 &&
+      sentMessages.some(message => message === taskMessage ||
+        (taskMessage.length >= 48 && message.includes(taskMessage)));
+    const lessonIdMarker = lessonId ? `فيديو ${lessonId}` : '';
+    const videoMarkers = [videoMarker, markerWithoutEmoji, lessonIdMarker].filter(Boolean);
+    const videoWasSent = videoMarkers.length > 0 &&
+      sentMessages.some(message => videoMarkers.some(marker => message.includes(marker)));
+    if (taskWasSent || videoWasSent) {
+      latestMatch = { lessonIndex, lessonId: lesson.id };
+    }
+  }
+
+  return latestMatch;
 }
 
 export function isLessonPermissionQuestion(message) {
@@ -89,6 +141,7 @@ class LessonManager {
       }
       if (fs.existsSync(LESSONS_FILE)) {
         this.lessonsConfig = JSON.parse(fs.readFileSync(LESSONS_FILE, 'utf-8'));
+        this.lessonsConfigMtime = fs.statSync(LESSONS_FILE).mtimeMs;
       }
     } catch (err) {
       console.error('[LessonManager] Init error:', err.message);
@@ -106,11 +159,22 @@ class LessonManager {
   saveLessonsConfig() {
     try {
       fs.writeFileSync(LESSONS_FILE, JSON.stringify(this.lessonsConfig, null, 2), 'utf-8');
+      this.lessonsConfigMtime = fs.statSync(LESSONS_FILE).mtimeMs;
       return true;
     } catch (err) {
       console.error('[LessonManager] Save lessons error:', err.message);
       return false;
     }
+  }
+
+  refreshLessonsConfig() {
+    if (!fs.existsSync(LESSONS_FILE)) return false;
+    const modifiedAt = fs.statSync(LESSONS_FILE).mtimeMs;
+    if (modifiedAt === this.lessonsConfigMtime) return false;
+    const updatedConfig = JSON.parse(fs.readFileSync(LESSONS_FILE, 'utf-8'));
+    this.lessonsConfig = updatedConfig;
+    this.lessonsConfigMtime = modifiedAt;
+    return true;
   }
 
   /**
@@ -183,6 +247,47 @@ class LessonManager {
     return null;
   }
 
+  reconcileProgressFromHistory(jid, phoneJid, gradeKey) {
+    const existing = this.getStudent(jid, phoneJid);
+    if (existing && existing.status !== 'consulting') return existing;
+
+    const lessons = this.lessonsConfig[gradeKey]?.lessons || [];
+    const phoneJids = new Set([jid, phoneJid].filter(Boolean).map(value =>
+      getPhoneJid(value, historyManager.contacts[value]?.phoneJid, historyManager.contacts[value]?.jid)
+    ).filter(Boolean));
+    const messages = Object.entries(historyManager.history).flatMap(([historyJid, history]) => {
+      if (!Array.isArray(history)) return [];
+      const linkedPhoneJid = getPhoneJid(
+        historyJid,
+        historyManager.contacts[historyJid]?.phoneJid,
+        historyManager.contacts[historyJid]?.jid
+      );
+      return historyJid === jid || historyJid === phoneJid ||
+        (linkedPhoneJid && phoneJids.has(linkedPhoneJid))
+        ? history
+        : [];
+    });
+    const inferred = inferSentLessonProgress(messages, lessons);
+    if (!inferred) return existing;
+
+    const lesson = lessons[inferred.lessonIndex];
+    const nextLesson = this.getNextSequentialLesson(gradeKey, inferred.lessonId);
+    const entry = {
+      grade: gradeKey,
+      currentLessonIndex: inferred.lessonIndex,
+      currentLessonId: inferred.lessonId,
+      status: nextLesson.status === 'completed' ? 'completed' : 'awaiting_content',
+      historyReconciled: true,
+      deliveredAt: null
+    };
+    this.progress[jid] = entry;
+    if (phoneJid && phoneJid !== jid) this.progress[phoneJid] = entry;
+    this.saveProgress();
+    historyManager.setWelcomeSampleState('sent', jid, phoneJid);
+    console.log(`[Lesson History] Reconciled ${jid} at ${lesson.id} (${lesson.title}) from saved outgoing lesson history.`);
+    return entry;
+  }
+
   setStudentGrade(jid, gradeKey, phoneJid = null) {
     const student = this.getStudent(jid, phoneJid);
     if (!student) {
@@ -207,7 +312,239 @@ class LessonManager {
   hasActiveLesson(jid, phoneJid = null) {
     const student = this.getStudent(jid, phoneJid);
     if (!student) return false;
-    return student.status === 'awaiting_task' || student.status === 'awaiting_reattempt';
+    return [
+      'awaiting_task',
+      'awaiting_reattempt',
+      'awaiting_next_lesson_schedule'
+    ].includes(student.status);
+  }
+
+  getTreasureIslandLessons() {
+    this.refreshLessonsConfig();
+    const lessons = this.lessonsConfig.grade_3_secondary?.collections?.treasure_island?.lessons;
+    if (!Array.isArray(lessons)) return [];
+    return lessons.filter(lesson => {
+      if (!lesson?.videoFile || typeof lesson.taskMessage !== 'string' ||
+          !lesson.taskMessage.trim() || !Array.isArray(lesson.answerKey) ||
+          lesson.answerKey.length === 0) return false;
+      try {
+        const stats = fs.statSync(resolveLessonVideoPath(lesson.videoFile));
+        return stats.isFile() && stats.size > 0;
+      } catch (error) {
+        if (error.code === 'ENOENT') return false;
+        throw error;
+      }
+    });
+  }
+
+  isTreasureIslandRequest(text) {
+    if (typeof text !== 'string') return false;
+    const normalized = normalizeHistoricalLessonText(text);
+    return /treasure\s+island|جزيرة\s+الكنز|\b(?:book|novel)\s+(?:lessons?|chapters?)\b/.test(normalized);
+  }
+
+  hasActiveTreasureIslandLesson(jid, phoneJid = null) {
+    const state = this.getStudent(jid, phoneJid)?.treasureIsland;
+    return ['awaiting_task', 'awaiting_reattempt'].includes(state?.status);
+  }
+
+  setTreasureIslandState(jid, phoneJid, updates) {
+    const current = this.getStudent(jid, phoneJid) || {};
+    const entry = {
+      ...current,
+      treasureIsland: { ...(current.treasureIsland || {}), ...updates }
+    };
+    if (jid) this.progress[jid] = entry;
+    if (phoneJid && phoneJid !== jid) this.progress[phoneJid] = entry;
+    this.saveProgress();
+    return entry.treasureIsland;
+  }
+
+  recordTreasureIslandMessage(jid, text) {
+    try {
+      historyManager.addMessage(jid, 'agent', text);
+    } catch (error) {
+      console.error(`[LessonManager] Could not save Treasure Island chat history for ${jid}:`, error.message);
+    }
+  }
+
+  async sendTreasureIslandText(sock, jid, text) {
+    await sock.sendMessage(jid, { text });
+    this.recordTreasureIslandMessage(jid, text);
+  }
+
+  async handleTreasureIslandMessage(sock, jid, text, pushName, phoneJid = null) {
+    const student = this.getStudent(jid, phoneJid);
+    if (this.isTreasureIslandRequest(text)) {
+      if (this.hasActiveTreasureIslandLesson(jid, phoneJid) ||
+          this.hasActiveLesson(jid, phoneJid)) {
+        await this.sendTreasureIslandText(
+          sock,
+          jid,
+          'Please finish your active lesson exercise first. You can choose a Treasure Island chapter after I check your answers.'
+        );
+        return true;
+      }
+      const lessons = this.getTreasureIslandLessons();
+      if (lessons.length === 0) {
+        await this.sendTreasureIslandText(
+          sock, jid, 'Treasure Island lessons are not available yet. Please check back later.'
+        );
+        return true;
+      }
+      this.setTreasureIslandState(jid, phoneJid, { pendingLessonSelection: true });
+      await this.sendTreasureIslandText(
+        sock,
+        jid,
+        `Choose a Treasure Island lesson by replying with its number or title:\n\n${lessons
+          .map((lesson, index) => `${index + 1}. ${lesson.title || lesson.id}`)
+          .join('\n')}`
+      );
+      return true;
+    }
+
+    if (this.hasActiveTreasureIslandLesson(jid, phoneJid)) {
+      const state = this.getStudent(jid, phoneJid)?.treasureIsland;
+      const lessonAvailable = this.getTreasureIslandLessons()
+        .some(lesson => lesson.id === state?.activeLessonId);
+      if (!lessonAvailable) {
+        this.setTreasureIslandState(jid, phoneJid, {
+          activeLessonId: null,
+          status: 'unavailable',
+          pendingLessonSelection: false
+        });
+        await this.sendTreasureIslandText(
+          sock,
+          jid,
+          'Your active Treasure Island chapter is no longer available. Ask me for the Treasure Island lesson list to choose another chapter.'
+        );
+        return true;
+      }
+      return this.handleTreasureIslandTaskSubmission(sock, jid, text, pushName, phoneJid);
+    }
+
+    if (!student?.treasureIsland?.pendingLessonSelection) return false;
+    const lessons = this.getTreasureIslandLessons();
+    if (lessons.length === 0) {
+      this.setTreasureIslandState(jid, phoneJid, { pendingLessonSelection: false });
+      await this.sendTreasureIslandText(
+        sock, jid, 'There are no complete Treasure Island lessons available right now.'
+      );
+      return true;
+    }
+
+    const normalizedChoice = normalizeHistoricalLessonText(text);
+    const numberMatch = /^(?:lesson\s*)?(\d+)$/.exec(normalizedChoice);
+    const choiceNumber = numberMatch ? Number(numberMatch[1]) : null;
+    const selected = choiceNumber
+      ? lessons[choiceNumber - 1]
+      : lessons.find(lesson =>
+        normalizeHistoricalLessonText(lesson.title || lesson.id) === normalizedChoice);
+    if (!selected) {
+      await this.sendTreasureIslandText(
+        sock,
+        jid,
+        'I could not match that choice. Reply with a number or the exact title from the Treasure Island list.'
+      );
+      return true;
+    }
+
+    this.setTreasureIslandState(jid, phoneJid, { pendingLessonSelection: false });
+    await this.deliverTreasureIslandLesson(sock, jid, selected, phoneJid);
+    return true;
+  }
+
+  async deliverTreasureIslandLesson(sock, jid, lesson, phoneJid = null) {
+    if (!await this.canDeliverLessonToday(sock, jid, phoneJid)) return false;
+    let video;
+    let videoAbsolutePath;
+    try {
+      ({ video, videoAbsolutePath } = readLessonVideo(lesson));
+    } catch (error) {
+      console.error(`[LessonManager] Cannot deliver Treasure Island ${lesson.id} to ${jid}:`, error.message);
+      await this.sendTreasureIslandText(
+        sock, jid, `The video for "${lesson.title}" is currently unavailable, so I did not send the exercise.`
+      );
+      return false;
+    }
+    const collectionId = 'treasure_island';
+    if (lesson.introMessage) {
+      await sock.sendMessage(jid, { text: lesson.introMessage });
+      this.recordTreasureIslandMessage(jid, lesson.introMessage);
+    }
+    try {
+      await sock.sendMessage(jid, {
+        video,
+        caption: lesson.caption || lesson.title,
+        mimetype: 'video/mp4'
+      }, undefined, { retry: { gradeKey: 'grade_3_secondary', lessonId: lesson.id, collectionId } });
+    } catch (error) {
+      console.error(`[LessonManager] Treasure Island video upload failed for ${lesson.id} to ${jid}:`, error.message);
+      await this.sendTreasureIslandText(
+        sock,
+        jid,
+        `The video for "${lesson.title}" could not be sent, so I did not send the exercise. Please ask me to resend the video.`
+      );
+      return false;
+    }
+    this.recordTreasureIslandMessage(jid, `🎬 [فيديو: ${lesson.title}]\n${lesson.caption || ''}`);
+    try {
+      await this.sendTreasureIslandText(sock, jid, lesson.taskMessage);
+    } catch (error) {
+      console.error(`[LessonManager] Could not send Treasure Island exercise ${lesson.id} to ${jid}:`, error.message);
+      await this.sendTreasureIslandText(
+        sock,
+        jid,
+        `The video for "${lesson.title}" was sent, but I could not send its exercise. Please ask me to send Treasure Island again.`
+      );
+      return false;
+    }
+    const existing = this.getStudent(jid, phoneJid)?.treasureIsland || {};
+    this.setTreasureIslandState(jid, phoneJid, {
+      ...existing,
+      activeLessonId: lesson.id,
+      lastLessonId: lesson.id,
+      status: 'awaiting_task',
+      deliveredAt: new Date().toISOString(),
+      pendingLessonSelection: false
+    });
+    console.log(`[LessonManager] Delivered Treasure Island ${lesson.title} video and exercise to ${jid} (${videoAbsolutePath}).`);
+    return true;
+  }
+
+  async handleTreasureIslandTaskSubmission(sock, jid, text, pushName, phoneJid = null) {
+    const state = this.getStudent(jid, phoneJid)?.treasureIsland;
+    const lesson = this.getTreasureIslandLessons()
+      .find(item => item.id === state?.activeLessonId);
+    if (!lesson) return false;
+    let result;
+    try {
+      result = await evaluateStudentTask(lesson, text, pushName);
+    } catch (error) {
+      console.error(`[LessonManager] Could not grade Treasure Island task from ${jid}:`, error.message);
+      const gradingFailure = /[\u0600-\u06FF]/.test(text)
+        ? 'ما قدرت أصحح إجابتك هسي بسبب مشكلة فنية. إجابتك ما اتسجلت كغلط؛ أرسلها تاني بعد شوية.'
+        : 'I could not mark your answers because of a temporary technical issue. They were not marked wrong; please send them again later.';
+      await sendHumanizedMessage(
+        sock,
+        jid,
+        gradingFailure,
+        config.typingWordsPerMinute
+      );
+      return true;
+    }
+    if (!result.isTaskSubmission) return false;
+    await sendHumanizedMessage(sock, jid, result.feedback, config.typingWordsPerMinute);
+    this.recordTreasureIslandMessage(jid, result.feedback);
+    const updates = { status: result.allCorrect ? 'completed' : 'awaiting_reattempt' };
+    if (result.allCorrect) {
+      const completed = new Set(state.completedLessonIds || []);
+      completed.add(lesson.id);
+      updates.completedLessonIds = [...completed];
+      updates.activeLessonId = null;
+    }
+    this.setTreasureIslandState(jid, phoneJid, updates);
+    return true;
   }
 
   /**
@@ -302,6 +639,23 @@ class LessonManager {
     return mentionsVideo && requestsVideo;
   }
 
+  isLessonTaskRequest(text) {
+    if (typeof text !== 'string') return false;
+    const normalized = text
+      .toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/[ًٌٍَُِّْـ]/g, '')
+      .replace(/[?!.,،؛]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const mentionsTask = /\b(?:task|exercise|exercises|homework|questions?)\b/.test(normalized) ||
+      /(?:تمرين|تمارين|واجب|الواجب|اسئلة|الاسئلة)/.test(normalized);
+    const requestsAgain = /\b(?:send|resend|repeat|again|forward|share|didn'?t\s+get|did\s+not\s+get|not\s+received|missing|lost)\b/.test(normalized) ||
+      /(?:ارسل|رسل|ابعث|ابعت|اعيد|تاني|مرة|مره|ما\s*(?:وصل|جاني|استلمت)|ما وصلني|فاتني|ضاعت)/.test(normalized);
+    return mentionsTask && requestsAgain;
+  }
+
   isLessonDeliveryRequest(text) {
     if (typeof text !== 'string') return false;
     const normalized = text
@@ -322,8 +676,53 @@ class LessonManager {
   }
 
   async resendCurrentLessonVideo(sock, jid, phoneJid = null) {
+    this.refreshLessonsConfig();
     const student = this.getStudent(jid, phoneJid);
+    const treasureState = student?.treasureIsland;
+    const treasureLessonId = ['awaiting_task', 'awaiting_reattempt'].includes(treasureState?.status)
+      ? treasureState.activeLessonId
+      : null;
+    const treasureLesson = this.lessonsConfig.grade_3_secondary?.collections?.treasure_island?.lessons
+      ?.find(item => item.id === treasureLessonId);
+    if (treasureLesson) {
+      let video;
+      try {
+        ({ video } = readLessonVideo(treasureLesson));
+      } catch (error) {
+        console.error(`[LessonManager] Cannot resend Treasure Island video for ${treasureLesson.id}:`, error.message);
+        await this.sendTreasureIslandText(
+          sock, jid, `The video for "${treasureLesson.title}" is currently unavailable.`
+        );
+        return true;
+      }
+      await sock.sendMessage(jid, {
+        video,
+        caption: treasureLesson.caption || treasureLesson.title,
+        mimetype: 'video/mp4'
+      }, undefined, {
+        retry: { gradeKey: 'grade_3_secondary', lessonId: treasureLesson.id, collectionId: 'treasure_island' }
+      });
+      this.recordTreasureIslandMessage(jid, `🎬 [فيديو: ${treasureLesson.title}]\n${treasureLesson.caption || ''}`);
+      return true;
+    }
+
     let lesson = this.getCurrentLesson(jid, phoneJid);
+    if (!lesson && treasureState?.lastLessonId) {
+      lesson = this.lessonsConfig.grade_3_secondary?.collections?.treasure_island?.lessons
+        ?.find(item => item.id === treasureState.lastLessonId) || null;
+      if (lesson) {
+        const { video } = readLessonVideo(lesson);
+        await sock.sendMessage(jid, {
+          video,
+          caption: lesson.caption || lesson.title,
+          mimetype: 'video/mp4'
+        }, undefined, {
+          retry: { gradeKey: 'grade_3_secondary', lessonId: lesson.id, collectionId: 'treasure_island' }
+        });
+        this.recordTreasureIslandMessage(jid, `🎬 [فيديو: ${lesson.title}]\n${lesson.caption || ''}`);
+        return true;
+      }
+    }
     if (!lesson && student?.grade) {
       lesson = this.lessonsConfig[student.grade]?.lessons?.[0] || null;
     }
@@ -341,15 +740,100 @@ class LessonManager {
     }
 
     console.log(`[LessonManager] Resending ${lesson.title} video to ${jid}...`);
+    const gradeKey = Object.entries(this.lessonsConfig).find(([key, grade]) =>
+      key === student?.grade &&
+      [grade.lessons, grade.standaloneLessons].some(collection => collection?.includes(lesson)))?.[0];
     await sock.sendMessage(jid, {
       video,
       caption: lesson.caption || lesson.title,
       mimetype: 'video/mp4'
-    });
+    }, undefined, gradeKey
+      ? { retry: { gradeKey, lessonId: lesson.id } }
+      : {});
     try {
       historyManager.addMessage(jid, 'agent', `🎬 [فيديو: ${lesson.title}]\n${lesson.caption || ''}`);
     } catch (e) {}
     return true;
+  }
+
+  async resendCurrentLessonTask(sock, jid, phoneJid = null) {
+    this.refreshLessonsConfig();
+    const student = this.getStudent(jid, phoneJid);
+    const treasureState = student?.treasureIsland;
+    const treasureLessonId = treasureState?.activeLessonId || treasureState?.lastLessonId;
+    const treasureLesson = this.lessonsConfig.grade_3_secondary?.collections?.treasure_island?.lessons
+      ?.find(item => item.id === treasureLessonId);
+    if (treasureLesson) {
+      if (!treasureLesson.taskMessage?.trim()) {
+        await this.sendTreasureIslandText(sock, jid, 'The exercise for this chapter is not configured.');
+        return true;
+      }
+      await this.sendTreasureIslandText(sock, jid, treasureLesson.taskMessage);
+      return true;
+    }
+
+    let lesson = this.getCurrentLesson(jid, phoneJid);
+    if (!lesson && student?.grade && Number.isInteger(student.currentLessonIndex)) {
+      lesson = this.lessonsConfig[student.grade]?.lessons?.[student.currentLessonIndex] || null;
+    }
+    if (!lesson && student?.grade && student.currentLessonId) {
+      lesson = this.lessonsConfig[student.grade]?.lessons
+        ?.find(item => item.id === student.currentLessonId) || null;
+    }
+    if (!lesson?.taskMessage?.trim()) {
+      const message = /[\u0600-\u06FF]/.test(
+        [...(historyManager.history[jid] || [])].reverse()
+          .find(item => item.role === 'client')?.text || ''
+      )
+        ? 'ما لقيت تمرين حالي أرسله ليك. أرسل لي صفك أو اطلب فيديو الدرس أول.'
+        : 'I could not find a current exercise to resend. Tell me your grade or ask for the lesson video first.';
+      await sock.sendMessage(jid, { text: message });
+      return false;
+    }
+
+    await sock.sendMessage(jid, { text: lesson.taskMessage });
+    try {
+      historyManager.addMessage(jid, 'agent', lesson.taskMessage);
+    } catch (error) {
+      console.error('[LessonManager] Could not record the resent lesson exercise:', error.message);
+    }
+    console.log(`[LessonManager] Resent ${lesson.id} task to ${jid}.`);
+    return true;
+  }
+
+  async resendMediaActivity(sock, activity) {
+    this.refreshLessonsConfig();
+    const retry = findLessonForMediaActivity(activity, this.lessonsConfig);
+    if (!retry) {
+      throw new Error('The original lesson video could not be identified for this failed upload.');
+    }
+    const grade = this.lessonsConfig[retry.gradeKey];
+    const lessonCollection = retry.collectionId
+      ? grade.collections?.[retry.collectionId]?.lessons || []
+      : [...(grade.lessons || []), ...(grade.standaloneLessons || [])];
+    const lesson = lessonCollection
+      .find(item => item.id === retry.lessonId && item.videoFile === retry.videoFile);
+    if (!lesson) {
+      throw new Error(`Lesson ${retry.lessonId} is no longer available.`);
+    }
+    const { video } = readLessonVideo(lesson);
+    await sock.sendMessage(activity.recipientJid, {
+      video,
+      caption: lesson.caption || lesson.title,
+      mimetype: 'video/mp4'
+    }, undefined, {
+      activityId: activity.id,
+      retry: {
+        gradeKey: retry.gradeKey,
+        lessonId: retry.lessonId,
+        ...(retry.collectionId ? { collectionId: retry.collectionId } : {})
+      }
+    });
+    try {
+      historyManager.addMessage(activity.recipientJid, 'agent', `🎬 [فيديو: ${lesson.title}]\n${lesson.caption || ''}`);
+    } catch (error) {
+      console.error('[LessonManager] Could not record resent video in chat history:', error.message);
+    }
   }
 
   /**
@@ -362,6 +846,7 @@ class LessonManager {
     }
 
     const lesson = gradeData.lessons[lessonIndex];
+    if (!await this.canDeliverLessonToday(sock, jid, phoneJid)) return false;
     let video;
     let videoAbsolutePath;
     try {
@@ -376,9 +861,10 @@ class LessonManager {
 
     console.log(`[LessonManager] Delivering ${lesson.title} to ${jid}...`);
 
-    // 1. Send Intro message
+    // Lesson text is prewritten, so send it immediately instead of simulating
+    // typing for long messages.
     if (lesson.introMessage) {
-      await sendHumanizedMessage(sock, jid, lesson.introMessage, config.typingWordsPerMinute);
+      await sock.sendMessage(jid, { text: lesson.introMessage });
       try { historyManager.addMessage(jid, 'agent', lesson.introMessage); } catch (e) {}
     }
 
@@ -389,7 +875,7 @@ class LessonManager {
         video,
         caption: lesson.caption || lesson.title,
         mimetype: 'video/mp4'
-      });
+      }, undefined, { retry: { gradeKey, lessonId: lesson.id } });
       try {
         historyManager.addMessage(jid, 'agent', `🎬 [فيديو: ${lesson.title}]\n${lesson.caption || ''}`);
       } catch (e) {}
@@ -402,9 +888,9 @@ class LessonManager {
       return false;
     }
 
-    // 3. Send the Task / Exercise message
+    // Send the exercise immediately after the video upload succeeds.
     if (lesson.taskMessage) {
-      await sendHumanizedMessage(sock, jid, lesson.taskMessage, config.typingWordsPerMinute);
+      await sock.sendMessage(jid, { text: lesson.taskMessage });
       try { historyManager.addMessage(jid, 'agent', lesson.taskMessage); } catch (e) {}
     }
 
@@ -425,17 +911,60 @@ class LessonManager {
     return true;
   }
 
+  getLatestLessonDeliveryAt(jid, phoneJid = null) {
+    const student = this.getStudent(jid, phoneJid);
+    const deliveryTimes = [
+      student?.deliveredAt,
+      student?.treasureIsland?.deliveredAt
+    ].map(value => Date.parse(value || '')).filter(Number.isFinite);
+    return deliveryTimes.length ? Math.max(...deliveryTimes) : null;
+  }
+
+  async canDeliverLessonToday(sock, jid, phoneJid = null) {
+    const lastDeliveryAt = this.getLatestLessonDeliveryAt(jid, phoneJid);
+    if (lastDeliveryAt !== null && Date.now() - lastDeliveryAt < DAILY_LESSON_INTERVAL_MS) {
+      const lastClientMessage = [...(historyManager.history[jid] || [])]
+        .reverse()
+        .find(message => message.role === 'client')?.text || '';
+      const response = /[\u0600-\u06FF]/.test(lastClientMessage)
+        ? 'إنت استلمت حصة خلال آخر ٢٤ ساعة. الحصة الجاية حتوصلك بعد ما تكمل المدة اليومية.'
+        : 'You already received a lesson in the last 24 hours. Your next lesson will arrive when the daily interval has passed.';
+      await sock.sendMessage(jid, {
+        text: response
+      });
+      return false;
+    }
+    return true;
+  }
+
   /**
    * Evaluates student's task submission, provides feedback, and handles progression
    * @returns {Promise<boolean>} true if message was processed as a task submission, false otherwise
    */
-  async handleTaskSubmission(sock, jid, text, pushName, phoneJid = null) {
+  async handleTaskSubmission(sock, jid, text, pushName, phoneJid = null, scheduleNextLesson = null) {
     const currentLesson = this.getCurrentLesson(jid, phoneJid);
     if (!currentLesson) return false;
+    const student = this.getStudent(jid, phoneJid);
+    if (!['awaiting_task', 'awaiting_reattempt', 'awaiting_next_lesson_schedule'].includes(student?.status)) return false;
 
     console.log(`[LessonManager] Evaluating task submission from ${pushName} for ${currentLesson.id}...`);
 
-    const evalResult = await evaluateStudentTask(currentLesson, text, pushName);
+    let evalResult;
+    try {
+      evalResult = await evaluateStudentTask(currentLesson, text, pushName);
+    } catch (error) {
+      console.error(`[LessonManager] Could not grade task submission from ${jid}:`, error.message);
+      const gradingFailure = /[\u0600-\u06FF]/.test(text)
+        ? 'ما قدرت أصحح إجابتك هسي بسبب مشكلة فنية. إجابتك ما اتسجلت كغلط؛ أرسلها تاني بعد شوية.'
+        : 'I could not mark your answers because of a temporary technical issue. They were not marked wrong; please send them again later.';
+      await sendHumanizedMessage(
+        sock,
+        jid,
+        gradingFailure,
+        config.typingWordsPerMinute
+      );
+      return true;
+    }
 
     // If student was just asking a normal question or chatting, do not intercept
     if (!evalResult.isTaskSubmission) {
@@ -448,8 +977,6 @@ class LessonManager {
     await sendHumanizedMessage(sock, jid, evalResult.feedback, config.typingWordsPerMinute);
     try { historyManager.addMessage(jid, 'agent', evalResult.feedback); } catch (e) {}
 
-    const student = this.getStudent(jid, phoneJid);
-
     if (evalResult.allCorrect) {
       // Student PASSED this lesson! Advance to next lesson
       const currentLessonId = currentLesson.id ||
@@ -459,13 +986,44 @@ class LessonManager {
       if (nextLesson.status === 'ready') {
         const nextIndex = nextLesson.lessonIndex;
         const nextLessonConfig = this.lessonsConfig[student.grade].lessons[nextIndex];
-        console.log(`[LessonManager] Advancing ${pushName} to ${nextLessonConfig.id}...`);
-        // Wait 3 seconds then deliver next lesson
-        setTimeout(() => {
-          this.deliverLesson(sock, jid, student.grade, nextIndex, phoneJid).catch(error => {
-            console.error(`[LessonManager] Failed to deliver ${nextLessonConfig.id} to ${jid}:`, error.message);
-          });
-        }, 3000);
+        if (scheduleNextLesson) {
+          try {
+            await scheduleNextLesson({
+              jid,
+              phoneJid,
+              studentName: pushName,
+              gradeKey: student.grade,
+              lessonIndex: nextIndex,
+              lesson: nextLessonConfig
+            });
+            student.status = 'awaiting_next_lesson';
+            student.nextLessonIndex = nextIndex;
+            this.saveProgress();
+            const scheduleNotice = /[\u0600-\u06FF]/.test(text)
+              ? 'إجاباتك كلها صحيحة، ما شاء الله عليك. الحصة الجاية حتوصلك بكرة إن شاء الله.'
+              : 'All your answers are correct—well done. Your next lesson is scheduled for tomorrow.';
+            await sendHumanizedMessage(sock, jid, scheduleNotice, config.typingWordsPerMinute);
+            try { historyManager.addMessage(jid, 'agent', scheduleNotice); } catch (error) {
+              console.error('[LessonManager] Could not record the lesson schedule notice:', error.message);
+            }
+            console.log(`[LessonManager] Scheduled ${nextLessonConfig.id} for ${pushName} the following day.`);
+          } catch (error) {
+            student.status = 'awaiting_next_lesson_schedule';
+            this.saveProgress();
+            console.error(`[LessonManager] Could not schedule ${nextLessonConfig.id} for ${jid}:`, error.message);
+            const scheduleFailure = /[\u0600-\u06FF]/.test(text)
+              ? 'إجاباتك صحيحة، لكن ما قدرت أجدول الحصة الجاية بسبب مشكلة فنية. ما حأعتبر إجاباتك غلط؛ حأحتاج أراجع الإرسال.'
+              : 'Your answers are correct, but I could not schedule the next lesson because of a technical issue. Your answers are not marked wrong; delivery needs review.';
+            await sendHumanizedMessage(sock, jid, scheduleFailure, config.typingWordsPerMinute);
+          }
+        } else {
+          console.log(`[LessonManager] Advancing ${pushName} to ${nextLessonConfig.id}...`);
+          setTimeout(() => {
+            this.deliverLesson(sock, jid, student.grade, nextIndex, phoneJid).catch(error => {
+              console.error(`[LessonManager] Failed to deliver ${nextLessonConfig.id} to ${jid}:`, error.message);
+            });
+          }, 3000);
+        }
       } else if (nextLesson.status === 'awaiting_content') {
         student.status = 'awaiting_content';
         this.saveProgress();

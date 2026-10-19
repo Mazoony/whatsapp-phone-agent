@@ -2,9 +2,13 @@ import { config } from './config.js';
 
 export async function generateLocalResponse(
   prompt,
-  { systemInstruction = '', format, fetchImpl = fetch } = {}
+  { systemInstruction = '', format, images = [], numPredict, fetchImpl = fetch } = {}
 ) {
   const endpoint = `${config.ollamaBaseUrl.replace(/\/+$/, '')}/api/chat`;
+  const model = images.length ? config.ollamaVisionModel : config.ollamaModel;
+  if (images.length && !model) {
+    throw new Error('Ollama image fallback requires OLLAMA_VISION_MODEL to name an installed vision-capable model.');
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.ollamaTimeoutMs);
   timeout.unref?.();
@@ -12,17 +16,26 @@ export async function generateLocalResponse(
   try {
     const messages = [];
     if (systemInstruction) messages.push({ role: 'system', content: systemInstruction });
-    messages.push({ role: 'user', content: prompt });
+    messages.push({
+      role: 'user',
+      content: prompt,
+      ...(images.length ? {
+        images: images.map(({ data }) => Buffer.from(data).toString('base64'))
+      } : {})
+    });
 
     const response = await fetchImpl(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: config.ollamaModel,
+        model,
         messages,
         stream: false,
         think: false,
-        ...(format ? { format } : {})
+        ...(format ? { format } : {}),
+        ...(Number.isInteger(numPredict) && numPredict > 0
+          ? { options: { num_predict: numPredict } }
+          : {})
       }),
       signal: controller.signal
     });

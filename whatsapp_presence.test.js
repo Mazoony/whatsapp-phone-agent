@@ -120,6 +120,32 @@ test('stale or hidden WhatsApp presence is never reported as confirmed online', 
   }
 });
 
+test('corrupt presence state is backed up and reset before future updates', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'whatsapp-presence-corrupt-'));
+  const presenceFile = path.join(directory, 'presence.json');
+  const corruptContents = '\0\0invalid presence data';
+  fs.writeFileSync(presenceFile, corruptContents, 'utf8');
+  const manager = createManager(directory);
+
+  try {
+    assert.equal(manager.getPresence('249123456789@s.whatsapp.net'), null);
+    const backups = fs.readdirSync(directory).filter(name => name.startsWith('presence.json.corrupt-'));
+    assert.equal(backups.length, 1);
+    assert.equal(fs.readFileSync(path.join(directory, backups[0]), 'utf8'), corruptContents);
+
+    const changed = manager.recordPresenceUpdate({
+      id: '249123456789@s.whatsapp.net',
+      presences: {
+        '249123456789@s.whatsapp.net': { lastKnownPresence: 'available' }
+      }
+    });
+    assert.equal(changed, 1);
+    assert.equal(manager.getPresence('249123456789@s.whatsapp.net').status, 'online');
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('presence subscriptions are queued once per chat during the cooldown window', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'whatsapp-presence-requests-'));
   try {

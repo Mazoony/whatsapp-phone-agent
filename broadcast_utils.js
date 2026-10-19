@@ -163,6 +163,25 @@ function getWhatsAppActivityByPhone(data) {
   return latestByPhone;
 }
 
+export function getInactiveEligibleEsContacts(
+  data,
+  optedOutJids = [],
+  { inactiveDays = 10, now = Date.now() } = {}
+) {
+  if (!Number.isInteger(inactiveDays) || inactiveDays < 1 || inactiveDays > 3650 ||
+      !Number.isFinite(now)) {
+    throw new Error('Inactive contact filter must use a valid number of days.');
+  }
+  const cutoff = now - inactiveDays * 24 * 60 * 60 * 1000;
+  const latestActivityByPhone = getWhatsAppActivityByPhone(data);
+  return getEligibleBroadcastContacts(data, optedOutJids, 'es')
+    .map(contact => ({
+      ...contact,
+      lastActivityAt: latestActivityByPhone.get(`${contact.phoneNumber}@s.whatsapp.net`) || null
+    }))
+    .filter(contact => contact.lastActivityAt !== null && contact.lastActivityAt < cutoff);
+}
+
 function getReadActivityByPhone(data, readState) {
   const activityByPhone = new Map();
   for (const [jid, messages] of Object.entries(data.history || {})) {
