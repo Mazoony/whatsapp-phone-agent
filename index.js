@@ -12,6 +12,7 @@ import { buildContactInsertArgs, getPhoneJid, isTermuxAndroid, openContactInsert
 import { sendHumanizedMessage } from './humanization.js';
 import { config } from './config.js';
 import { historyManager } from './history.js';
+import { generateClientResponse } from './ai.js';
 import { sudaneseArabicLearner } from './sudanese_arabic_learning.js';
 import {
   hasLessonDeliveryConsent,
@@ -1096,26 +1097,48 @@ async function startAgent() {
               reply = arabic
                 ? 'أهلاً بيك، حأرسل ليك فيديو الحصة والتمرين هسي.'
                 : 'Welcome! I’ll send your lesson video and exercise now.';
-            } else if (!requestedGrade) {
-              reply = arabic
-                ? 'أنا بساعدك بفيديوهات الدروس وتمارينها وتصحيح الإجابات. أرسل لي صفك ومرحلتك عشان أختار ليك الدرس المناسب.'
-                : 'I help with lesson videos, exercises, and marking answers. Tell me your grade and school stage so I can choose the right lesson.';
-            } else if (lessonManager.hasActiveLesson(jid, phoneJid) ||
-                lessonManager.hasActiveTreasureIslandLesson(jid, phoneJid)) {
-              reply = arabic
-                ? 'أنا مركز معاك في الدرس الحالي. أرسل إجابات التمرين عشان أصححها ليك.'
-                : 'Let’s focus on your current lesson. Send your exercise answers and I’ll mark them.';
-            } else if (!gradeLessons?.length) {
-              reply = arabic
-                ? 'ما عندي فيديوهات وتمارين جاهزة للصف دا حالياً.'
-                : 'There are no configured lesson videos and exercises for this grade yet.';
             } else {
-              reply = arabic
-                ? 'دوري حالياً إرسال الدروس وتمارينها وتصحيح إجاباتك. أرسل طلب الدرس أو إجابات التمرين الحالي.'
-                : 'I’m currently set up to send lessons and exercises and mark your answers. Ask for a lesson or send your current exercise answers.';
+              if (config.geminiApiKeys.length > 0) {
+                try {
+                  console.log(`[Agent] Generating response as Mr. Mazen for ${queuedEntry.pushName}...`);
+                  reply = await generateClientResponse(
+                    jid,
+                    queuedEntry.pushName,
+                    aggregatedText,
+                    queuedEntry.images,
+                    requestedGrade || student?.grade || null,
+                    Boolean(shouldStartAfterReply || shouldSendWelcomeSample),
+                    Boolean(hasLessonConsent),
+                    phoneJid
+                  );
+                } catch (aiErr) {
+                  console.warn(`[Agent Warning] AI response generation failed (${aiErr.message}). Using warm teacher fallback.`);
+                }
+              }
+
+              if (!reply) {
+                if (!requestedGrade) {
+                  reply = arabic
+                    ? 'و عليكم السلام ورحمة الله وبركاته، أهلين بيك يا رب! مستر مازن معاك. إنت في أي صف ومرحلة دراسية عشان أظبط ليك الدروس المناسبة إن شاء الله؟'
+                    : 'Welcome! Mr. Mazen here. Which grade and school stage are you in so I can prepare the right lessons for you?';
+                } else if (lessonManager.hasActiveLesson(jid, phoneJid) ||
+                    lessonManager.hasActiveTreasureIslandLesson(jid, phoneJid)) {
+                  reply = arabic
+                    ? 'أهلاً بيك، مستر مازن معاك. مركز معاك في درسنا الشغالين فيه هسي؛ رسل لي إجاباتك عشان نراجعها سوا.'
+                    : 'Mr. Mazen here! Let’s keep going with our current lesson. Send over your exercise answers so we can review them.';
+                } else if (!gradeLessons?.length) {
+                  reply = arabic
+                    ? 'أهلاً بيك يا غالي، المنهج الخاص بالصف دا جاري تجهيزه حالياً وحنزله ليكم أول بأول إن شاء الله.'
+                    : 'Welcome! The curriculum for this grade is currently being prepared and will be available soon.';
+                } else {
+                  reply = arabic
+                    ? 'أهلاً بيك، مستر مازن معاك. معاك ومتابع معاك خطوة بخطوة إن شاء الله؛ لو جاهز للدرس أو عندك أي تمرين، رسل لي طوالي.'
+                    : 'Hello! Mr. Mazen here. I’m with you step by step; whenever you’re ready for the lesson or have your exercise answers, send them right over.';
+                }
+              }
             }
             await sendHumanizedMessage(sock, jid, reply, config.typingWordsPerMinute);
-            console.log(`[Agent -> ${queuedEntry.pushName}]: sent lesson-only response.`);
+            console.log(`[Agent -> ${queuedEntry.pushName}]: "${reply}"`);
             historyManager.addMessage(jid, 'agent', reply);
             if (shouldSendWelcomeSample) {
               historyManager.setWelcomeSampleState('delivering', jid, alternateJid, phoneJid);
