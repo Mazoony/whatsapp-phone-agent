@@ -1583,6 +1583,58 @@ test('dashboard disconnect endpoint queues a stop request only for a live agent'
   }
 });
 
+test('dashboard connect endpoint starts one local agent process when disconnected', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-agent-connect-test-'));
+  const agentStatusFile = path.join(temporaryDirectory, 'agent_status.json');
+  const { EventEmitter } = await import('node:events');
+  const child = new EventEmitter();
+  child.exitCode = null;
+  child.pid = 12345;
+  child.unref = () => {};
+  let launchCount = 0;
+  const server = createAdminDashboardServer({
+    agentStatusFile,
+    launchAgent: () => {
+      launchCount += 1;
+      return child;
+    }
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    fs.writeFileSync(agentStatusFile, JSON.stringify({
+      connectionState: 'connected',
+      updatedAt: new Date().toISOString()
+    }));
+    const activeResponse = await fetch(`${origin}/api/admin/agent-connect`, {
+      method: 'POST',
+      headers: { Origin: origin }
+    });
+    assert.equal(activeResponse.status, 409);
+    assert.equal(launchCount, 0);
+
+    fs.rmSync(agentStatusFile);
+    const response = await fetch(`${origin}/api/admin/agent-connect`, {
+      method: 'POST',
+      headers: { Origin: origin }
+    });
+    assert.equal(response.status, 202);
+    assert.deepEqual(await response.json(), { status: 'connecting', processId: child.pid });
+    assert.equal(launchCount, 1);
+
+    const duplicateResponse = await fetch(`${origin}/api/admin/agent-connect`, {
+      method: 'POST',
+      headers: { Origin: origin }
+    });
+    assert.equal(duplicateResponse.status, 409);
+    assert.equal(launchCount, 1);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
 test('dashboard requests contact sync only when the agent is connected', async () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-contact-sync-test-'));
   const agentStatusFile = path.join(temporaryDirectory, 'agent_status.json');

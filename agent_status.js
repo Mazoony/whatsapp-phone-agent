@@ -52,6 +52,7 @@ export function writeAgentStatus(
     account,
     respondingEnabled,
     queuePaused,
+    processId: process.pid,
     updatedAt: new Date().toISOString()
   };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

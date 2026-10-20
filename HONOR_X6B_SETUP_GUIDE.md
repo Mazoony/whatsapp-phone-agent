@@ -175,6 +175,8 @@ The **WhatsApp agent** dashboard tab includes a chat-style feed of the latest sa
 
 ## Part 4: Linking to Your WhatsApp Account
 
+After initial setup, open the dashboard's WhatsApp agent view and use **Connect agent** or **Disconnect agent** to start or stop the local agent. Disconnecting stops the agent without unlinking the WhatsApp device; connect it again from the dashboard when needed.
+
 > [!TIP]
 > **How to scan the QR code when it is on the same phone:**
 > 1. In Termux, start the agent:

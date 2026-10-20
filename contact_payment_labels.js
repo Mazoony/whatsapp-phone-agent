@@ -85,8 +85,7 @@ export function createContactPaymentLabelsStore(filePath = CONTACT_PAYMENT_LABEL
       throw new Error(`Invalid contact payment labels file: ${filePath}`);
     }
     for (const record of Object.values(parsed)) {
-      if (record.source === 'manual' &&
-          record.label === 'paid' &&
+      if (record.label === 'paid' &&
           !Array.isArray(record.paymentHistory)) {
         record.paymentHistory = [{ paidAt: record.reportedAt, jid: record.jid }];
       }
@@ -116,7 +115,7 @@ export function createContactPaymentLabelsStore(filePath = CONTACT_PAYMENT_LABEL
       const normalizedNumber = String(number || '').replace(/[^0-9]/g, '');
       return read()[normalizedNumber] || null;
     },
-    markPaid(number, jid) {
+    markPaid(number, jid, options = {}) {
       const normalizedNumber = String(number || '').replace(/[^0-9]/g, '');
       if (!/^\d{5,15}$/.test(normalizedNumber)) {
         throw new Error('A valid phone number is required to label a paid contact.');
@@ -125,18 +124,60 @@ export function createContactPaymentLabelsStore(filePath = CONTACT_PAYMENT_LABEL
         throw new Error('A WhatsApp chat identifier is required to label a paid contact.');
       }
       const labels = read();
-      const record = labels[normalizedNumber] || {
-        label: 'paid',
-        source: 'student-reported',
-        reportedAt: new Date().toISOString(),
+      const previous = labels[normalizedNumber];
+      const source = options.source || previous?.source || 'student-reported';
+      const paidAt = options.paidAt || (previous?.label === 'paid' && previous?.reportedAt && !options.source
+        ? previous.reportedAt
+        : new Date().toISOString());
+      const paymentDetails = options.paymentDetails || null;
+
+      const newPayment = {
+        paidAt: options.paidAt || new Date().toISOString(),
         jid,
-        whatsappAppliedAt: null,
-        whatsappAction: 'add'
+        ...(source ? { source } : {}),
+        ...(paymentDetails?.amount != null ? { amount: paymentDetails.amount } : {}),
+        ...(paymentDetails?.currency ? { currency: paymentDetails.currency } : {}),
+        ...(paymentDetails?.bank ? { bank: paymentDetails.bank } : {}),
+        ...(paymentDetails?.transactionId ? { transactionId: paymentDetails.transactionId } : {})
+      };
+
+      const existingHistory = Array.isArray(previous?.paymentHistory)
+        ? [...previous.paymentHistory]
+        : (previous?.label === 'paid' && previous?.reportedAt
+            ? [{ paidAt: previous.reportedAt, jid: previous.jid }]
+            : []);
+
+      const hasDuplicatePayment = existingHistory.some(payment => {
+        if (newPayment.transactionId && payment.transactionId && payment.transactionId === newPayment.transactionId) {
+          return true;
+        }
+        const diff = Math.abs(Date.parse(payment.paidAt) - Date.parse(newPayment.paidAt));
+        return diff < 60_000;
+      });
+
+      const paymentHistory = hasDuplicatePayment ? existingHistory : [...existingHistory, newPayment];
+
+      const record = {
+        label: 'paid',
+        source,
+        reportedAt: previous?.label === 'paid' && previous?.reportedAt && !options.paidAt
+          ? previous.reportedAt
+          : paidAt,
+        jid: previous?.jid || jid,
+        paymentHistory,
+        whatsappAppliedAt: previous?.label === 'paid' ? (previous.whatsappAppliedAt ?? null) : null,
+        whatsappAction: previous?.label === 'paid' && previous.whatsappAppliedAt ? null : 'add'
       };
       if (!record.jid) record.jid = jid;
       labels[normalizedNumber] = record;
       write(labels);
       return record;
+    },
+    recordScannedPayment(number, jid, scanResult = {}) {
+      return this.markPaid(number, jid, {
+        source: 'payment-scan',
+        paymentDetails: scanResult?.details || null
+      });
     },
     setManualStatus(number, jid, status) {
       const normalizedNumber = String(number || '').replace(/[^0-9]/g, '');

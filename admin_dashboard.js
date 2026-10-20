@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -922,6 +923,8 @@ export function getDashboardAgentStatus(status, handledChats, now = Date.now()) 
       ? 'connected'
       : status.connectionState === 'connecting' || status.connectionState === 'starting'
         ? 'connecting'
+        : status.connectionState === 'disconnecting'
+          ? 'disconnecting'
         : 'disconnected';
 
   return {
@@ -1437,6 +1440,12 @@ export function createAdminDashboardServer({
   agentStatusFile = AGENT_STATUS_FILE,
   agentQrFile = AGENT_QR_FILE,
   agentControlFile,
+  launchAgent = () => spawn(process.execPath, [path.join(ROOT_DIR, 'index.js')], {
+    cwd: ROOT_DIR,
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true
+  }),
   agentLogFile = AGENT_LOG_FILE,
   agentMediaActivityFile = AGENT_MEDIA_ACTIVITY_FILE,
   agentMediaRetryRequestsFile = AGENT_MEDIA_RETRY_REQUESTS_FILE,
@@ -1462,6 +1471,7 @@ export function createAdminDashboardServer({
   scheduledLessonsFile = SCHEDULED_LESSONS_FILE,
   progressFile = PROGRESS_FILE
 } = {}) {
+  let launchedAgent = null;
   const blockedContacts = createBlockedContactsStore(blockedContactsFile);
   const contactGenders = createContactGenderStore(contactGenderFile);
   const paymentLabels = createContactPaymentLabelsStore(paymentLabelsFile);
@@ -2508,6 +2518,66 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/agent-connect') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Agent controls must come from this local dashboard.' });
+        return;
+      }
+      try {
+        if (launchedAgent && launchedAgent.exitCode === null) {
+          sendJson(res, 409, { error: 'The WhatsApp agent is already starting.' });
+          return;
+        }
+
+        const status = readJsonFileOr(agentStatusFile, null);
+        const currentStatus = getDashboardAgentStatus(status, 0);
+        if (['connected', 'connecting'].includes(currentStatus.connectionState)) {
+          sendJson(res, 409, { error: 'The WhatsApp agent is already running.' });
+          return;
+        }
+
+        if (currentStatus.lastHeartbeatAt) {
+          const heartbeatAge = Date.now() - Date.parse(currentStatus.lastHeartbeatAt);
+          if (heartbeatAge >= 0 && heartbeatAge <= AGENT_HEARTBEAT_MAX_AGE_MS) {
+            const processId = Number.isSafeInteger(status?.processId) && status.processId > 0
+              ? status.processId
+              : null;
+            if (!processId) {
+              sendJson(res, 409, { error: 'The WhatsApp agent is still shutting down.' });
+              return;
+            }
+            try {
+              process.kill(processId, 0);
+              sendJson(res, 409, { error: 'The WhatsApp agent is still shutting down.' });
+              return;
+            } catch (error) {
+              if (error.code !== 'ESRCH' && error.code !== 'EPERM') throw error;
+              if (error.code === 'EPERM') {
+                sendJson(res, 409, { error: 'The WhatsApp agent is still running.' });
+                return;
+              }
+            }
+          }
+        }
+
+        const child = launchAgent();
+        launchedAgent = child;
+        child.once('error', error => {
+          if (launchedAgent === child) launchedAgent = null;
+          console.error('[Admin Dashboard] Could not start the WhatsApp agent:', error.message);
+        });
+        child.once('exit', () => {
+          if (launchedAgent === child) launchedAgent = null;
+        });
+        child.unref();
+        sendJson(res, 202, { status: 'connecting', processId: child.pid });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not start the WhatsApp agent:', error.message);
+        sendJson(res, 500, { error: 'Could not start the WhatsApp agent.' });
+      }
+      return;
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/api/admin/agent-replies') {
       if (!isSameOriginLoopbackRequest(req)) {
         sendJson(res, 403, { error: 'Agent controls must come from this local dashboard.' });
@@ -2674,7 +2744,12 @@ export function createAdminDashboardServer({
               phoneNumber,
               jid: payment.jid,
               studentName: displayName(contact, phoneJid),
-              paidAt: payment.paidAt
+              paidAt: payment.paidAt,
+              source: payment.source || record.source || 'manual',
+              amount: payment.amount ?? null,
+              currency: payment.currency || 'SDG',
+              bank: payment.bank ?? null,
+              transactionId: payment.transactionId ?? null
             };
           }))
           .sort((left, right) => Date.parse(right.paidAt) - Date.parse(left.paidAt));

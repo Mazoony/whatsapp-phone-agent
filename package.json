@@ -9,7 +9,7 @@
     "web": "node web_chat.js",
     "admin": "node admin_dashboard.js",
     "chat": "node simulate_chat.js",
-    "test": "node test.js && node --test followup_manager.test.js lesson_manager.test.js grammar_tutor.test.js history.test.js phonebook.test.js humanization.test.js admin_dashboard.test.js dashboard_auth.test.js agent_status.test.js agent_runtime.test.js ai.test.js broadcast_utils.test.js broadcast_media.test.js incoming_message_utils.test.js incoming_chat_queue.test.js chat_read_state.test.js blocked_contacts.test.js contact_gender.test.js contact_payment_labels.test.js contact_sync.test.js sudanese_arabic_learning.test.js media_upload_progress.test.js student_workbook.test.js whatsapp_chat_activity.test.js whatsapp_presence.test.js local_ai.test.js curriculum_manager.test.js agent_media_retry.test.js lesson_media_retry.test.js scheduled_lessons.test.js"
+    "test": "node test.js && node --test followup_manager.test.js lesson_manager.test.js grammar_tutor.test.js history.test.js phonebook.test.js humanization.test.js admin_dashboard.test.js dashboard_auth.test.js agent_status.test.js agent_runtime.test.js ai.test.js broadcast_utils.test.js broadcast_media.test.js incoming_message_utils.test.js incoming_chat_queue.test.js chat_read_state.test.js blocked_contacts.test.js contact_gender.test.js contact_payment_labels.test.js payment_scanner.test.js contact_sync.test.js sudanese_arabic_learning.test.js media_upload_progress.test.js student_workbook.test.js whatsapp_chat_activity.test.js whatsapp_presence.test.js local_ai.test.js curriculum_manager.test.js agent_media_retry.test.js lesson_media_retry.test.js scheduled_lessons.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

@@ -144,8 +144,9 @@
     .agent-status-dot.disconnected { background: #b94747; }
     .agent-control-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
     .agent-control-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 7px; }
-    .agent-disconnect-button { border: 1px solid #e6bcbc; border-radius: 7px; padding: 7px 10px; color: #a3423c; background: #fff8f7; font: inherit; font-size: 11px; font-weight: 700; }
-    .agent-disconnect-button:disabled { cursor: not-allowed; opacity: .5; }
+    .agent-connection-button { border: 1px solid #b7dfc8; border-radius: 7px; padding: 7px 10px; color: #246344; background: #f3fbf6; font: inherit; font-size: 11px; font-weight: 700; }
+    .agent-connection-button.disconnecting { border-color: #e6bcbc; color: #a3423c; background: #fff8f7; }
+    .agent-connection-button:disabled { cursor: not-allowed; opacity: .5; }
     .agent-response-button { border: 1px solid #c8d9cd; border-radius: 7px; padding: 7px 10px; color: #326a4f; background: #f7fcf8; font: inherit; font-size: 11px; font-weight: 700; }
     .agent-response-button:disabled { cursor: not-allowed; opacity: .5; }
     .agent-control-message { min-height: 1em; }
@@ -717,11 +718,11 @@
               <h3>Reconnect WhatsApp</h3>
               <div class="agent-control-actions">
                 <button class="agent-response-button" id="agent-replies" type="button" disabled>Pause replies</button>
-                <button class="agent-disconnect-button" id="agent-disconnect" type="button" disabled>Disconnect agent</button>
+                <button class="agent-connection-button" id="agent-connection" type="button" disabled>Connect agent</button>
               </div>
             </div>
             <p class="agent-control-message" id="agent-control-message" role="status" aria-live="polite"></p>
-            <p id="agent-qr-message">Start the agent to request a fresh pairing QR code.</p>
+            <p id="agent-qr-message">Connect the agent to request a fresh pairing QR code.</p>
             <div class="agent-qr-wrap" id="agent-qr-wrap" hidden><img id="agent-qr-image" alt="WhatsApp device-linking QR code"></div>
           </article>
           <article class="panel agent-log-panel">
@@ -2457,8 +2458,16 @@
       };
       $('#agent-status-value').textContent = statusLabels[status.connectionState] || 'Unknown';
       $('#agent-status-dot').className = `agent-status-dot ${status.connectionState}`;
-      $('#agent-disconnect').disabled =
-        !['connected', 'connecting'].includes(status.connectionState);
+      const connectionButton = $('#agent-connection');
+      const isAgentActive = ['connected', 'connecting'].includes(status.connectionState);
+      connectionButton.disabled = status.connectionState === 'disconnecting';
+      connectionButton.textContent = status.connectionState === 'disconnecting'
+        ? 'Disconnecting…'
+        : isAgentActive ? 'Disconnect agent' : 'Connect agent';
+      connectionButton.classList.toggle('disconnecting', isAgentActive);
+      connectionButton.setAttribute('aria-label', isAgentActive
+        ? 'Disconnect the WhatsApp agent'
+        : 'Connect the WhatsApp agent');
       const queueToggle = $('#agent-queue-toggle');
       if (pendingAgentQueuePause !== null &&
           (status.connectionState !== 'connected' || status.queuePaused === pendingAgentQueuePause)) {
@@ -2805,7 +2814,15 @@
           const coverageStatus = coverageEnd < today
             ? 'One-month period ended'
             : 'One-month period through';
-          return `<article class="payment-calendar-entry"><div><strong>${escapeHtml(payment.studentName || payment.phoneNumber)}</strong><small>${escapeHtml(payment.phoneNumber)} · Marked paid ${escapeHtml(formatDate(payment.paidAt))}</small></div><small>${coverageStatus} ${escapeHtml(formatDate(coverageEnd, false))}</small></article>`;
+          const scanBadge = payment.source === 'payment-scan'
+            ? ' <span class="badge payment-scan-badge" style="background:#eaf6ed;color:#1e7046;border:1px solid #b7dfc8;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:600;">📸 Photo Scanned</span>'
+            : '';
+          const metaParts = [];
+          if (payment.amount) metaParts.push(`${new Intl.NumberFormat().format(payment.amount)} ${payment.currency || 'SDG'}`);
+          if (payment.bank) metaParts.push(payment.bank);
+          if (payment.transactionId) metaParts.push(`Ref: ${payment.transactionId}`);
+          const metaInfo = metaParts.length ? ` · ${escapeHtml(metaParts.join(' · '))}` : '';
+          return `<article class="payment-calendar-entry"><div><strong>${escapeHtml(payment.studentName || payment.phoneNumber)}${scanBadge}</strong><small>${escapeHtml(payment.phoneNumber)} · Marked paid ${escapeHtml(formatDate(payment.paidAt))}${metaInfo}</small></div><small>${coverageStatus} ${escapeHtml(formatDate(coverageEnd, false))}</small></article>`;
         }).join('')
         : '<div class="payment-calendar-empty">No students were marked paid on this date.</div>';
     }
@@ -2821,7 +2838,9 @@
         payment.phoneNumber || payment.jid
       ).filter(Boolean));
       const count = paidStudents.size;
-      const totalSdg = count * PAYMENT_MONTHLY_AMOUNT_SDG;
+      const totalSdg = monthPayments.some(payment => Number(payment.amount) > 0)
+        ? monthPayments.reduce((sum, payment) => sum + (Number(payment.amount) > 0 ? Number(payment.amount) : PAYMENT_MONTHLY_AMOUNT_SDG), 0)
+        : count * PAYMENT_MONTHLY_AMOUNT_SDG;
       const formatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
       const usdFormatter = new Intl.NumberFormat(undefined, {
         style: 'currency',
@@ -3935,20 +3954,29 @@
         showError(error.message);
       }
     });
-    $('#agent-disconnect').addEventListener('click', async event => {
-      if (!window.confirm('Disconnect the WhatsApp agent now? The device will remain linked, but the agent will stop replying until it is restarted.')) {
-        return;
-      }
+    $('#agent-connection').addEventListener('click', async event => {
       const button = event.currentTarget;
       const message = $('#agent-control-message');
+      const isConnected = $('#agent-status-value').textContent === 'Connected' ||
+        $('#agent-status-value').textContent === 'Connecting';
+      const action = isConnected ? 'disconnect' : 'connect';
+      if (action === 'disconnect' &&
+          !window.confirm('Disconnect the WhatsApp agent now? The device will remain linked.')) {
+        return;
+      }
       button.disabled = true;
-      message.textContent = 'Requesting agent disconnect…';
+      message.textContent = action === 'disconnect'
+        ? 'Requesting agent disconnect…'
+        : 'Starting the WhatsApp agent…';
       try {
-        await api('/api/admin/agent-disconnect', { method: 'POST', body: JSON.stringify({}) });
-        message.textContent = 'Disconnect requested. The WhatsApp device remains linked; restart the agent to reconnect.';
+        await api(`/api/admin/agent-${action}`, { method: 'POST', body: JSON.stringify({}) });
+        message.textContent = action === 'disconnect'
+          ? 'Disconnect requested. The WhatsApp device remains linked.'
+          : 'Agent started. Waiting for WhatsApp to connect…';
+        await loadAgentStatus();
       } catch (error) {
         button.disabled = false;
-        message.textContent = `Could not disconnect the agent: ${error.message}`;
+        message.textContent = `Could not ${action} the agent: ${error.message}`;
       }
     });
     $('#agent-replies').addEventListener('click', async event => {

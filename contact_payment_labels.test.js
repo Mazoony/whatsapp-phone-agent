@@ -152,3 +152,48 @@ test('WhatsApp paid label can be removed from a chat', async () => {
   }, '249123456789@s.whatsapp.net', 'remove');
   assert.deepEqual(calls, [['249123456789@s.whatsapp.net', 'es-paid']]);
 });
+
+test('recordScannedPayment stores payment-scan source, metadata, and history', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'contact-scanned-payment-test-'));
+  const filePath = path.join(directory, 'payment-labels.json');
+  try {
+    const store = createContactPaymentLabelsStore(filePath);
+    const phoneNumber = '249912345678';
+    const jid = `${phoneNumber}@s.whatsapp.net`;
+    const scanResult = {
+      isPayment: true,
+      confidence: 0.98,
+      details: {
+        bank: 'Bank of Khartoum (Bankak)',
+        amount: 17000,
+        currency: 'SDG',
+        transactionId: 'TX123456789',
+        recipientName: 'Mazen Mohammed',
+        recipientAccount: '2865022',
+        date: '2026-10-20'
+      },
+      reason: 'Bankak transfer screenshot showing 17,000 SDG'
+    };
+
+    const record = store.recordScannedPayment(phoneNumber, jid, scanResult);
+    assert.equal(record.label, 'paid');
+    assert.equal(record.source, 'payment-scan');
+    assert.equal(record.jid, jid);
+    assert.equal(record.whatsappAction, 'add');
+    assert.equal(record.paymentHistory.length, 1);
+    assert.equal(record.paymentHistory[0].source, 'payment-scan');
+    assert.equal(record.paymentHistory[0].amount, 17000);
+    assert.equal(record.paymentHistory[0].currency, 'SDG');
+    assert.equal(record.paymentHistory[0].bank, 'Bank of Khartoum (Bankak)');
+    assert.equal(record.paymentHistory[0].transactionId, 'TX123456789');
+
+    // Re-reading from disk preserves everything and parses cleanly
+    const reloaded = store.get(phoneNumber);
+    assert.equal(reloaded.label, 'paid');
+    assert.equal(reloaded.source, 'payment-scan');
+    assert.equal(reloaded.paymentHistory.length, 1);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+

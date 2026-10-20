@@ -39,6 +39,7 @@ import {
   createContactPaymentLabelsStore,
   isExplicitPaidClaim
 } from './contact_payment_labels.js';
+import { scanPaymentReceipt } from './payment_scanner.js';
 import {
   clearAgentQr,
   consumeAgentControlRequest,
@@ -471,8 +472,11 @@ async function startAgent() {
         setTimeout(() => startAgent(), 5000);
       } else {
         console.log(dashboardDisconnectRequested
-          ? '[Connection] Agent stopped by dashboard. Restart it with npm start to reconnect.'
-          : '[Connection] Session logged out. Delete "auth_info_baileys" folder and restart to re-link.');
+          ? '[Connection] Agent stopped by dashboard. The dashboard can start it again when requested.'
+          : '[Connection] Session logged out. Delete "auth_info_baileys" folder and start the agent again to re-link.');
+        if (agentHeartbeatTimer) clearInterval(agentHeartbeatTimer);
+        agentHeartbeatTimer = null;
+        process.exit(0);
       }
     } else if (connection === 'open') {
       try {
@@ -743,9 +747,26 @@ async function startAgent() {
           }
 
           const paidClaim = isExplicitPaidClaim(aggregatedText);
+          let scannedPayment = null;
+          if (queuedEntry.images && queuedEntry.images.length > 0) {
+            try {
+              console.log(`[Payment Scanner] Scanning ${queuedEntry.images.length} incoming image(s) from ${queuedEntry.pushName} (${queuedSenderNumber})...`);
+              const scanResult = await scanPaymentReceipt(queuedEntry.images, aggregatedText);
+              if (scanResult?.isPayment) {
+                scannedPayment = scanResult;
+                console.log(`[Payment Scanner] ✅ Verified payment receipt from ${queuedEntry.pushName} (${queuedSenderNumber}):`, scanResult.details || scanResult.reason);
+                contactPaymentLabels.recordScannedPayment(queuedSenderNumber, jid, scanResult);
+              } else {
+                console.log(`[Payment Scanner] Image from ${queuedEntry.pushName} is not a payment receipt (${scanResult?.reason || 'unrecognized'}).`);
+              }
+            } catch (scanError) {
+              console.error(`[Payment Scanner] Could not scan image from ${queuedEntry.pushName}:`, scanError.message);
+            }
+          }
+
           let paidLabel = null;
           try {
-            if (paidClaim) {
+            if (paidClaim && !scannedPayment) {
               contactPaymentLabels.markPaid(queuedSenderNumber, jid);
             }
           } catch (error) {
@@ -756,7 +777,7 @@ async function startAgent() {
           } catch (error) {
             console.error('[Contact Labels] Could not read payment label status:', error.message);
           }
-          if ((paidClaim || paidLabel) && !paidLabel?.whatsappAppliedAt) {
+          if ((paidClaim || scannedPayment || paidLabel) && !paidLabel?.whatsappAppliedAt) {
             try {
               await applyWhatsAppPaidLabel(sock, jid);
               if (paidLabel) contactPaymentLabels.markWhatsAppApplied(queuedSenderNumber);
@@ -995,7 +1016,7 @@ async function startAgent() {
                   (detectedGrade && student && student.grade !== detectedGrade);
                 if (firstConfiguredLesson) {
                   if (canStartFreshSequence && !lessonManager.hasActiveLesson(jid, phoneJid) &&
-                      queuedEntry.images.length === 0) {
+                      (queuedEntry.images.length === 0 || scannedPayment)) {
                     shouldSendWelcomeSample = true;
                   } else {
                     historyManager.setWelcomeSampleState('deferred', jid, alternateJid, phoneJid);
@@ -1013,7 +1034,7 @@ async function startAgent() {
             const wantsLessonNow = explicitLessonRequest || hasLessonConsent;
             const shouldStartAfterReply = !shouldSendWelcomeSample &&
               requestedGrade &&
-              queuedEntry.images.length === 0 &&
+              (queuedEntry.images.length === 0 || scannedPayment) &&
               !lessonManager.hasActiveLesson(jid, phoneJid) &&
               !lessonManager.hasActiveTreasureIslandLesson(jid, phoneJid) &&
               ((firstConfiguredLesson && ((!student || student.status === 'consulting') &&
@@ -1052,7 +1073,26 @@ async function startAgent() {
             }
             const arabic = hasArabicText(aggregatedText);
             let reply;
-            if (shouldSendWelcomeSample || shouldStartAfterReply) {
+            if (scannedPayment) {
+              if (shouldSendWelcomeSample || shouldStartAfterReply) {
+                reply = arabic
+                  ? 'وصل إيصال التحويل، تسلم يا رب وبارك الله فيك. حأرسل ليك فيديو الحصة والتمرين هسي.'
+                  : 'Payment receipt received, thank you! I’ll send your lesson video and exercise now.';
+              } else if (!requestedGrade) {
+                reply = arabic
+                  ? 'وصل إيصال التحويل، تسلم يا رب وبارك الله فيك. أرسل لي صفك ومرحلتك الدراسية عشان أختار ليك الدرس المناسب.'
+                  : 'Payment receipt received, thank you! Tell me your grade and school stage so I can choose the right lesson.';
+              } else if (lessonManager.hasActiveLesson(jid, phoneJid) ||
+                  lessonManager.hasActiveTreasureIslandLesson(jid, phoneJid)) {
+                reply = arabic
+                  ? 'وصل إيصال التحويل، تسلم يا رب وبارك الله فيك. أرسل إجابات التمرين الحالي عشان أصححها ليك.'
+                  : 'Payment receipt received, thank you! Let’s focus on your current lesson. Send your exercise answers and I’ll mark them.';
+              } else {
+                reply = arabic
+                  ? 'وصل إيصال التحويل، تسلم يا رب وبارك الله فيك. حنواصل في حصصنا وتماريننا طوالي.'
+                  : 'Payment receipt received, thank you! Let’s continue with our lessons.';
+              }
+            } else if (shouldSendWelcomeSample || shouldStartAfterReply) {
               reply = arabic
                 ? 'أهلاً بيك، حأرسل ليك فيديو الحصة والتمرين هسي.'
                 : 'Welcome! I’ll send your lesson video and exercise now.';
@@ -1133,4 +1173,8 @@ async function startAgent() {
 
 startAgent().catch((err) => {
   console.error('Fatal initialization error:', err);
+  if (agentHeartbeatTimer) clearInterval(agentHeartbeatTimer);
+  agentHeartbeatTimer = null;
+  updateAgentStatus('disconnected');
+  process.exitCode = 1;
 });
