@@ -22,11 +22,17 @@ const TASK_EVALUATION_FORMAT = {
   additionalProperties: false
 };
 
-function getTaskFeedback(isTaskSubmission, allCorrect) {
+function getTaskFeedback(isTaskSubmission, allCorrect, studentSubmission = '') {
   if (!isTaskSubmission) return '';
+  const arabic = /[\u0600-\u06FF]/.test(studentSubmission);
+  if (arabic) {
+    return allCorrect
+      ? 'صحيح، ممتاز.'
+      : 'في إجابة محتاجة تصحيح. حاول تاني.';
+  }
   return allCorrect
-    ? 'ما شاء الله عليك، إجاباتك كلها صحيحة.'
-    : 'شغلك كويس، في إجابة محتاجة مراجعة. ركز في المطلوب وحاول تاني.';
+    ? 'Correct.'
+    : 'One or more answers need correction. Try again.';
 }
 
 /**
@@ -90,7 +96,7 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
         }
         return {
           ...parsed,
-          feedback: getTaskFeedback(parsed.isTaskSubmission, parsed.allCorrect)
+          feedback: getTaskFeedback(parsed.isTaskSubmission, parsed.allCorrect, studentSubmission)
         };
       } catch (err) {
         lastError = err;
@@ -113,7 +119,7 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
     console.log('[Grader] Task evaluated using local Ollama.');
     return {
       ...parsed,
-      feedback: getTaskFeedback(parsed.isTaskSubmission, parsed.allCorrect)
+      feedback: getTaskFeedback(parsed.isTaskSubmission, parsed.allCorrect, studentSubmission)
     };
   } catch (localError) {
     console.error('[Grader Error] Gemini and local Ollama failed:', localError.message, lastError?.message || '');

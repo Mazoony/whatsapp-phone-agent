@@ -2,13 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import { config } from './config.js';
 import { getPhoneJid } from './phonebook.js';
+import { getConversationJids, getConversationMessages } from './conversation_history.js';
 
 const DATA_DIR = path.resolve('data');
 const HISTORY_FILE = path.join(DATA_DIR, 'chat_history.json');
 const CONTACTS_FILE = path.join(DATA_DIR, 'contacts.json');
 
-const DEFAULT_MAX_MESSAGES = 20;
-const ES_MAX_PERMANENT_MESSAGES = 5000; // Permanent memory for Es contacts
+const MAX_STORED_MESSAGES_PER_CHAT = 5000;
 
 class ChatHistoryManager {
   constructor() {
@@ -245,56 +245,64 @@ class ChatHistoryManager {
    * @param {number} timestamp Unix epoch in seconds or milliseconds
    * @param {string} contactName Contact pushName or display name
    */
-  addMessage(jid, role, text, timestamp = Date.now(), contactName = '') {
+  addMessage(jid, role, text, timestamp = Date.now(), contactName = '', messageId = null, linkedPhoneJid = null) {
     if (!text || !text.trim()) return;
 
     if (contactName) {
-      this.saveContact(jid, contactName);
+      this.saveContact(jid, contactName, linkedPhoneJid);
     }
 
     if (!this.history[jid]) {
       this.history[jid] = [];
     }
 
+    if (messageId && this.history[jid].some(message => message.id === messageId)) return;
+
     this.history[jid].push({
       role,
       text: text.trim(),
-      timestamp
+      timestamp,
+      ...(messageId ? { id: messageId } : {})
     });
 
-    const isEs = this.isEsContact(jid, contactName);
-
-    if (isEs) {
-      // PERMANENT RETENTION FOR ES CONTACTS:
-      // History is permanently preserved up to safety ceiling (5,000 messages)
-      if (this.history[jid].length > ES_MAX_PERMANENT_MESSAGES) {
-        this.history[jid] = this.history[jid].slice(-ES_MAX_PERMANENT_MESSAGES);
-      }
-    } else {
-      // Non-Es contacts keep standard rolling window
-      if (this.history[jid].length > DEFAULT_MAX_MESSAGES) {
-        this.history[jid] = this.history[jid].slice(-DEFAULT_MAX_MESSAGES);
-      }
+    if (this.history[jid].length > MAX_STORED_MESSAGES_PER_CHAT) {
+      this.history[jid] = this.history[jid]
+        .map((message, index) => ({ message, index }))
+        .sort((left, right) =>
+          (Number(left.message.timestamp) || 0) - (Number(right.message.timestamp) || 0) ||
+          left.index - right.index
+        )
+        .slice(-MAX_STORED_MESSAGES_PER_CHAT)
+        .map(({ message }) => message);
     }
 
     this.scheduleSave();
   }
 
+  getConversationMessages(...jids) {
+    return getConversationMessages(this.history, this.contacts, ...jids);
+  }
+
   /**
    * Returns conversation dialogue formatted for Gemini.
-   * If contact contains "Es", returns extensive permanent history.
-   * Otherwise returns the recent 10 messages.
+   * Returns the recent conversation across linked WhatsApp IDs.
    * @param {string} jid
    * @param {string} contactName
    * @param {number} limit
    * @returns {string}
    */
-  getDialogueForAgent(jid, contactName = '', limit = null) {
-    const list = this.history[jid] || [];
+  getDialogueForAgent(jid, contactName = '', limit = null, linkedPhoneJid = null) {
+    const relatedJids = getConversationJids(
+      this.history,
+      this.contacts,
+      jid,
+      linkedPhoneJid
+    );
+    const list = this.getConversationMessages(jid, linkedPhoneJid);
     if (list.length === 0) return 'No previous conversation history.';
 
-    const isEs = this.isEsContact(jid, contactName);
-    const maxMessages = limit || (isEs ? 100 : 10);
+    const isEs = relatedJids.some(relatedJid => this.isEsContact(relatedJid, contactName));
+    const maxMessages = limit || 100;
     const recent = list.slice(-maxMessages);
 
     const formattedLines = recent.map(msg => {
@@ -304,7 +312,7 @@ class ChatHistoryManager {
     });
 
     if (isEs) {
-      return `[⭐ PERMANENT CHAT MEMORY ACTIVE - ES CONTACT: ${contactName || jid}]\n(Total stored messages: ${list.length})\n` + formattedLines.join('\n');
+      return `[⭐ PERMANENT CHAT MEMORY ACTIVE - ES CONTACT: ${contactName || jid}]\n(Total stored messages across linked WhatsApp IDs: ${list.length})\n` + formattedLines.join('\n');
     }
 
     return formattedLines.join('\n');

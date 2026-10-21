@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { config } from './config.js';
+import { config, resolveStudentGrade } from './config.js';
 import { historyManager } from './history.js';
+import { getConversationJids } from './conversation_history.js';
 import { getPhoneJid } from './phonebook.js';
 import { sudaneseArabicLearner } from './sudanese_arabic_learning.js';
 import { generateLocalResponse } from './local_ai.js';
@@ -87,13 +88,31 @@ export async function generateClientResponse(
   lessonConsentGiven = false,
   linkedPhoneJid = null,
   grammarCourseLesson = null,
-  welcomeSampleMode = null
+  welcomeSampleMode = null,
+  isReturningStudent = false
 ) {
-  const isEs = historyManager.isEsContact(jid, contactName);
-  const chatHistory = historyManager.history[jid] || [];
-  const useEnglishLessonOnboarding = !welcomeSampleMode &&
+  const effectiveGradeKey = resolveStudentGrade(gradeKey);
+  const isEs = getConversationJids(
+    historyManager.history,
+    historyManager.contacts,
+    jid,
+    linkedPhoneJid
+  ).some(relatedJid => historyManager.isEsContact(relatedJid, contactName));
+  const allMessages = historyManager.getConversationMessages(jid, linkedPhoneJid);
+  const chatHistory = allMessages;
+  const hasPriorAgentMessage = allMessages.some(message => message.role === 'agent');
+  const hasOlderClientMessages = allMessages.filter(message => message.role === 'client').length > 1 &&
+    allMessages.some(m => typeof m.timestamp === 'number' && (Date.now() - m.timestamp > 3 * 60 * 1000));
+  const isReturning = Boolean(
+    isReturningStudent ||
+    hasPriorAgentMessage ||
+    (gradeKey && gradeKey !== null) ||
+    hasOlderClientMessages
+  );
+  const useEnglishLessonOnboarding = !isReturning &&
+    !welcomeSampleMode &&
     shouldUseEnglishLessonOnboarding(chatHistory);
-  const pastDialogue = historyManager.getDialogueForAgent(jid, contactName);
+  const pastDialogue = historyManager.getDialogueForAgent(jid, contactName, null, linkedPhoneJid);
   const systemInstruction = config.getSystemPrompt();
   let observedArabicStyle = '';
   try {
@@ -129,7 +148,7 @@ export async function generateClientResponse(
   }
 
   const knowledge = knowledgePieces.join('\n\n');
-  const gradeCurriculum = getGradeCurriculumKnowledge(gradeKey);
+  const gradeCurriculum = getGradeCurriculumKnowledge(effectiveGradeKey);
   const pricingContext = getStudentPricingContext(jid, linkedPhoneJid);
 
   const esNotice = isEs
@@ -148,6 +167,7 @@ ${observedArabicStyle ? `\n=== OBSERVED SUDANESE ARABIC STYLE CUES ===\n${observ
 === CLIENT PROFILE ===
 Client Name / Identifier: ${contactName}
 Contact Phone / JID: ${jid.split('@')[0]}${esNotice}
+Assigned Grade / Stage: ${effectiveGradeKey}. Treat this as known; do not ask the student which grade or stage they are in.
 
 === CONVERSATION HISTORY ===
 ${pastDialogue}
@@ -156,10 +176,17 @@ ${pastDialogue}
 "${incomingMessage}"
 ${images.length ? `\nThe client also attached ${images.length} image(s). Inspect the image content and use it when responding.` : ''}
 
+${isReturning ? `=== STUDENT RELATIONSHIP: RETURNING STUDENT (طالب متواصل مسبقاً) ===
+This student has interacted with you previously. You already know them from the conversation history above.
+- STRICT RULE: DO NOT ask them about their grade, stage, or school level! (ممنوع منعاً باتاً سؤالهم عن صفهم أو مرحلتهم الدراسية).
+- Greet them warmly as their teacher who already knows them. Use their name if available.
+- Continue the conversation naturally based on their previous messages, answer their questions, or follow up on their lessons.
+${effectiveGradeKey ? `- Confirmed Grade / Stage: ${effectiveGradeKey}. Keep explanations tailored to this level without re-asking.` : ''}
+` : ''}
 ${useEnglishLessonOnboarding ? `=== FIRST-REPLY LESSON ONBOARDING ===
 This is your first reply to this student. Briefly greet them and acknowledge their message in the language they used: Sudanese Arabic if they wrote in Arabic, and English only if they wrote in English. If their school grade and stage are not known, ask only which grade and stage they are in, using that same language. If their grade is known, do not ask a question. Never ask permission to send lessons or ask about their English difficulties. Only say a lesson will follow when the app confirms it in the section below. This onboarding instruction does not override the rule to match the student's language.` : ''}
 
-${welcomeSampleMode === 'ask_grade' ? `=== NEW STUDENT WELCOME ===
+${!isReturning && welcomeSampleMode === 'ask_grade' ? `=== NEW STUDENT WELCOME ===
 This is a new student, and their grade is not known yet. Warmly greet them and ask only which school grade and stage they are in. Do not promise or claim a lesson is ready.` : ''}
 
 ${welcomeSampleMode === 'sample' ? `=== FREE WELCOME SAMPLE ===
@@ -181,7 +208,8 @@ The student is currently working on "${grammarCourseLesson}". If they ask an unr
 Draft a clear, friendly, and concise response to the client.
 - Match the language of the student's latest message. For an Arabic message, reply in natural Sudanese Arabic. Use English only when the student wrote in English. For mixed-language messages, reply in the dominant language and keep English only for necessary lesson terms or examples. This rule also applies to first replies and lesson greetings.
 - Keep ordinary WhatsApp replies to 1–3 short sentences, usually no more than 40 words. Respond directly to the student's latest point; do not retell their story, repeat encouragement, add generic promotional claims, or ask multiple questions.
-- Do not ask what problems or difficulties the student has, and do not ask permission before sending lessons. Ask for the student's grade and school stage only when they are not known. Do not ask unrelated follow-up questions.
+- Do not ask what problems or difficulties the student has, and do not ask permission before sending lessons.
+- Asking about Grade / School Stage: Ask for the student's grade and school stage ONLY when they are a brand new student contacting you for the first time without a known grade. NEVER ask a returning student or anyone with prior conversation history about their grade or stage. Do not ask unrelated follow-up questions.
 - If a matching lesson and exercise are confirmed to follow, greet the student briefly and do not add a question. If no lesson is confirmed to follow, do not promise that one will be sent.
 - If the student asks for an explanation, exercise, or correction, provide the necessary detail without unrelated coaching.
 - Use the business knowledge and course details above to answer accurately.

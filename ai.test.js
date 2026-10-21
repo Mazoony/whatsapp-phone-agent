@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { config } from './config.js';
+import { config, resolveStudentGrade } from './config.js';
 import {
   generateWithTransientRetry,
   generateClientResponse,
@@ -11,6 +11,7 @@ import {
   sanitizeClientResponseText
 } from './ai.js';
 import { evaluateStudentTask } from './task_evaluator.js';
+import { historyManager } from './history.js';
 
 test('English lesson onboarding is only used before the first agent reply', () => {
   assert.equal(shouldUseEnglishLessonOnboarding([]), true);
@@ -127,6 +128,11 @@ test('Year 3 Secondary AI context contains the requested English curriculum', ()
   ]) {
     assert.ok(curriculum.includes(topic), `Curriculum reference should include ${topic}`);
   }
+});
+
+test('student grade defaults to Year 3 Secondary unless another grade is known', () => {
+  assert.equal(resolveStudentGrade(), 'grade_3_secondary');
+  assert.equal(resolveStudentGrade(null, 'grade_2_secondary'), 'grade_2_secondary');
 });
 
 test('Year 3 Secondary curriculum is not added to other students', () => {
@@ -362,7 +368,7 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
     }, 'He go to school.'), {
       isTaskSubmission: true,
       allCorrect: false,
-      feedback: 'شغلك كويس، في إجابة محتاجة مراجعة. ركز في المطلوب وحاول تاني.'
+      feedback: 'One or more answers need correction. Try again.'
     });
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
@@ -408,8 +414,37 @@ test('task grading accepts a single-word answer as a complete submission', async
     }, 'interprets'), {
       isTaskSubmission: true,
       allCorrect: true,
-      feedback: 'ما شاء الله عليك، إجاباتك كلها صحيحة.'
+      feedback: 'Correct.'
     });
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading gives short feedback in the submitted language', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      message: {
+        content: JSON.stringify({
+          isTaskSubmission: true,
+          allCorrect: false
+        })
+      }
+    })
+  });
+
+  try {
+    const result = await evaluateStudentTask({
+      title: 'Present Simple',
+      taskMessage: 'أكمل الجملة.',
+      answerKey: ['goes']
+    }, 'الإجابة غلط');
+    assert.equal(result.feedback, 'في إجابة محتاجة تصحيح. حاول تاني.');
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
     globalThis.fetch = previousFetch;
@@ -441,4 +476,179 @@ test('sanitizes bracketed video and exercise placeholders from AI response text'
     sanitizeClientResponseText('[فيديو الشرح]'),
     ''
   );
+});
+
+test('returning student prompt explicitly forbids asking for grade or stage', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  const jid = 'returning-student-check@s.whatsapp.net';
+  historyManager.history[jid] = [
+    { role: 'client', text: 'السلام عليكم يا مستر مازن' },
+    { role: 'agent', text: 'و عليكم السلام ورحمة الله وبركاته، مرحب بيك يا بطل' }
+  ];
+
+  let interceptedPrompt = '';
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    interceptedPrompt = body.messages.find(m => m.role === 'user').content;
+    return {
+      ok: true,
+      json: async () => ({ message: { content: 'أهلاً بيك يا غالي' } })
+    };
+  };
+
+  try {
+    const reply = await generateClientResponse(
+      jid,
+      'Ahmed',
+      'كيفك يا مستر؟ جاهز للمذاكرة اليوم',
+      [],
+      null,
+      false,
+      false,
+      null,
+      null,
+      null,
+      true
+    );
+    assert.equal(reply, 'أهلاً بيك يا غالي');
+    assert.match(interceptedPrompt, /=== STUDENT RELATIONSHIP: RETURNING STUDENT/);
+    assert.match(interceptedPrompt, /ممنوع منعاً باتاً سؤالهم عن صفهم أو مرحلتهم الدراسية/);
+    assert.match(interceptedPrompt, /NEVER ask a returning student or anyone with prior conversation history about their grade or stage/);
+    assert.doesNotMatch(interceptedPrompt, /=== FIRST-REPLY LESSON ONBOARDING ===/);
+    assert.doesNotMatch(interceptedPrompt, /=== NEW STUDENT WELCOME ===/);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+    delete historyManager.history[jid];
+  }
+});
+
+test('new student AI context uses the default grade without asking for it', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  const jid = 'default-grade-student@s.whatsapp.net';
+  let interceptedPrompt = '';
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    interceptedPrompt = body.messages.find(message => message.role === 'user').content;
+    return {
+      ok: true,
+      json: async () => ({ message: { content: 'أهلاً بيك' } })
+    };
+  };
+
+  try {
+    await generateClientResponse(jid, 'New Student', 'السلام عليكم');
+    assert.match(interceptedPrompt, /Assigned Grade \/ Stage: grade_3_secondary/);
+    assert.match(interceptedPrompt, /=== YEAR 3 SECONDARY ENGLISH CURRICULUM ===/);
+    assert.match(interceptedPrompt, /If their grade is known, do not ask a question/);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+    delete historyManager.history[jid];
+  }
+});
+
+test('AI prompt restores conversation context from both linked phone and LID histories', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  const phoneJid = '249000000040@s.whatsapp.net';
+  const lidJid = '100000000000040@lid';
+  const previousPhoneContact = historyManager.contacts[phoneJid];
+  const previousLidContact = historyManager.contacts[lidJid];
+  const previousPhoneHistory = historyManager.history[phoneJid];
+  const previousLidHistory = historyManager.history[lidJid];
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  historyManager.contacts[phoneJid] = { jid: phoneJid, phoneJid, name: 'Student Es', isEs: true };
+  historyManager.contacts[lidJid] = { jid: lidJid, phoneJid, name: 'Student Es', isEs: true };
+  historyManager.history[phoneJid] = [
+    { id: 'phone-old', role: 'client', text: 'I am studying grade three secondary.', timestamp: 1_700_000_000_000 },
+    { id: 'phone-reply', role: 'agent', text: 'We practiced the past tense last week.', timestamp: 1_700_000_001_000 }
+  ];
+  historyManager.history[lidJid] = [
+    { id: 'lid-latest', role: 'client', text: 'I got the last exercise wrong.', timestamp: 1_700_000_002_000 }
+  ];
+
+  let interceptedPrompt = '';
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    interceptedPrompt = body.messages.find(message => message.role === 'user').content;
+    return {
+      ok: true,
+      json: async () => ({ message: { content: 'Let’s review the exercise together.' } })
+    };
+  };
+
+  try {
+    const reply = await generateClientResponse(
+      lidJid,
+      'Student Es',
+      'I got the last exercise wrong.',
+      [],
+      null,
+      false,
+      false,
+      phoneJid
+    );
+    assert.equal(reply, 'Let’s review the exercise together.');
+    assert.ok(interceptedPrompt.indexOf('I am studying grade three secondary.') <
+      interceptedPrompt.indexOf('We practiced the past tense last week.'));
+    assert.ok(interceptedPrompt.indexOf('We practiced the past tense last week.') <
+      interceptedPrompt.indexOf('I got the last exercise wrong.'));
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+    if (previousPhoneContact) historyManager.contacts[phoneJid] = previousPhoneContact;
+    else delete historyManager.contacts[phoneJid];
+    if (previousLidContact) historyManager.contacts[lidJid] = previousLidContact;
+    else delete historyManager.contacts[lidJid];
+    if (previousPhoneHistory) historyManager.history[phoneJid] = previousPhoneHistory;
+    else delete historyManager.history[phoneJid];
+    if (previousLidHistory) historyManager.history[lidJid] = previousLidHistory;
+    else delete historyManager.history[lidJid];
+  }
+});
+
+test('new student without known grade is asked for stage while returning student is not', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  const newJid = 'brand-new-student@s.whatsapp.net';
+  delete historyManager.history[newJid];
+
+  let interceptedPrompt = '';
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    interceptedPrompt = body.messages.find(m => m.role === 'user').content;
+    return {
+      ok: true,
+      json: async () => ({ message: { content: 'أهلاً بيك' } })
+    };
+  };
+
+  try {
+    // New student first message
+    await generateClientResponse(
+      newJid,
+      'New Student',
+      'السلام عليكم',
+      [],
+      null,
+      false,
+      false,
+      null,
+      null,
+      null,
+      false
+    );
+    assert.match(interceptedPrompt, /ask only which grade and stage they are in/i);
+    assert.doesNotMatch(interceptedPrompt, /RETURNING STUDENT/);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+    delete historyManager.history[newJid];
+  }
 });

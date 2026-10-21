@@ -12,6 +12,7 @@ import {
   readLastConnectedAt,
   renderAgentQrSvg,
   requestAgentDisconnect,
+  requestAgentHistorySync,
   requestAgentQueueCancellation,
   requestAgentQueueMode,
   requestAgentResponseMode,
@@ -54,6 +55,31 @@ test('dashboard disconnect request can be consumed once by the agent', () => {
     assert.deepEqual(JSON.parse(fs.readFileSync(controlFile, 'utf8')), request);
     assert.equal(consumeAgentDisconnectRequest(controlFile), true);
     assert.equal(consumeAgentDisconnectRequest(controlFile), false);
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard history restore requests validate and preserve the WhatsApp message cursor', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-history-sync-test-'));
+  const controlFile = path.join(temporaryDirectory, 'agent_control.json');
+  const messageKey = {
+    remoteJid: '249000000022@s.whatsapp.net',
+    id: 'oldest-message-id',
+    fromMe: false
+  };
+
+  try {
+    assert.throws(() => requestAgentHistorySync('invalid', messageKey, 1, controlFile), TypeError);
+    const request = requestAgentHistorySync(
+      '100000000000022@lid',
+      messageKey,
+      1_700_000_000_000,
+      controlFile
+    );
+    assert.equal(consumeAgentControlRequest(controlFile).action, 'fetch_message_history');
+    assert.deepEqual(request.messageKey, messageKey);
+    assert.equal(consumeAgentControlRequest(controlFile), false);
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }

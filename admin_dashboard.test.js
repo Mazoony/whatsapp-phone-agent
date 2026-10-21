@@ -548,6 +548,42 @@ test('conversation detail returns recent messages and rejects non-direct chat ID
   assert.equal(getDashboardConversation(sampleData, 'missing@s.whatsapp.net'), null);
 });
 
+test('conversation detail merges linked WhatsApp histories and pages older messages', () => {
+  const phoneJid = '249000000030@s.whatsapp.net';
+  const lidJid = '100000000000030@lid';
+  const data = {
+    ...sampleData,
+    history: {
+      ...sampleData.history,
+      [phoneJid]: [
+        { id: 'first', role: 'client', text: 'First question', timestamp: 1_700_000_000_000 },
+        { id: 'reply', role: 'agent', text: 'First answer', timestamp: 1_700_000_001_000 }
+      ],
+      [lidJid]: [
+        { id: 'reply', role: 'agent', text: 'First answer', timestamp: 1_700_000_001_000 },
+        { id: 'latest', role: 'client', text: 'Follow-up question', timestamp: 1_700_000_002_000 }
+      ]
+    },
+    contacts: {
+      ...sampleData.contacts,
+      [phoneJid]: { jid: phoneJid, phoneJid, name: 'Linked student', isEs: true },
+      [lidJid]: { jid: lidJid, phoneJid, name: 'Linked student', isEs: true }
+    }
+  };
+
+  const latestPage = getDashboardConversation(data, lidJid, 0, 2);
+  assert.equal(latestPage.totalMessages, 3);
+  assert.equal(latestPage.hasMore, true);
+  assert.deepEqual(latestPage.messages.map(message => message.text), [
+    'First answer',
+    'Follow-up question'
+  ]);
+
+  const earlierPage = getDashboardConversation(data, lidJid, 2, 2);
+  assert.equal(earlierPage.hasMore, false);
+  assert.deepEqual(earlierPage.messages.map(message => message.text), ['First question']);
+});
+
 test('dashboard exposes WhatsApp presence and queues subscriptions for an opened chat', async () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-whatsapp-presence-'));
   const presenceFile = path.join(temporaryDirectory, 'presence.json');
@@ -1575,6 +1611,55 @@ test('dashboard disconnect endpoint queues a stop request only for a live agent'
     const disconnectedResponse = await fetch(`${origin}/api/admin/agent-disconnect`, {
       method: 'POST',
       headers: { Origin: origin }
+    });
+    assert.equal(disconnectedResponse.status, 409);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard can request older chat history only while the agent is connected', async () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-agent-history-test-'));
+  const agentStatusFile = path.join(temporaryDirectory, 'agent_status.json');
+  const agentControlFile = path.join(temporaryDirectory, 'agent_control.json');
+  const server = createAdminDashboardServer({ agentStatusFile, agentControlFile });
+  const requestBody = {
+    jid: '100000000000023@lid',
+    messageKey: {
+      remoteJid: '249000000023@s.whatsapp.net',
+      id: 'oldest-message-id',
+      fromMe: false
+    },
+    timestamp: 1_700_000_000_000
+  };
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    fs.writeFileSync(agentStatusFile, JSON.stringify({
+      connectionState: 'connected',
+      updatedAt: new Date().toISOString()
+    }));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${origin}/api/admin/agent-history`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    assert.equal(response.status, 202);
+    assert.equal((await response.json()).status, 'requested');
+    const controlRequest = JSON.parse(fs.readFileSync(agentControlFile, 'utf8'));
+    assert.equal(controlRequest.action, 'fetch_message_history');
+    assert.deepEqual(controlRequest.messageKey, requestBody.messageKey);
+
+    fs.writeFileSync(agentStatusFile, JSON.stringify({
+      connectionState: 'disconnected',
+      updatedAt: new Date().toISOString()
+    }));
+    const disconnectedResponse = await fetch(`${origin}/api/admin/agent-history`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
     });
     assert.equal(disconnectedResponse.status, 409);
   } finally {

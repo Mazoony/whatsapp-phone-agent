@@ -95,6 +95,23 @@ export function requestAgentDisconnect(filePath = AGENT_CONTROL_FILE) {
   return writeAgentControlRequest('disconnect', filePath);
 }
 
+export function requestAgentHistorySync(jid, messageKey, timestamp, filePath = AGENT_CONTROL_FILE) {
+  if (typeof jid !== 'string' || !/^\d+@(s\.whatsapp\.net|lid)$/.test(jid) ||
+      !messageKey || typeof messageKey !== 'object' ||
+      typeof messageKey.remoteJid !== 'string' ||
+      !/^\d+@(s\.whatsapp\.net|lid)$/.test(messageKey.remoteJid) ||
+      typeof messageKey.id !== 'string' || !messageKey.id.trim() || messageKey.id.length > 128 ||
+      typeof messageKey.fromMe !== 'boolean' ||
+      !Number.isFinite(timestamp) || timestamp <= 0) {
+    throw new TypeError('A valid direct chat and oldest message cursor are required to restore history.');
+  }
+  return writeAgentControlRequest('fetch_message_history', filePath, {
+    jid,
+    messageKey,
+    timestamp
+  });
+}
+
 export function requestAgentResponseMode(respondingEnabled, filePath = AGENT_CONTROL_FILE) {
   if (typeof respondingEnabled !== 'boolean') {
     throw new TypeError('Agent response mode must be a boolean.');
@@ -139,7 +156,8 @@ export function consumeAgentControlRequest(filePath = AGENT_CONTROL_FILE) {
     'resume_replies',
     'pause_queue',
     'resume_queue',
-    'cancel_queued_chat'
+    'cancel_queued_chat',
+    'fetch_message_history'
   ].includes(request.action) ||
       typeof request.requestedAt !== 'string' ||
       !Number.isFinite(Date.parse(request.requestedAt))) {
@@ -151,6 +169,25 @@ export function consumeAgentControlRequest(filePath = AGENT_CONTROL_FILE) {
     }
     fs.unlinkSync(filePath);
     return { action: request.action, jid: request.jid };
+  }
+  if (request.action === 'fetch_message_history') {
+    if (typeof request.jid !== 'string' || !/^\d+@(s\.whatsapp\.net|lid)$/.test(request.jid) ||
+        !request.messageKey || typeof request.messageKey !== 'object' ||
+        typeof request.messageKey.remoteJid !== 'string' ||
+        !/^\d+@(s\.whatsapp\.net|lid)$/.test(request.messageKey.remoteJid) ||
+        typeof request.messageKey.id !== 'string' || !request.messageKey.id.trim() ||
+        request.messageKey.id.length > 128 ||
+        typeof request.messageKey.fromMe !== 'boolean' ||
+        !Number.isFinite(request.timestamp) || request.timestamp <= 0) {
+      throw new Error('Agent history restore request is invalid.');
+    }
+    fs.unlinkSync(filePath);
+    return {
+      action: request.action,
+      jid: request.jid,
+      messageKey: request.messageKey,
+      timestamp: request.timestamp
+    };
   }
   fs.unlinkSync(filePath);
   return request.action;

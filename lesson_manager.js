@@ -839,14 +839,21 @@ class LessonManager {
   /**
    * Send the video lesson and respective task to the student via WhatsApp
    */
-  async deliverLesson(sock, jid, gradeKey, lessonIndex = 0, phoneJid = null) {
+  async deliverLesson(
+    sock,
+    jid,
+    gradeKey,
+    lessonIndex = 0,
+    phoneJid = null,
+    { bypassDailyLimit = false, includeIntro = true } = {}
+  ) {
     const gradeData = this.lessonsConfig[gradeKey];
     if (!gradeData || !gradeData.lessons || !gradeData.lessons[lessonIndex]) {
       return false;
     }
 
     const lesson = gradeData.lessons[lessonIndex];
-    if (!await this.canDeliverLessonToday(sock, jid, phoneJid)) return false;
+    if (!bypassDailyLimit && !await this.canDeliverLessonToday(sock, jid, phoneJid)) return false;
     let video;
     let videoAbsolutePath;
     try {
@@ -863,7 +870,7 @@ class LessonManager {
 
     // Lesson text is prewritten, so send it immediately instead of simulating
     // typing for long messages.
-    if (lesson.introMessage) {
+    if (includeIntro && lesson.introMessage) {
       await sock.sendMessage(jid, { text: lesson.introMessage });
       try { historyManager.addMessage(jid, 'agent', lesson.introMessage); } catch (e) {}
     }
@@ -941,7 +948,7 @@ class LessonManager {
    * Evaluates student's task submission, provides feedback, and handles progression
    * @returns {Promise<boolean>} true if message was processed as a task submission, false otherwise
    */
-  async handleTaskSubmission(sock, jid, text, pushName, phoneJid = null, scheduleNextLesson = null) {
+  async handleTaskSubmission(sock, jid, text, pushName, phoneJid = null) {
     const currentLesson = this.getCurrentLesson(jid, phoneJid);
     if (!currentLesson) return false;
     const student = this.getStudent(jid, phoneJid);
@@ -973,57 +980,30 @@ class LessonManager {
 
     console.log(`[Task Evaluated] Student: ${pushName} | Passed: ${evalResult.allCorrect}`);
 
-    // Send the teacher's pedagogical feedback
-    await sendHumanizedMessage(sock, jid, evalResult.feedback, config.typingWordsPerMinute);
-    try { historyManager.addMessage(jid, 'agent', evalResult.feedback); } catch (e) {}
+    const currentLessonId = currentLesson.id ||
+      this.lessonsConfig[student.grade]?.lessons?.[student.currentLessonIndex]?.id;
+    const nextLesson = evalResult.allCorrect
+      ? this.getNextSequentialLesson(student.grade, currentLessonId)
+      : null;
+    const feedback = nextLesson?.status === 'ready'
+      ? (/[\u0600-\u06FF]/.test(text) ? 'صحيح.' : 'Correct.')
+      : evalResult.feedback;
+
+    await sendHumanizedMessage(sock, jid, feedback, config.typingWordsPerMinute);
+    try { historyManager.addMessage(jid, 'agent', feedback); } catch (e) {}
 
     if (evalResult.allCorrect) {
       // Student PASSED this lesson! Advance to next lesson
-      const currentLessonId = currentLesson.id ||
-        this.lessonsConfig[student.grade]?.lessons?.[student.currentLessonIndex]?.id;
-      const nextLesson = this.getNextSequentialLesson(student.grade, currentLessonId);
-
       if (nextLesson.status === 'ready') {
         const nextIndex = nextLesson.lessonIndex;
         const nextLessonConfig = this.lessonsConfig[student.grade].lessons[nextIndex];
-        if (scheduleNextLesson) {
-          try {
-            await scheduleNextLesson({
-              jid,
-              phoneJid,
-              studentName: pushName,
-              gradeKey: student.grade,
-              lessonIndex: nextIndex,
-              lesson: nextLessonConfig
-            });
-            student.status = 'awaiting_next_lesson';
-            student.nextLessonIndex = nextIndex;
-            this.saveProgress();
-            const scheduleNotice = /[\u0600-\u06FF]/.test(text)
-              ? 'إجاباتك كلها صحيحة، ما شاء الله عليك. الحصة الجاية حتوصلك بكرة إن شاء الله.'
-              : 'All your answers are correct—well done. Your next lesson is scheduled for tomorrow.';
-            await sendHumanizedMessage(sock, jid, scheduleNotice, config.typingWordsPerMinute);
-            try { historyManager.addMessage(jid, 'agent', scheduleNotice); } catch (error) {
-              console.error('[LessonManager] Could not record the lesson schedule notice:', error.message);
-            }
-            console.log(`[LessonManager] Scheduled ${nextLessonConfig.id} for ${pushName} the following day.`);
-          } catch (error) {
-            student.status = 'awaiting_next_lesson_schedule';
-            this.saveProgress();
-            console.error(`[LessonManager] Could not schedule ${nextLessonConfig.id} for ${jid}:`, error.message);
-            const scheduleFailure = /[\u0600-\u06FF]/.test(text)
-              ? 'إجاباتك صحيحة، لكن ما قدرت أجدول الحصة الجاية بسبب مشكلة فنية. ما حأعتبر إجاباتك غلط؛ حأحتاج أراجع الإرسال.'
-              : 'Your answers are correct, but I could not schedule the next lesson because of a technical issue. Your answers are not marked wrong; delivery needs review.';
-            await sendHumanizedMessage(sock, jid, scheduleFailure, config.typingWordsPerMinute);
-          }
-        } else {
-          console.log(`[LessonManager] Advancing ${pushName} to ${nextLessonConfig.id}...`);
-          setTimeout(() => {
-            this.deliverLesson(sock, jid, student.grade, nextIndex, phoneJid).catch(error => {
-              console.error(`[LessonManager] Failed to deliver ${nextLessonConfig.id} to ${jid}:`, error.message);
-            });
-          }, 3000);
-        }
+        student.status = 'awaiting_content';
+        this.saveProgress();
+        console.log(`[LessonManager] Advancing ${pushName} to ${nextLessonConfig.id} immediately...`);
+        await this.deliverLesson(sock, jid, student.grade, nextIndex, phoneJid, {
+          bypassDailyLimit: true,
+          includeIntro: false
+        });
       } else if (nextLesson.status === 'awaiting_content') {
         student.status = 'awaiting_content';
         this.saveProgress();

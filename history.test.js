@@ -48,6 +48,70 @@ test('conversation lookup recognizes linked WhatsApp IDs and ignores empty histo
   }
 });
 
+test('restored history combines linked phone and LID messages in chronological order', () => {
+  const phoneJid = '249000000020@s.whatsapp.net';
+  const lidJid = '100000000000020@lid';
+  const previousPhoneContact = historyManager.contacts[phoneJid];
+  const previousLidContact = historyManager.contacts[lidJid];
+  const previousPhoneHistory = historyManager.history[phoneJid];
+  const previousLidHistory = historyManager.history[lidJid];
+
+  try {
+    historyManager.contacts[phoneJid] = { jid: phoneJid, phoneJid, isEs: true };
+    historyManager.contacts[lidJid] = { jid: lidJid, phoneJid, isEs: true };
+    historyManager.history[phoneJid] = [
+      { id: 'first', role: 'client', text: 'Hello', timestamp: 1_700_000_000_000 },
+      { id: 'shared', role: 'agent', text: 'Welcome back', timestamp: 1_700_000_002_000 }
+    ];
+    historyManager.history[lidJid] = [
+      { id: 'shared', role: 'agent', text: 'Welcome back', timestamp: 1_700_000_002_000 },
+      { id: 'latest', role: 'client', text: 'I am ready for lesson two', timestamp: 1_700_000_003_000 }
+    ];
+
+    const messages = historyManager.getConversationMessages(lidJid);
+    assert.deepEqual(messages.map(message => message.id), ['first', 'shared', 'latest']);
+
+    const dialogue = historyManager.getDialogueForAgent(lidJid, 'Student');
+    assert.ok(dialogue.indexOf('Hello') < dialogue.indexOf('Welcome back'));
+    assert.ok(dialogue.indexOf('Welcome back') < dialogue.indexOf('I am ready for lesson two'));
+    assert.match(dialogue, /Total stored messages across linked WhatsApp IDs: 3/);
+  } finally {
+    if (previousPhoneContact) historyManager.contacts[phoneJid] = previousPhoneContact;
+    else delete historyManager.contacts[phoneJid];
+    if (previousLidContact) historyManager.contacts[lidJid] = previousLidContact;
+    else delete historyManager.contacts[lidJid];
+    if (previousPhoneHistory) historyManager.history[phoneJid] = previousPhoneHistory;
+    else delete historyManager.history[phoneJid];
+    if (previousLidHistory) historyManager.history[lidJid] = previousLidHistory;
+    else delete historyManager.history[lidJid];
+  }
+});
+
+test('history retains up to 5000 messages for every contact and ignores repeated sync IDs', () => {
+  const jid = '249000000021@s.whatsapp.net';
+  const previousHistory = historyManager.history[jid];
+  const previousSave = historyManager.scheduleSave;
+  historyManager.scheduleSave = () => {};
+
+  try {
+    historyManager.history[jid] = Array.from({ length: 5000 }, (_, index) => ({
+      role: 'client',
+      text: `Message ${index}`,
+      timestamp: index
+    }));
+    historyManager.addMessage(jid, 'client', 'Latest message', 5001, '', 'latest-id');
+    historyManager.addMessage(jid, 'client', 'Duplicate latest message', 5002, '', 'latest-id');
+
+    assert.equal(historyManager.history[jid].length, 5000);
+    assert.equal(historyManager.history[jid][0].text, 'Message 1');
+    assert.equal(historyManager.history[jid].at(-1).text, 'Latest message');
+  } finally {
+    historyManager.scheduleSave = previousSave;
+    if (previousHistory) historyManager.history[jid] = previousHistory;
+    else delete historyManager.history[jid];
+  }
+});
+
 test('synced WhatsApp contacts preserve phone-number links for LID aliases', () => {
   const phoneJid = '249000000009@s.whatsapp.net';
   const lidJid = '100000000000009@lid';

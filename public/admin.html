@@ -318,6 +318,8 @@
     .message.client { align-self: flex-start; background: white; border: 1px solid #e8ede9; border-top-left-radius: 3px; }
     .message.agent { align-self: flex-end; background: #e4f3e9; border: 1px solid #d9ecdf; border-top-right-radius: 3px; }
     .message time { display: block; color: #829088; text-align: right; font-size: 9px; margin-top: 4px; }
+    .conversation-history-more { align-self: center; margin: 10px auto 0; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; color: var(--ink); background: #fff; font: inherit; font-size: 10px; font-weight: 700; }
+    .conversation-history-more:disabled { cursor: wait; opacity: .6; }
     .student-activity { padding: 12px; border-top: 1px solid var(--line); }
     .student-activity-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
     .student-activity-head h3 { margin: 0; font-size: 12px; }
@@ -761,6 +763,7 @@
             <div class="chat-list" id="chat-list"><div class="empty">Loading chats…</div></div>
             <div class="conversation">
               <div class="conversation-head" id="conversation-head"><div><strong>Select a chat</strong><small>Recent message history will appear here.</small></div></div>
+              <button class="conversation-history-more" id="load-earlier-messages" type="button" hidden>Load earlier messages</button>
               <div class="messages" id="messages"><div class="empty">Choose a conversation from the list.</div></div>
               <section class="student-activity" aria-labelledby="student-activity-title">
                 <div class="student-activity-head">
@@ -1304,6 +1307,10 @@
     let agentPollTimer = null;
     let pendingAgentReplyMode = null;
     let pendingAgentQueuePause = null;
+    let conversationOffset = 0;
+    let conversationHasMoreLocally = false;
+    let conversationHistoryCursor = null;
+    let pendingHistoryCursor = null;
     const pendingQueueCancellations = new Set();
     let showAllAgentMediaActivities = false;
     const AGENT_MEDIA_PREVIEW_COUNT = 3;
@@ -2087,6 +2094,21 @@
       await loadChats();
       const query = new URLSearchParams({ jid });
       const conversation = await api(`/api/admin/conversation?${query}`);
+      conversationOffset = conversation.messages.length;
+      conversationHasMoreLocally = conversation.hasMore;
+      conversationHistoryCursor = conversation.oldestMessageKey && conversation.oldestMessageTimestamp
+        ? {
+          jid,
+          messageKey: conversation.oldestMessageKey,
+          timestamp: conversation.oldestMessageTimestamp
+        }
+        : null;
+      const historyCursorKey = conversationHistoryCursor
+        ? JSON.stringify(conversationHistoryCursor)
+        : null;
+      if (pendingHistoryCursor && pendingHistoryCursor !== historyCursorKey) {
+        pendingHistoryCursor = null;
+      }
       const genderLabel = conversation.gender?.value === 'unknown'
         ? 'Gender not identified'
         : `${conversation.gender.value === 'female' ? 'Female' : 'Male'}${conversation.gender.source === 'manual' ? ' · manually set' : ' · inferred'}`;
@@ -2097,6 +2119,16 @@
       $('#messages').innerHTML = conversation.messages.length ? conversation.messages.map(message => `
         <article class="message ${message.role === 'agent' ? 'agent' : 'client'}">${escapeHtml(message.text)}<time>${formatDate(message.timestamp)}</time></article>`).join('') : '<div class="empty">No messages in this chat.</div>';
       $('#messages').scrollTop = $('#messages').scrollHeight;
+      const loadEarlierButton = $('#load-earlier-messages');
+      loadEarlierButton.hidden = !conversation.hasMore && !conversationHistoryCursor;
+      loadEarlierButton.disabled = Boolean(
+        !conversation.hasMore && historyCursorKey && pendingHistoryCursor === historyCursorKey
+      );
+      loadEarlierButton.textContent = conversation.hasMore
+        ? 'Load earlier messages'
+        : pendingHistoryCursor === historyCursorKey
+          ? 'Waiting for WhatsApp history…'
+          : 'Request older history from WhatsApp';
       $('#chat-message').disabled = false;
       $('#send-chat-message').disabled = !$('#chat-message').value.trim();
       $('#activity-days').disabled = false;
@@ -2113,6 +2145,56 @@
         if (presence && jid === selectedJid) {
           presence.innerHTML = presenceMarkup(null, { alwaysShow: true });
         }
+      }
+    }
+
+    async function loadEarlierConversationMessages() {
+      const jid = selectedJid;
+      if (!jid) return;
+      const button = $('#load-earlier-messages');
+      button.disabled = true;
+      try {
+        if (!conversationHasMoreLocally) {
+          if (!conversationHistoryCursor) {
+            button.hidden = true;
+            return;
+          }
+          await api('/api/admin/agent-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(conversationHistoryCursor)
+          });
+          pendingHistoryCursor = JSON.stringify(conversationHistoryCursor);
+          button.textContent = 'Waiting for WhatsApp history…';
+          return;
+        }
+
+        button.textContent = 'Loading…';
+        const query = new URLSearchParams({ jid, offset: String(conversationOffset) });
+        const conversation = await api(`/api/admin/conversation?${query}`);
+        if (jid !== selectedJid) return;
+        const container = $('#messages');
+        const previousHeight = container.scrollHeight;
+        const previousScrollTop = container.scrollTop;
+        const olderMessages = conversation.messages.map(message => `
+          <article class="message ${message.role === 'agent' ? 'agent' : 'client'}">${escapeHtml(message.text)}<time>${formatDate(message.timestamp)}</time></article>`).join('');
+        container.insertAdjacentHTML('afterbegin', olderMessages);
+        conversationOffset += conversation.messages.length;
+        conversationHasMoreLocally = conversation.hasMore;
+        container.scrollTop = previousScrollTop + container.scrollHeight - previousHeight;
+        button.hidden = !conversation.hasMore && !conversationHistoryCursor;
+        button.textContent = conversation.hasMore
+          ? 'Load earlier messages'
+          : 'Request older history from WhatsApp';
+      } catch (error) {
+        button.textContent = 'Could not load earlier messages';
+        showError(error.message);
+      } finally {
+        button.disabled = Boolean(
+          !conversationHasMoreLocally &&
+          conversationHistoryCursor &&
+          pendingHistoryCursor === JSON.stringify(conversationHistoryCursor)
+        );
       }
     }
 
@@ -3297,6 +3379,9 @@
         activateSection(button.dataset.section);
       }
     }));
+    $('#load-earlier-messages').addEventListener('click', () => {
+      loadEarlierConversationMessages();
+    });
     document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => {
       if (button.dataset.go === 'chats') {
         openChats(button.dataset.chatFilter === 'active');

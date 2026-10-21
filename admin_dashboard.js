@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DashboardAuth } from './dashboard_auth.js';
 import { getPhoneJid } from './phonebook.js';
+import { getConversationJids, getConversationMessages } from './conversation_history.js';
 import {
   BROADCAST_MEDIA_DIRECTORY,
   MAX_BROADCAST_ATTACHMENTS,
@@ -64,6 +65,7 @@ import {
   readAgentQr,
   renderAgentQrSvg,
   requestAgentDisconnect,
+  requestAgentHistorySync,
   requestAgentQueueCancellation,
   requestAgentQueueMode,
   requestAgentResponseMode
@@ -1023,21 +1025,34 @@ export function listDashboardChats(
   };
 }
 
-export function getDashboardConversation(data, jid) {
+export function getDashboardConversation(data, jid, offset = 0, limit = MAX_CONVERSATION_MESSAGES) {
   if (!jid || !isDirectChat(jid)) return null;
-  const messages = data.history[jid];
-  if (!messages) return null;
-
   const contact = data.contacts[jid];
+  const messages = getConversationMessages(
+    data.history,
+    data.contacts,
+    jid,
+    contact?.phoneJid
+  );
+  if (messages.length === 0) return null;
+
   const gender = genderForContact(data, jid, getClientMessagesByPhone(data));
-  const student = data.progress[jid] || null;
+  const student = data.progress[jid] || getConversationJids(data.history, data.contacts, jid, contact?.phoneJid)
+    .map(relatedJid => data.progress[relatedJid])
+    .find(Boolean) || null;
   const lesson = student ? lessonForStudent(student, data.lessons) : null;
-  const recentMessages = messages.slice(-MAX_CONVERSATION_MESSAGES);
+  const safeOffset = Math.max(0, Math.floor(offset));
+  const safeLimit = Math.max(1, Math.floor(limit));
+  const end = Math.max(0, messages.length - safeOffset);
+  const start = Math.max(0, end - safeLimit);
+  const recentMessages = messages.slice(start, end);
+  const oldestMessage = messages.find(message => typeof message.id === 'string' && message.id);
 
   return {
     jid,
     name: displayName(contact, jid),
-    isEs: Boolean(contact?.isEs),
+    isEs: getConversationJids(data.history, data.contacts, jid, contact?.phoneJid)
+      .some(relatedJid => data.contacts[relatedJid]?.isEs === true),
     gender,
     progress: student ? {
       gradeName: data.lessons[student.grade]?.name || student.grade,
@@ -1046,6 +1061,13 @@ export function getDashboardConversation(data, jid) {
       deliveredAt: student.deliveredAt || null
     } : null,
     totalMessages: messages.length,
+    hasMore: start > 0,
+    oldestMessageKey: oldestMessage ? {
+      remoteJid: oldestMessage.remoteJid || jid,
+      id: oldestMessage.id,
+      fromMe: oldestMessage.role === 'agent'
+    } : null,
+    oldestMessageTimestamp: oldestMessage ? timestampMs(oldestMessage.timestamp) : null,
     messages: recentMessages.map(message => ({
       role: message.role,
       text: message.text,
@@ -2518,6 +2540,44 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/agent-history') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'History restore requests must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        const status = readJsonFileOr(agentStatusFile, null);
+        const heartbeatAt = Date.parse(status?.updatedAt || '');
+        if (status?.connectionState !== 'connected' ||
+            !Number.isFinite(heartbeatAt) ||
+            Date.now() - heartbeatAt > AGENT_HEARTBEAT_MAX_AGE_MS) {
+          sendJson(res, 409, { error: 'The WhatsApp agent must be connected to restore chat history.' });
+          return;
+        }
+
+        const request = requestAgentHistorySync(
+          body?.jid,
+          body?.messageKey,
+          body?.timestamp,
+          agentControlFile
+        );
+        sendJson(res, 202, {
+          status: 'requested',
+          jid: request.jid,
+          requestedAt: request.requestedAt
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not request older WhatsApp chat history:', error.message);
+        const status = error instanceof TypeError ? 400 : 500;
+        sendJson(res, status, {
+          error: status === 400
+            ? error.message
+            : 'Could not request older WhatsApp chat history.'
+        });
+      });
+      return;
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/api/admin/agent-connect') {
       if (!isSameOriginLoopbackRequest(req)) {
         sendJson(res, 403, { error: 'Agent controls must come from this local dashboard.' });
@@ -2975,8 +3035,14 @@ export function createAdminDashboardServer({
 
       if (requestUrl.pathname === '/api/admin/conversation') {
         const jid = requestUrl.searchParams.get('jid');
-        const conversation = memoizeDashboardQuery(data, `conversation:${jid}`, () =>
-          getDashboardConversation(data, jid));
+        const offsetValue = requestUrl.searchParams.get('offset') || '0';
+        if (!/^\d+$/.test(offsetValue) || !Number.isSafeInteger(Number(offsetValue))) {
+          sendJson(res, 400, { error: 'Conversation offset must be a non-negative integer.' });
+          return;
+        }
+        const offset = Number(offsetValue);
+        const conversation = memoizeDashboardQuery(data, `conversation:${jid}:${offset}`, () =>
+          getDashboardConversation(data, jid, offset));
         if (!conversation) {
           sendJson(res, 404, { error: 'Chat not found' });
           return;

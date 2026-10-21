@@ -15,24 +15,26 @@ import {
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-test('a correct submission schedules the next numbered lesson for the daily queue', async () => {
-  const jid = 'daily-lesson-progression-test@s.whatsapp.net';
+test('a correct submission immediately delivers the next numbered lesson', async () => {
+  const jid = 'immediate-lesson-progression-test@s.whatsapp.net';
   const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
   const originalProgress = lessonManager.progress[jid];
   const originalSaveProgress = lessonManager.saveProgress;
   const originalAddMessage = historyManager.addMessage;
+  const originalTypingWordsPerMinute = config.typingWordsPerMinute;
   const previousKeys = [...config.geminiApiKeys];
   const previousFetch = globalThis.fetch;
   const sentMessages = [];
-  const scheduledLessons = [];
   lessonManager.progress[jid] = {
     grade: 'grade_3_secondary',
     currentLessonIndex: 0,
     currentLessonId: lesson.id,
-    status: 'awaiting_task'
+    status: 'awaiting_task',
+    deliveredAt: new Date().toISOString()
   };
   lessonManager.saveProgress = () => {};
   historyManager.addMessage = () => {};
+  config.typingWordsPerMinute = 1_000_000;
   config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
   globalThis.fetch = async () => ({
     ok: true,
@@ -51,33 +53,30 @@ test('a correct submission schedules the next numbered lesson for the daily queu
       sendMessage: async (_jid, message) => sentMessages.push(message),
       sendPresenceUpdate: async () => {}
     };
-    const scheduleNextLesson = async details => {
-      scheduledLessons.push(details);
-      return { id: 'daily-schedule' };
-    };
     assert.equal(await lessonManager.handleTaskSubmission(
       sock,
       jid,
       'My answers are correct.',
       'Student',
-      null,
-      scheduleNextLesson
+      null
     ), true);
 
-    assert.equal(scheduledLessons.length, 1);
-    assert.equal(scheduledLessons[0].lesson.id, 'lesson_2');
-    assert.equal(scheduledLessons[0].lessonIndex, 1);
-    assert.equal(lessonManager.progress[jid].status, 'awaiting_next_lesson');
-    assert.ok(sentMessages.some(message => message.text.includes('scheduled for tomorrow')));
-    assert.equal(await lessonManager.handleTaskSubmission(
-      sock, jid, 'My answers are correct.', 'Student', null, scheduleNextLesson
-    ), false);
-    assert.equal(scheduledLessons.length, 1);
+    assert.equal(lessonManager.progress[jid].currentLessonId, 'lesson_2');
+    assert.equal(lessonManager.progress[jid].status, 'awaiting_task');
+    assert.deepEqual(
+      sentMessages.map(message => message.text || (message.video ? 'video' : '')),
+      [
+        'Correct.',
+        'video',
+        lessonManager.lessonsConfig.grade_3_secondary.lessons[1].taskMessage
+      ]
+    );
   } finally {
     if (originalProgress) lessonManager.progress[jid] = originalProgress;
     else delete lessonManager.progress[jid];
     lessonManager.saveProgress = originalSaveProgress;
     historyManager.addMessage = originalAddMessage;
+    config.typingWordsPerMinute = originalTypingWordsPerMinute;
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
     globalThis.fetch = previousFetch;
   }
@@ -549,7 +548,7 @@ test('does not deliver a second lesson within 24 hours', async () => {
   }
 });
 
-test('delivers lesson intro and task without simulated typing delays', async () => {
+test('delivers only the lesson video and task without simulated typing delays', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-fast-delivery-'));
   const videoPath = path.join(directory, 'lesson.mp4');
   fs.writeFileSync(videoPath, Buffer.from('video-fixture'));
@@ -571,10 +570,9 @@ test('delivers lesson intro and task without simulated typing delays', async () 
     assert.equal(await lessonManager.deliverLesson({
       sendMessage: async (_jid, content) => sentMessages.push(content),
       sendPresenceUpdate: async (...args) => presenceUpdates.push(args)
-    }, jid, 'grade_3_secondary', 0), true);
+    }, jid, 'grade_3_secondary', 0, null, { includeIntro: false }), true);
 
     assert.deepEqual(sentMessages.map(message => message.text || 'video'), [
-      lesson.introMessage,
       'video',
       lesson.taskMessage
     ]);
