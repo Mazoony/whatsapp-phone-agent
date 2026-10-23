@@ -10,6 +10,7 @@ const STUDENT_SOURCES = new Set([
   'chat_history.json',
   'contacts.json',
   'student_progress.json',
+  'telegram_progress.json',
   'lessons.json'
 ]);
 
@@ -103,6 +104,13 @@ function workbookData(data) {
         ? 'Student'
         : latestMessage?.role === 'agent' ? 'Agent' : '',
       lastMessage: latestMessage?.text || '',
+      platform: 'WhatsApp',
+      telegramChatId: '',
+      telegramUserId: '',
+      telegramUsername: '',
+      joinedAt: null,
+      lessonsCompleted: progress?.lessonsCompleted || 0,
+      taskSubmissions: 0,
       messages: student.messages.map(message => ({
         timestamp: message.timestamp ? new Date(timestampMs(message.timestamp)) : null,
         sender: message.role === 'client' ? 'Student' : message.role === 'agent' ? 'Agent' : message.role,
@@ -111,7 +119,41 @@ function workbookData(data) {
     };
   }).sort((left, right) => left.name.localeCompare(right.name));
 
-  return { students: studentsList };
+  const telegramStudents = Object.entries(data.telegramProgress || {}).map(([key, progress]) => {
+    const [, chatId = '', userId = ''] = key.split(':');
+    const grade = progress.grade || '';
+    const gradeData = data.lessons[grade];
+    const lesson = gradeData?.lessons?.[progress.currentLessonIndex] ||
+      gradeData?.standaloneLessons?.find(item => item.id === progress.currentLessonId);
+    return {
+      key,
+      name: progress.name || (progress.telegramUsername ? `@${progress.telegramUsername}` : `Telegram user ${progress.telegramUserId || userId}`),
+      phoneNumber: '',
+      whatsappIds: '',
+      isEs: '',
+      savedInAddressBook: '',
+      ownerBlocked: '',
+      ownerAllowed: '',
+      grade: gradeData?.name || grade,
+      currentLesson: lesson?.title || progress.currentLessonId || '',
+      lessonStatus: progress.status || '',
+      lessonDeliveredAt: progress.deliveredAt ? new Date(progress.deliveredAt) : null,
+      messageCount: 0,
+      lastMessageAt: progress.lastActivityAt ? new Date(progress.lastActivityAt) : null,
+      lastMessageFrom: progress.submissionsReceived ? 'Student' : '',
+      lastMessage: '',
+      platform: 'Telegram',
+      telegramChatId: progress.telegramChatId || chatId,
+      telegramUserId: progress.telegramUserId || userId,
+      telegramUsername: progress.telegramUsername || '',
+      joinedAt: progress.joinedAt ? new Date(progress.joinedAt) : null,
+      lessonsCompleted: progress.lessonsCompleted || 0,
+      taskSubmissions: progress.submissionsReceived || 0,
+      messages: []
+    };
+  }).sort((left, right) => left.name.localeCompare(right.name));
+
+  return { students: [...studentsList, ...telegramStudents] };
 }
 
 function configureWorksheet(sheet, columns) {
@@ -152,7 +194,14 @@ export async function writeStudentWorkbook(data, filePath = STUDENT_WORKBOOK_FIL
     { header: 'Saved messages', key: 'messageCount', width: 16 },
     { header: 'Last message at', key: 'lastMessageAt', width: 23, style: { numFmt: 'yyyy-mm-dd hh:mm:ss' } },
     { header: 'Last message from', key: 'lastMessageFrom', width: 20 },
-    { header: 'Latest message', key: 'lastMessage', width: 70 }
+    { header: 'Latest message', key: 'lastMessage', width: 70 },
+    { header: 'Platform', key: 'platform', width: 14 },
+    { header: 'Telegram chat ID', key: 'telegramChatId', width: 22 },
+    { header: 'Telegram user ID', key: 'telegramUserId', width: 18 },
+    { header: 'Telegram username', key: 'telegramUsername', width: 22 },
+    { header: 'Joined at', key: 'joinedAt', width: 23, style: { numFmt: 'yyyy-mm-dd hh:mm:ss' } },
+    { header: 'Lessons passed', key: 'lessonsCompleted', width: 16 },
+    { header: 'Task submissions', key: 'taskSubmissions', width: 18 }
   ];
   configureWorksheet(studentSheet, studentColumns);
   studentSheet.addRows(students.map(({ messages, key, ...student }) => student));

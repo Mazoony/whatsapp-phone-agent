@@ -138,7 +138,7 @@ test('formatPaymentAcknowledgment provides friendly messages in Arabic and Engli
   assert.ok(englishAck.includes('Payment receipt received'));
 });
 
-test('scanned payment receipt updates payments calendar endpoint automatically', async () => {
+test('legacy scanned payment labels are not treated as confirmed payments in the calendar', async () => {
   const fs = await import('node:fs');
   const os = await import('node:os');
   const path = await import('node:path');
@@ -172,10 +172,10 @@ test('scanned payment receipt updates payments calendar endpoint automatically',
 
   assert.equal(scanResult.isPayment, true);
 
-  // 2. Automatically record scanned payment
+  // Legacy scan records must not be treated as administrator-confirmed payments.
   store.recordScannedPayment(phoneNumber, jid, scanResult);
 
-  // 3. Verify admin dashboard payment-calendar endpoint reflects the payment
+  // Verify the historical calendar shows only manually confirmed payments.
   const server = createAdminDashboardServer({
     readData: () => ({ history: {}, contacts: {} }),
     readContacts: () => ({
@@ -192,16 +192,9 @@ test('scanned payment receipt updates payments calendar endpoint automatically',
     );
     assert.equal(response.status, 200);
     const result = await response.json();
-    assert.equal(result.payments.length, 1);
-    assert.equal(result.payments[0].studentName, 'Photo Payer Student');
-    assert.equal(result.payments[0].phoneNumber, phoneNumber);
-    assert.equal(result.payments[0].source, 'payment-scan');
-    assert.equal(result.payments[0].amount, 17000);
-    assert.equal(result.payments[0].bank, 'Bank of Khartoum (Bankak)');
-    assert.equal(result.payments[0].transactionId, 'REF-1002');
+    assert.equal(result.payments.length, 0);
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });
-

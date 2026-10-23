@@ -83,6 +83,17 @@ import {
 } from './student_workbook.js';
 import { createScheduledLessonStore, SCHEDULED_LESSONS_FILE } from './scheduled_lessons.js';
 import {
+  LessonSkipQueue,
+  TELEGRAM_LESSON_SKIP_REQUESTS_FILE,
+  WHATSAPP_LESSON_SKIP_REQUESTS_FILE
+} from './lesson_skip_queue.js';
+import {
+  createStudentPaymentLedger,
+  PAYMENT_STATUSES,
+  STUDENT_PAYMENT_LEDGER_FILE
+} from './student_payment_ledger.js';
+import { TELEGRAM_AGENT_STATUS_FILE } from './telegram_agent_status.js';
+import {
   LESSON_MEDIA_DIR,
   MAX_LESSON_VIDEO_BYTES,
   listCurriculumOverview,
@@ -100,6 +111,7 @@ const CONTACTS_FILE = path.join(ROOT_DIR, 'data', 'contacts.json');
 const BLOCKED_NUMBERS_FILE = BLOCKED_CONTACTS_FILE;
 const CONTACT_GENDER_OVERRIDES_FILE = CONTACT_GENDER_FILE;
 const PROGRESS_FILE = path.join(ROOT_DIR, 'data', 'student_progress.json');
+const TELEGRAM_PROGRESS_FILE = path.join(ROOT_DIR, 'data', 'telegram_progress.json');
 const LESSONS_FILE = path.join(ROOT_DIR, 'lessons.json');
 const FOLLOWUP_STATE_FILE = path.join(ROOT_DIR, 'data', 'followup_state.json');
 const BROADCAST_REQUESTS_FILE = path.join(ROOT_DIR, 'data', 'broadcast_requests.json');
@@ -109,6 +121,7 @@ const DASHBOARD_WATCHED_FILES = new Set([
   HISTORY_FILE,
   CONTACTS_FILE,
   PROGRESS_FILE,
+  TELEGRAM_PROGRESS_FILE,
   LESSONS_FILE,
   FOLLOWUP_STATE_FILE,
   BROADCAST_REQUESTS_FILE,
@@ -126,6 +139,7 @@ const DASHBOARD_DATA_SOURCE_FILES = [
   HISTORY_FILE,
   CONTACTS_FILE,
   PROGRESS_FILE,
+  TELEGRAM_PROGRESS_FILE,
   LESSONS_FILE,
   FOLLOWUP_STATE_FILE,
   WHATSAPP_CHAT_ACTIVITY_FILE,
@@ -143,6 +157,30 @@ const ACTIVITY_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday
 
 function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function calendarDateKey(timestamp, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date(timestampMs(timestamp))).map(part => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function getRecentCalendarDates(now, days, timeZone) {
+  const today = calendarDateKey(now, timeZone);
+  const [year, month, day] = today.split('-').map(Number);
+  const todayUtc = Date.UTC(year, month - 1, day);
+  return Array.from({ length: days }, (_, index) =>
+    new Date(todayUtc - (days - 1 - index) * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10)
+  );
 }
 
 function readBinaryRequestBody(req, maxBytes) {
@@ -215,6 +253,7 @@ function loadDashboardDataFromDisk() {
     history: readJsonFile(HISTORY_FILE),
     contacts: readJsonFile(CONTACTS_FILE),
     progress: readJsonFile(PROGRESS_FILE),
+    telegramProgress: readJsonFileOr(TELEGRAM_PROGRESS_FILE, {}),
     lessons: readJsonFile(LESSONS_FILE),
     optedOutJids: readJsonFileOr(FOLLOWUP_STATE_FILE, { optedOutJids: [] }).optedOutJids || [],
     whatsappChatActivity: readJsonFileOr(WHATSAPP_CHAT_ACTIVITY_FILE, {}),
@@ -422,10 +461,51 @@ function lessonForStudent(student, lessons) {
   return lessons[student.grade]?.lessons?.[student.currentLessonIndex] || null;
 }
 
+export function getNextLessonToSkip(student, lessons) {
+  if (!student || !student.grade ||
+      !['awaiting_task', 'awaiting_reattempt', 'awaiting_content', 'completed'].includes(student.status || 'awaiting_content') ||
+      typeof student.currentLessonId !== 'string') return null;
+  const currentMatch = /^lesson_(\d+)$/.exec(student.currentLessonId);
+  if (!currentMatch) return null;
+  const gradeLessons = lessons?.[student.grade]?.lessons;
+  if (!Array.isArray(gradeLessons) ||
+      !gradeLessons.some(lesson => lesson?.id === student.currentLessonId)) return null;
+  const nextLessonId = `lesson_${Number(currentMatch[1]) + 1}`;
+  const lessonIndex = gradeLessons.findIndex(lesson => lesson?.id === nextLessonId);
+  if (lessonIndex < 0) return null;
+  const lesson = gradeLessons[lessonIndex];
+  if (typeof lesson.videoFile !== 'string' ||
+      typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
+      !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0) return null;
+  try {
+    const videoPath = path.resolve(ROOT_DIR, lesson.videoFile);
+    const stats = fs.statSync(videoPath);
+    if (!stats.isFile() || stats.size === 0) return null;
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+  return {
+    lessonIndex,
+    lessonId: lesson.id,
+    lessonTitle: lesson.title || lesson.id
+  };
+}
+
+function telegramActivityTimestamps(student) {
+  const activityTimestamps = Array.isArray(student.activityTimestamps)
+    ? student.activityTimestamps.map(timestamp => Date.parse(timestamp)).filter(Number.isFinite)
+    : [];
+  if (activityTimestamps.length) return activityTimestamps;
+  const fallback = Date.parse(student.lastActivityAt || student.deliveredAt || '');
+  return Number.isFinite(fallback) ? [fallback] : [];
+}
+
 export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 'UTC') {
+  const nowTimestamp = timestampMs(now);
   const activityByPhone = new Map();
-  const sevenDayCutoff = now - 7 * 24 * 60 * 60 * 1000;
-  const thirtyDayCutoff = now - 30 * 24 * 60 * 60 * 1000;
+  const sevenDayCutoff = nowTimestamp - 7 * 24 * 60 * 60 * 1000;
+  const thirtyDayCutoff = nowTimestamp - 30 * 24 * 60 * 60 * 1000;
   for (const [historyJid, messages] of Object.entries(data.history || {})) {
     if (!isDirectChat(historyJid) || !Array.isArray(messages)) continue;
     const contact = data.contacts[historyJid];
@@ -437,6 +517,7 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
         incomingMessagesLast7Days: 0,
         incomingMessagesLast30Days: 0,
         activeDatesLast30Days: new Set(),
+        firstStudentActivityAt: null,
         lastStudentActivityAt: null
       };
       activityByPhone.set(phoneJid, activity);
@@ -446,38 +527,93 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       const timestamp = timestampMs(message.timestamp);
       if (!timestamp) continue;
       activity.totalIncomingMessages += 1;
+      if (!activity.firstStudentActivityAt || timestamp < activity.firstStudentActivityAt) {
+        activity.firstStudentActivityAt = timestamp;
+      }
       if (!activity.lastStudentActivityAt || timestamp > activity.lastStudentActivityAt) {
         activity.lastStudentActivityAt = timestamp;
       }
-      if (timestamp <= now && timestamp >= sevenDayCutoff) {
+      if (timestamp <= nowTimestamp && timestamp >= sevenDayCutoff) {
         activity.incomingMessagesLast7Days += 1;
       }
-      if (timestamp <= now && timestamp >= thirtyDayCutoff) {
+      if (timestamp <= nowTimestamp && timestamp >= thirtyDayCutoff) {
         activity.incomingMessagesLast30Days += 1;
         activity.activeDatesLast30Days.add(new Date(timestamp).toISOString().slice(0, 10));
       }
     }
   }
 
-  const students = Object.entries(data.progress).map(([jid, student]) => {
+  const students = Object.entries(data.progress || {}).map(([jid, student]) => {
     const contact = data.contacts[jid];
     const phoneJid = getPhoneJid(jid, contact?.phoneJid, contact?.jid) || jid;
     const activity = activityByPhone.get(phoneJid);
     const lesson = lessonForStudent(student, data.lessons);
+    const nextLesson = getNextLessonToSkip(student, data.lessons);
     return {
       jid,
+      platform: 'WhatsApp',
       name: displayName(contact, jid),
       gradeName: data.lessons[student.grade]?.name || student.grade,
       status: student.status,
+      paymentKey: phoneJid,
+      enrolledAt: student.enrolledAt ||
+        (student.deliveredAt ? new Date(student.deliveredAt).toISOString() : null),
+      currentLessonId: student.currentLessonId || '',
       lessonTitle: lesson?.title || student.currentLessonId || '',
+      canSkipToNextLesson: Boolean(nextLesson),
+      nextLessonId: nextLesson?.lessonId || null,
+      nextLessonTitle: nextLesson?.lessonTitle || null,
+      joinedAt: activity?.firstStudentActivityAt
+        ? new Date(activity.firstStudentActivityAt).toISOString()
+        : null,
       deliveredAt: student.deliveredAt || null,
       lastStudentActivityAt: activity?.lastStudentActivityAt || null,
       totalIncomingMessages: activity?.totalIncomingMessages || 0,
       incomingMessagesLast7Days: activity?.incomingMessagesLast7Days || 0,
       incomingMessagesLast30Days: activity?.incomingMessagesLast30Days || 0,
-      activeDaysLast30Days: activity?.activeDatesLast30Days.size || 0
+      activeDaysLast30Days: activity?.activeDatesLast30Days.size || 0,
+      lessonsCompleted: student.lessonsCompleted || 0
     };
   });
+  const telegramProgress = Object.entries(data.telegramProgress || {});
+  const telegramStudents = telegramProgress.map(([key, student]) => {
+    const activityTimestamps = telegramActivityTimestamps(student)
+      .filter(timestamp => Number.isFinite(timestamp) && timestamp <= nowTimestamp);
+    const cutoff7 = nowTimestamp - 7 * 24 * 60 * 60 * 1000;
+    const cutoff30 = nowTimestamp - 30 * 24 * 60 * 60 * 1000;
+    const recent7 = activityTimestamps.filter(timestamp => timestamp >= cutoff7);
+    const recent30 = activityTimestamps.filter(timestamp => timestamp >= cutoff30);
+    const activeDatesLast30Days = new Set(
+      recent30.map(timestamp => calendarDateKey(timestamp, timeZone))
+    );
+    const lastActivityAt = Date.parse(student.lastActivityAt || student.deliveredAt || '');
+    const joinedAt = Date.parse(student.joinedAt || student.deliveredAt || '');
+    const lesson = lessonForStudent(student, data.lessons);
+    const nextLesson = getNextLessonToSkip(student, data.lessons);
+    return {
+      jid: key,
+      platform: 'Telegram',
+      name: student.name || (student.telegramUsername ? `@${student.telegramUsername}` : `Telegram user ${student.telegramUserId || ''}`),
+      gradeName: data.lessons[student.grade]?.name || student.grade,
+      status: student.status || 'awaiting_content',
+      paymentKey: key,
+      enrolledAt: student.enrolledAt || student.joinedAt || student.deliveredAt || null,
+      currentLessonId: student.currentLessonId || '',
+      lessonTitle: lesson?.title || student.currentLessonId || '',
+      canSkipToNextLesson: Boolean(nextLesson),
+      nextLessonId: nextLesson?.lessonId || null,
+      nextLessonTitle: nextLesson?.lessonTitle || null,
+      joinedAt: Number.isFinite(joinedAt) ? new Date(joinedAt).toISOString() : null,
+      deliveredAt: student.deliveredAt || null,
+      lastStudentActivityAt: Number.isFinite(lastActivityAt) ? lastActivityAt : null,
+      totalIncomingMessages: student.submissionsReceived || 0,
+      incomingMessagesLast7Days: recent7.length,
+      incomingMessagesLast30Days: recent30.length,
+      activeDaysLast30Days: activeDatesLast30Days.size,
+      lessonsCompleted: student.lessonsCompleted || 0
+    };
+  });
+  students.push(...telegramStudents);
   const statusCounts = {
     awaiting_task: 0,
     awaiting_reattempt: 0,
@@ -494,15 +630,16 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       student.lastStudentActivityAt || 0,
       timestampMs(student.deliveredAt)
     );
-    if (!lastProgressActivityAt || now - lastProgressActivityAt < 7 * 24 * 60 * 60 * 1000) continue;
+    if (!lastProgressActivityAt || nowTimestamp - lastProgressActivityAt < 7 * 24 * 60 * 60 * 1000) continue;
     followUpStudents.push({
       jid: student.jid,
       name: student.name,
       gradeName: student.gradeName,
       lessonTitle: student.lessonTitle,
       status: student.status,
+      platform: student.platform,
       lastStudentActivityAt: student.lastStudentActivityAt,
-      daysSinceActivity: Math.floor((now - lastProgressActivityAt) / (24 * 60 * 60 * 1000))
+      daysSinceActivity: Math.floor((nowTimestamp - lastProgressActivityAt) / (24 * 60 * 60 * 1000))
     });
   }
   followUpStudents.sort((left, right) =>
@@ -510,7 +647,9 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
     right.daysSinceActivity - left.daysSinceActivity);
 
   const engagementByDate = new Map();
-  const trackedPhones = new Set(students.map(student => {
+  const trackedPhones = new Set(students
+    .filter(student => student.platform === 'WhatsApp')
+    .map(student => {
     const contact = data.contacts[student.jid];
     return getPhoneJid(student.jid, contact?.phoneJid, contact?.jid) || student.jid;
   }));
@@ -528,23 +667,50 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
     for (const message of messages) {
       if (message.role !== 'client') continue;
       const timestamp = timestampMs(message.timestamp);
-      if (!timestamp || timestamp > now || timestamp < now - 30 * 24 * 60 * 60 * 1000) continue;
+      if (!timestamp || timestamp > nowTimestamp || timestamp < nowTimestamp - 30 * 24 * 60 * 60 * 1000) continue;
       const parts = Object.fromEntries(
         dateFormatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
       );
       const date = `${parts.year}-${parts.month}-${parts.day}`;
       let record = engagementByDate.get(date);
       if (!record) {
-        record = { date, activePhones: new Set(), incomingMessages: 0 };
+        record = {
+          date,
+          activePhones: new Set(),
+          telegramStudents: new Set(),
+          incomingMessages: 0
+        };
         engagementByDate.set(date, record);
       }
       record.activePhones.add(phoneJid);
       record.incomingMessages += 1;
     }
   }
+  for (const [key, student] of telegramProgress) {
+    for (const timestamp of telegramActivityTimestamps(student)) {
+      if (!Number.isFinite(timestamp) || timestamp > nowTimestamp || timestamp < nowTimestamp - 30 * 24 * 60 * 60 * 1000) continue;
+      const date = calendarDateKey(timestamp, timeZone);
+      let record = engagementByDate.get(date);
+      if (!record) {
+        record = {
+          date,
+          activePhones: new Set(),
+          telegramStudents: new Set(),
+          incomingMessages: 0
+        };
+        engagementByDate.set(date, record);
+      }
+      record.activePhones.add(key);
+      record.telegramStudents.add(key);
+      record.incomingMessages += 1;
+    }
+  }
   const todayParts = Object.fromEntries(
-    dateFormatter.formatToParts(new Date(now)).map(part => [part.type, part.value])
+    dateFormatter.formatToParts(new Date(nowTimestamp)).map(part => [part.type, part.value])
   );
+  const todayDate = `${todayParts.year}-${todayParts.month}-${todayParts.day}`;
+  const recentCalendarDates = getRecentCalendarDates(nowTimestamp, 7, timeZone);
+  const recentDatesSet = new Set(recentCalendarDates);
   const todayUtc = Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day));
   const engagementTrend = Array.from({ length: 30 }, (_, index) => {
     const date = new Date(todayUtc - (29 - index) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -552,6 +718,7 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
     return {
       date,
       activeStudents: record?.activePhones.size || 0,
+      telegramActiveStudents: record?.telegramStudents.size || 0,
       incomingMessages: record?.incomingMessages || 0
     };
   });
@@ -566,7 +733,22 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       followUpStudents,
       activeStudentsLast7Days: new Set(engagementTrend.slice(-7)
         .flatMap(day => [...(engagementByDate.get(day.date)?.activePhones || [])])).size,
-      engagementTrend
+      engagementTrend,
+      telegramEnrollment: {
+        totalStudents: telegramStudents.length,
+        joinedToday: telegramStudents.filter(student =>
+          student.joinedAt && calendarDateKey(Date.parse(student.joinedAt), timeZone) === todayDate
+        ).length,
+        joinedLast7Days: telegramStudents.filter(student =>
+          student.joinedAt && recentDatesSet.has(calendarDateKey(Date.parse(student.joinedAt), timeZone))
+        ).length,
+        dailyJoins: recentCalendarDates.map(date => ({
+          date,
+          students: telegramStudents.filter(student =>
+            student.joinedAt && calendarDateKey(Date.parse(student.joinedAt), timeZone) === date
+          ).length
+        }))
+      }
     }
   };
 }
@@ -599,7 +781,7 @@ function paymentLabelForContact(data, jid) {
   const phoneJid = getPhoneJid(jid, contact?.phoneJid, contact?.jid);
   const phoneNumber = phoneJid?.slice(0, -'@s.whatsapp.net'.length).split(':')[0];
   const label = phoneNumber ? data.paymentLabels?.[phoneNumber] : null;
-  return label?.label === 'paid' ? label : null;
+  return label?.label === 'paid' && label.source === 'manual' ? label : null;
 }
 
 function presenceForChat(data, presenceManager, jid) {
@@ -701,7 +883,8 @@ export function listDashboardEsContacts(
         name,
         phoneNumber,
         gender: contactGender(data, phoneNumber, messagesByPhone.get(phoneJid) || []),
-        paid: data.paymentLabels?.[phoneNumber]?.label === 'paid'
+        paid: data.paymentLabels?.[phoneNumber]?.label === 'paid' &&
+          data.paymentLabels?.[phoneNumber]?.source === 'manual'
           ? data.paymentLabels[phoneNumber]
           : null,
         ...(block ? { block } : {})
@@ -830,6 +1013,7 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
         timeZone: 'UTC'
       }).format(date),
       conversations: new Set(),
+      telegramStudents: new Set(),
       newConversations: 0
     });
   }
@@ -866,26 +1050,50 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
     if (day) day.newConversations += 1;
   }
 
+  for (const [studentKey, student] of Object.entries(data.telegramProgress || {})) {
+    for (const timestamp of telegramActivityTimestamps(student)) {
+      if (timestamp > nowTimestamp) continue;
+      const parts = Object.fromEntries(
+        formatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
+      );
+      daysByDate.get(`${parts.year}-${parts.month}-${parts.day}`)
+        ?.telegramStudents.add(studentKey);
+    }
+  }
+
   return {
     timeZone,
-    days: [...daysByDate.values()].map(({ date, day, conversations, newConversations }) => ({
+    days: [...daysByDate.values()].map(({ date, day, conversations, telegramStudents, newConversations }) => ({
       date,
       day,
       chats: conversations.size,
-      newChats: newConversations
+      newChats: newConversations,
+      telegramActiveStudents: telegramStudents.size
     }))
   };
 }
 
 export function getDashboardOverview(data, now = Date.now(), timeZone = 'UTC') {
+  const nowTimestamp = timestampMs(now);
   const directChats = Object.entries(data.history)
     .filter(([jid, messages]) => isDirectChat(jid) && Array.isArray(messages) && messages.length > 0);
   const handledChats = directChats.filter(([, messages]) =>
     messages.some(message => message.role === 'agent')).length;
-  const recentWindow = now - 24 * 60 * 60 * 1000;
+  const recentWindow = nowTimestamp - 24 * 60 * 60 * 1000;
   const activeToday = directChats.filter(([, messages]) =>
     timestampMs(latestMessage(messages)?.timestamp) >= recentWindow).length;
   const progressRecords = Object.values(data.progress);
+  const telegramProgressRecords = Object.values(data.telegramProgress || {});
+  const joinedDates = telegramProgressRecords
+    .map(student => Date.parse(student.joinedAt || student.deliveredAt || ''))
+    .filter(timestamp => Number.isFinite(timestamp) && timestamp <= nowTimestamp)
+    .map(timestamp => calendarDateKey(timestamp, timeZone));
+  const today = calendarDateKey(nowTimestamp, timeZone);
+  const recentDates = new Set(getRecentCalendarDates(nowTimestamp, 7, timeZone));
+  const telegramDailyJoins = getRecentCalendarDates(nowTimestamp, 7, timeZone).map(date => ({
+    date,
+    students: joinedDates.filter(joinedDate => joinedDate === date).length
+  }));
   const configuredLessonCount = Object.values(data.lessons)
     .reduce((total, grade) => total + (grade.lessons?.length || 0), 0);
   const messagesByPhone = getClientMessagesByPhone(data);
@@ -904,11 +1112,18 @@ export function getDashboardOverview(data, now = Date.now(), timeZone = 'UTC') {
     permanentHistoryContacts: Object.values(data.contacts)
       .filter(contact => contact.isEs === true).length,
     genderStatistics: esContacts.genderStatistics,
-    weeklyChatActivity: getDashboardWeeklyChatActivity(data, timeZone, now),
-    studentsWithProgress: progressRecords.length,
-    awaitingTask: progressRecords.filter(student => student.status === 'awaiting_task').length,
-    awaitingReattempt: progressRecords.filter(student => student.status === 'awaiting_reattempt').length,
-    completed: progressRecords.filter(student => student.status === 'completed').length,
+    weeklyChatActivity: getDashboardWeeklyChatActivity(data, timeZone, nowTimestamp),
+    studentsWithProgress: progressRecords.length + telegramProgressRecords.length,
+    awaitingTask: [...progressRecords, ...telegramProgressRecords]
+      .filter(student => student.status === 'awaiting_task').length,
+    awaitingReattempt: [...progressRecords, ...telegramProgressRecords]
+      .filter(student => student.status === 'awaiting_reattempt').length,
+    completed: [...progressRecords, ...telegramProgressRecords]
+      .filter(student => student.status === 'completed').length,
+    telegramStudents: telegramProgressRecords.length,
+    telegramJoinedToday: joinedDates.filter(joinedDate => joinedDate === today).length,
+    telegramJoinedLast7Days: joinedDates.filter(joinedDate => recentDates.has(joinedDate)).length,
+    telegramDailyJoins,
     configuredLessons: configuredLessonCount
   };
 }
@@ -944,6 +1159,27 @@ export function getDashboardAgentStatus(status, handledChats, now = Date.now()) 
       }
       : null,
     handledChats
+  };
+}
+
+export function getDashboardTelegramAgentStatus(status, now = Date.now()) {
+  const updatedAt = Date.parse(status?.updatedAt || '');
+  const heartbeatAge = now - updatedAt;
+  const hasFreshHeartbeat = Number.isFinite(updatedAt) &&
+    heartbeatAge >= 0 &&
+    heartbeatAge <= AGENT_HEARTBEAT_MAX_AGE_MS;
+  const connectionState = !hasFreshHeartbeat
+    ? status?.connectionState ? 'disconnected' : 'unknown'
+    : ['connected', 'connecting', 'retrying'].includes(status.connectionState)
+      ? status.connectionState
+      : 'disconnected';
+
+  return {
+    connectionState,
+    connected: connectionState === 'connected',
+    botUsername: typeof status?.botUsername === 'string' ? status.botUsername : '',
+    lastConnectedAt: status?.lastConnectedAt || null,
+    lastHeartbeatAt: Number.isFinite(updatedAt) ? status.updatedAt : null
   };
 }
 
@@ -1491,13 +1727,22 @@ export function createAdminDashboardServer({
   lessonsFile = LESSONS_FILE,
   lessonMediaDirectory = LESSON_MEDIA_DIR,
   scheduledLessonsFile = SCHEDULED_LESSONS_FILE,
-  progressFile = PROGRESS_FILE
+  progressFile = PROGRESS_FILE,
+  paymentLedgerFile = STUDENT_PAYMENT_LEDGER_FILE,
+  telegramAgentStatusFile = TELEGRAM_AGENT_STATUS_FILE,
+  whatsappLessonSkipRequestsFile = WHATSAPP_LESSON_SKIP_REQUESTS_FILE,
+  telegramLessonSkipRequestsFile = TELEGRAM_LESSON_SKIP_REQUESTS_FILE
 } = {}) {
   let launchedAgent = null;
   const blockedContacts = createBlockedContactsStore(blockedContactsFile);
   const contactGenders = createContactGenderStore(contactGenderFile);
   const paymentLabels = createContactPaymentLabelsStore(paymentLabelsFile);
+  const studentPaymentLedger = createStudentPaymentLedger(paymentLedgerFile);
   const scheduledLessons = createScheduledLessonStore({ filePath: scheduledLessonsFile });
+  const lessonSkipQueues = {
+    WhatsApp: new LessonSkipQueue(whatsappLessonSkipRequestsFile),
+    Telegram: new LessonSkipQueue(telegramLessonSkipRequestsFile)
+  };
   const getManualScheduleOptions = () => {
     const contacts = readContactsFile();
     const progress = readJsonFileOr(progressFile, {});
@@ -1662,6 +1907,10 @@ export function createAdminDashboardServer({
     lessonsFile,
     messageRequestsFile,
     scheduledLessonsFile,
+    paymentLedgerFile,
+    telegramAgentStatusFile,
+    whatsappLessonSkipRequestsFile,
+    telegramLessonSkipRequestsFile,
     broadcastFiles.requests,
     broadcastFiles.state
   ].map(filePath => path.resolve(filePath)));
@@ -2517,6 +2766,17 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-agent-status') {
+      try {
+        const status = readJsonFileOr(telegramAgentStatusFile, null);
+        sendJson(res, 200, getDashboardTelegramAgentStatus(status));
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load Telegram agent status:', error.message);
+        sendJson(res, 500, { error: 'Could not read Telegram agent status.' });
+      }
+      return;
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/api/admin/agent-disconnect') {
       if (!isSameOriginLoopbackRequest(req)) {
         sendJson(res, 403, { error: 'Agent controls must come from this local dashboard.' });
@@ -2793,6 +3053,7 @@ export function createAdminDashboardServer({
           }
         }
         const payments = Object.entries(paymentLabels.list())
+          .filter(([, record]) => record.label === 'paid' && record.source === 'manual')
           .flatMap(([phoneNumber, record]) => (record.paymentHistory || []).map(payment => {
             const phoneJid = getPhoneJid(
               payment.jid,
@@ -2817,6 +3078,31 @@ export function createAdminDashboardServer({
       } catch (error) {
         console.error('[Admin Dashboard] Could not load payment history:', error.message);
         sendJson(res, 500, { error: 'Could not read student payment history.' });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/payment-ledger') {
+      try {
+        const data = readDataWithBlockedContacts();
+        const students = listDashboardStudentProgress(data).students
+          .filter(student => student.paymentKey && student.enrolledAt)
+          .map(student => ({
+            platform: student.platform,
+            studentKey: student.paymentKey,
+            name: student.name,
+            gradeName: student.gradeName,
+            enrolledAt: student.enrolledAt,
+            currentLesson: student.lessonTitle || '',
+            payment: studentPaymentLedger.getCurrent(
+              student.paymentKey,
+              student.enrolledAt
+            )
+          }));
+        sendJson(res, 200, { students });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load the student payment ledger:', error.message);
+        sendJson(res, 500, { error: 'Could not read the student payment ledger.' });
       }
       return;
     }
@@ -2873,6 +3159,136 @@ export function createAdminDashboardServer({
       }).catch(error => {
         console.error('[Admin Dashboard] Could not prepare student workbook download:', error.message);
         if (!res.headersSent) sendJson(res, 500, { error: 'Could not prepare student workbook download.' });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/payment-ledger') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Payment records can only be changed from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (!body || typeof body.studentKey !== 'string' || !body.studentKey.trim() ||
+            !PAYMENT_STATUSES.includes(body.status)) {
+          sendJson(res, 400, { error: 'A student and valid payment status are required.' });
+          return;
+        }
+        const data = readDataWithBlockedContacts();
+        const student = listDashboardStudentProgress(data).students.find(item =>
+          item.paymentKey === body.studentKey);
+        if (!student) {
+          sendJson(res, 404, { error: 'Student was not found in the current progress list.' });
+          return;
+        }
+        if (!student.enrolledAt) {
+          sendJson(res, 409, { error: 'This student has no enrollment date to anchor a rolling payment period.' });
+          return;
+        }
+        const payment = studentPaymentLedger.setStatus(body.studentKey, {
+          enrolledAt: student.enrolledAt,
+          status: body.status,
+          ...(Object.hasOwn(body, 'amount') ? { amount: body.amount } : {}),
+          ...(Object.hasOwn(body, 'currency') ? { currency: body.currency } : {}),
+          ...(Object.hasOwn(body, 'note') ? { note: body.note } : {})
+        });
+        scheduleChange(path.basename(paymentLedgerFile));
+        sendJson(res, 200, { payment });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not update student payment status:', error.message);
+        const invalidInput = /Payment amount|Currency must|Payment status|Student identifier|enrollment date|review date/.test(error.message);
+        sendJson(res, invalidInput ? 400 : 500, {
+          error: invalidInput ? error.message : 'Could not update student payment status.'
+        });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/progress/skip-lesson') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Lesson skips must be requested from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (!body || !['WhatsApp', 'Telegram'].includes(body.platform) ||
+            typeof body.jid !== 'string' || !body.jid || body.jid.length > 200 ||
+            typeof body.currentLessonId !== 'string') {
+          sendJson(res, 400, { error: 'A platform, student ID, and current lesson ID are required.' });
+          return;
+        }
+
+        const data = readDataWithBlockedContacts();
+        const student = body.platform === 'WhatsApp'
+          ? data.progress?.[body.jid]
+          : data.telegramProgress?.[body.jid];
+        if (!student || student.currentLessonId !== body.currentLessonId) {
+          sendJson(res, 409, { error: 'The student progress changed. Refresh the progress table and try again.' });
+          return;
+        }
+        if (body.platform === 'WhatsApp' && !isDirectChat(body.jid)) {
+          sendJson(res, 400, { error: 'A valid WhatsApp student chat is required.' });
+          return;
+        }
+        if (body.platform === 'Telegram' &&
+            (typeof student.telegramChatId === 'undefined' ||
+             typeof student.telegramUserId === 'undefined' ||
+             body.jid !== `telegram:${student.telegramChatId}:${student.telegramUserId}`)) {
+          sendJson(res, 409, { error: 'This Telegram student does not have a valid group destination.' });
+          return;
+        }
+
+        const nextLesson = getNextLessonToSkip(student, data.lessons);
+        if (!nextLesson) {
+          sendJson(res, 409, { error: 'There is no fully configured next lesson available for this student.' });
+          return;
+        }
+
+        let phoneJid = null;
+        if (body.platform === 'WhatsApp') {
+          const contact = data.contacts?.[body.jid];
+          phoneJid = getPhoneJid(body.jid, contact?.phoneJid, contact?.jid);
+          const agentStatus = readJsonFileOr(agentStatusFile, null);
+          const heartbeatAt = Date.parse(agentStatus?.updatedAt || '');
+          if (agentStatus?.connectionState !== 'connected' ||
+              !Number.isFinite(heartbeatAt) ||
+              Date.now() - heartbeatAt > AGENT_HEARTBEAT_MAX_AGE_MS) {
+            sendJson(res, 409, { error: 'The WhatsApp agent must be connected before skipping a lesson.' });
+            return;
+          }
+        }
+
+        const queue = lessonSkipQueues[body.platform];
+        const { request, alreadyQueued } = queue.enqueue({
+          platform: body.platform,
+          studentKey: body.jid,
+          jid: body.platform === 'WhatsApp' ? body.jid : null,
+          phoneJid,
+          chatId: body.platform === 'Telegram' ? String(student.telegramChatId) : null,
+          userId: body.platform === 'Telegram' ? String(student.telegramUserId) : null,
+          gradeKey: student.grade,
+          currentLessonId: student.currentLessonId,
+          nextLessonId: nextLesson.lessonId,
+          lessonIndex: nextLesson.lessonIndex,
+          nextLessonTitle: nextLesson.lessonTitle
+        });
+        if (!alreadyQueued) scheduleChange(path.basename(
+          body.platform === 'WhatsApp'
+            ? whatsappLessonSkipRequestsFile
+            : telegramLessonSkipRequestsFile
+        ));
+        sendJson(res, 202, {
+          requestId: request.id,
+          status: request.status,
+          alreadyQueued,
+          nextLessonTitle: request.nextLessonTitle
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not queue a lesson skip:', error.message);
+        const isInvalidBody = error.message === 'Request body is too large.' ||
+          error.message === 'Request body must contain valid JSON.';
+        sendJson(res, isInvalidBody ? 400 : 500, {
+          error: isInvalidBody ? error.message : 'Could not queue the lesson skip.'
+        });
       });
       return;
     }
@@ -3109,7 +3525,29 @@ export function createAdminDashboardServer({
             `progress:${timeZone}:${Math.floor(now / 60_000)}`,
             () => listDashboardStudentProgress(data, now, timeZone)
           );
-          sendJson(res, 200, progress);
+          const latestSkipRequests = Object.fromEntries(
+            Object.entries(lessonSkipQueues).map(([platform, queue]) => {
+              const latest = new Map();
+              for (const request of queue.read()) latest.set(request.studentKey, request);
+              return [platform, latest];
+            })
+          );
+          sendJson(res, 200, {
+            ...progress,
+            students: progress.students.map(student => {
+              const request = latestSkipRequests[student.platform].get(student.jid);
+              return {
+                ...student,
+                skipRequest: request?.currentLessonId === student.currentLessonId
+                  ? {
+                      status: request.status,
+                      error: request.error,
+                      nextLessonTitle: request.nextLessonTitle
+                    }
+                  : null
+              };
+            })
+          });
         } catch (error) {
           sendJson(res, 400, { error: error.message });
         }

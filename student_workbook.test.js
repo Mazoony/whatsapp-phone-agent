@@ -75,6 +75,50 @@ test('Excel workbook consolidates student records and includes saved conversatio
   }
 });
 
+test('Excel workbook includes Telegram enrollment and lesson progress', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'student-workbook-telegram-test-'));
+  const filePath = path.join(directory, 'students.xlsx');
+  const data = {
+    ...makeData(),
+    telegramProgress: {
+      'telegram:-1004418934646:12345': {
+        name: 'Telegram Student',
+        telegramChatId: '-1004418934646',
+        telegramUserId: 12345,
+        telegramUsername: 'student_user',
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_task',
+        joinedAt: '2026-10-16T10:00:00.000Z',
+        deliveredAt: '2026-10-16T10:01:00.000Z',
+        lastActivityAt: '2026-10-16T10:02:00.000Z',
+        lessonsCompleted: 2,
+        submissionsReceived: 4
+      }
+    }
+  };
+  try {
+    const result = await writeStudentWorkbook(data, filePath);
+    assert.equal(result.students, 2);
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    const students = workbook.getWorksheet('Students');
+    const telegramRow = [2, 3].map(row => students.getRow(row))
+      .find(row => row.getCell(1).value === 'Telegram Student');
+    assert.ok(telegramRow);
+    assert.equal(telegramRow.getCell(16).value, 'Telegram');
+    assert.equal(telegramRow.getCell(17).value, '-1004418934646');
+    assert.equal(telegramRow.getCell(18).value, 12345);
+    assert.equal(telegramRow.getCell(19).value, 'student_user');
+    assert.equal(telegramRow.getCell(21).value, 2);
+    assert.equal(telegramRow.getCell(22).value, 4);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('workbook manager regenerates and reports current student data', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'student-workbook-manager-test-'));
   const filePath = path.join(directory, 'students.xlsx');

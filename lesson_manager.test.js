@@ -66,7 +66,7 @@ test('a correct submission immediately delivers the next numbered lesson', async
     assert.deepEqual(
       sentMessages.map(message => message.text || (message.video ? 'video' : '')),
       [
-        'Correct.',
+        'صحيح، ممتاز.',
         'video',
         lessonManager.lessonsConfig.grade_3_secondary.lessons[1].taskMessage
       ]
@@ -180,6 +180,33 @@ test('offers a welcome sample only for grades with a real first lesson video and
     assert.equal(lessonManager.getWelcomeSampleLesson('grade_3_secondary'), null);
   } finally {
     gradeConfig.lessons[0] = originalLesson;
+  }
+});
+
+test('selects lesson one for a new student and the next sequence lesson after progress', () => {
+  const jid = 'next-lesson-selection-test@s.whatsapp.net';
+  const originalProgress = lessonManager.progress[jid];
+
+  try {
+    assert.equal(lessonManager.getNextLessonToDeliver(jid, 'grade_3_secondary').lessonIndex, 0);
+    lessonManager.progress[jid] = {
+      grade: 'grade_3_secondary',
+      currentLessonIndex: 0,
+      currentLessonId: 'lesson_1',
+      status: 'awaiting_next_lesson'
+    };
+    assert.equal(lessonManager.hasActiveLesson(jid), false);
+    assert.equal(lessonManager.getNextLessonToDeliver(jid, 'grade_3_secondary').lessonIndex, 1);
+    lessonManager.progress[jid].status = 'awaiting_task';
+    assert.equal(lessonManager.hasActiveLesson(jid), true);
+    lessonManager.progress[jid] = { grade: 'grade_3_secondary', status: 'completed' };
+    assert.equal(
+      lessonManager.getNextLessonToDeliver(jid, 'grade_3_secondary').status,
+      'awaiting_content'
+    );
+  } finally {
+    if (originalProgress) lessonManager.progress[jid] = originalProgress;
+    else delete lessonManager.progress[jid];
   }
 });
 
@@ -540,7 +567,7 @@ test('does not deliver a second lesson within 24 hours', async () => {
       sendMessage: async (_jid, message) => sentMessages.push(message)
     }, jid, { id: 'chapter_1', title: 'Chapter One', videoFile: 'missing.mp4' }), false);
     assert.equal(sentMessages.length, 2);
-    assert.match(sentMessages[0].text, /last 24 hours/);
+    assert.match(sentMessages[0].text, /آخر ٢٤ ساعة/);
   } finally {
     if (originalProgress) lessonManager.progress[jid] = originalProgress;
     else delete lessonManager.progress[jid];

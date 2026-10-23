@@ -9,6 +9,7 @@ This guide takes you step-by-step through setting up and running your autonomous
 Honor's **MagicOS** aggressively kills background processes when the screen turns off. You must configure these settings so your agent can run 24/7 in the background:
 
 ### Step 1.1: Disable MagicOS App Killing for Termux
+
 1. Open your phone's **Settings**.
 2. Tap **Apps** > **App Launch** (or **Apps > Apps > Termux > Power details**).
 3. Find **Termux** in the list.
@@ -19,6 +20,7 @@ Honor's **MagicOS** aggressively kills background processes when the screen turn
    - ✅ **Run in background** (Enabled)
 
 ### Step 1.2: Disable Battery Optimization
+
 1. Go to **Settings** > **Battery** > **More battery settings** (or search "Battery Optimization").
 2. Find **Termux** and set it to **Don't optimize** (or **Unrestricted**).
 
@@ -40,26 +42,33 @@ Honor's **MagicOS** aggressively kills background processes when the screen turn
 Inside the Termux terminal, run the following commands one by one:
 
 ### 3.1: Acquire Wake Lock (Keeps CPU alive when screen is off)
+
 ```bash
 termux-wake-lock
 ```
+
 *(You will see a persistent notification from Termux in your status bar indicating wake lock is active).*
 
 ### 3.2: Update Termux and Install Node.js & Git
+
 ```bash
 pkg update -y && pkg install -y nodejs-lts git
 ```
 
 ### 3.3: Set Up the Project Folder
+
 You can transfer the files from your PC or clone/create the directory in Termux:
+
 ```bash
 mkdir -p ~/whatsapp-agent
 cd ~/whatsapp-agent
 ```
 
 If you copy the files created on your PC directly to your phone:
+
 - Connect phone to PC via USB, copy the `whatsapp-phone-agent` folder into your phone's `Download` folder.
 - In Termux, run:
+
 ```bash
 termux-setup-storage
 cp -r /sdcard/Download/whatsapp-phone-agent/* ~/whatsapp-agent/
@@ -67,16 +76,21 @@ cd ~/whatsapp-agent
 ```
 
 ### 3.4: Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### 3.5: Configure Your `.env` File
+
 Create or edit your `.env` file:
+
 ```bash
 nano .env
 ```
+
 Fill in your details:
+
 ```env
 GEMINI_API_KEY=AIzaSy...your_actual_key_from_google_ai_studio
 GEMINI_API_KEY_FALLBACK=your_second_account_key_optional
@@ -100,9 +114,30 @@ FOLLOWUP_INTERVAL_HOURS=72
 FOLLOWUP_SEND_DELAY_SECONDS=30
 FOLLOWUP_START_DELAY_SECONDS=60
 ```
+
 *(Press `CTRL + O`, then `ENTER` to save, and `CTRL + X` to exit `nano`).*
 
 The optional Gemini fallback keys are used in order after the primary key's model fallbacks fail. Keep all API keys private and never paste them into chat or commit `.env`.
+
+### Telegram lesson bot for a group (optional)
+
+Across WhatsApp and Telegram, conversational replies, reminders, grading feedback, and payment/status notices use Sudanese Arabic. Configured English lesson tasks and examples are sent in their authored language.
+
+The Telegram bot is a separate process and can run alongside the WhatsApp agent:
+
+1. Create a bot with Telegram's [@BotFather](https://t.me/BotFather) and copy its token directly into the local `.env` file. Never post or commit the token.
+2. Add these values to `.env`:
+   ```env
+   TELEGRAM_BOT_TOKEN=your_bot_token
+   TELEGRAM_GROUP_ID=
+   ```
+3. Add the bot to the students' group. To let it read ordinary student answers, disable the bot's privacy mode with BotFather (`/setprivacy` → select the bot → **Disable**) or make the bot a group administrator.
+4. Start the process with `npm run telegram`. The Overview tab reports its live connection and polling status. With `TELEGRAM_GROUP_ID` blank, send a message in the target group; the terminal logs its chat ID. Put that ID into `TELEGRAM_GROUP_ID` and restart the process. The bot ignores groups other than this configured ID.
+5. Students can send `/lesson` in the group to receive or resume their own configured lesson; they do not need to start a private chat to begin the course. The bot tracks task progress separately for each Telegram user, grades typed answers, gives brief feedback, and posts the next configured video and task after a correct answer. Lesson replies stay in the group. Students should use `/lesson` to start a bot-managed task; tasks sent manually or by another bulk-message path are not linked automatically.
+
+The bot only grades text (including text captions); image answers are not evaluated. If a student has not submitted an answer more than eight hours after a video lesson, the bot sends one reminder for that lesson in a private chat. To receive reminders, each student must open the bot and tap **Start** once; Telegram does not let bots begin a private conversation. A due reminder stays pending until the student starts the private chat, then is delivered privately. Students who have submitted an answer are not reminded. It uses the existing Grade 3 Secondary lesson configuration and answer keys. Telegram's hosted Bot API currently limits uploaded files to 50 MB, so lesson videos larger than that cannot be sent by this bot. Telegram lesson progress and polling offsets are stored separately in `data/telegram_progress.json` and `data/telegram_update_offset.json`; they do not share WhatsApp progress. The dashboard's Overview and Student progress sections include Telegram learners, lesson status, first `/lesson` date, daily joins, activity, submissions, and lessons passed. The Excel student workbook includes Telegram enrollment and progress as separate rows; group messages themselves are not archived. If this bot was previously configured with a webhook, remove that webhook before running its long-polling process.
+
+Telegram students can use `/paid` in the configured group or in a private chat to report a payment. The report stays pending until reviewed in the dashboard's **Payment ledger**. For privacy, `/payment` returns the status only in a private chat: students should open the bot and tap **Start** once, then use `/payment` there. A group `/payment` command sends the status privately if the student has already started a private chat; the group only receives a neutral acknowledgment. Receipt photos must be sent in the private chat and also remain pending review.
 
 On the Windows PC, install Ollama and download the `qwen3:4b` model for local task marking. In PowerShell, run `ollama pull qwen3:4b`, add `OLLAMA_BASE_URL=http://127.0.0.1:11434` and `OLLAMA_MODEL=qwen3:4b` to `.env`, then start Ollama and the agent on that same PC. Stop the Termux agent before starting the PC copy; do not keep two agent sessions connected to the same WhatsApp account. If the PC has no existing WhatsApp login, pair it from WhatsApp's **Linked devices** screen when the agent displays its QR. The live WhatsApp agent uses fixed, rule-based messages for lesson delivery and general routing; AI is reserved for interpreting and marking assigned task submissions. If marking fails, the agent tells the student the answer was not marked wrong and asks them to retry later. To analyze image submissions, install a vision-capable Ollama model and set its exact installed model name in `OLLAMA_VISION_MODEL`; the text-only `qwen3:4b` model cannot inspect images. Lesson scheduling, progress, and video sending are handled by regular app code and do not depend on AI. On an 8 GB PC, `qwen3:4b` is the recommended starting text model.
 
@@ -111,18 +146,25 @@ The agent simulates typing at the configured `TYPING_WPM` speed for short genera
 Personalized follow-up campaigns are disabled by default to keep the agent focused on assigned lessons and avoid unnecessary AI use. They can be explicitly enabled with `FOLLOWUPS_ENABLED=true`, but doing so adds messages outside the lesson-delivery and marking workflow.
 
 ### Lesson videos for each grade
-The agent recognizes all Sudanese grade/stage combinations: grades 1–6 in ابتدائي, 1–3 in متوسط, and 1–3 in ثانوي. Incoming students default to Year 3 Secondary, so the agent does not ask for a grade; a grade explicitly stated by a student or stored in their profile takes precedence. WhatsApp replies stay focused on the lesson cycle: the agent sends the video and exercise without extra greetings or lesson introductions, ignores unrelated messages, gives brief correction feedback, and delivers the next numbered lesson immediately after a correct submission. AI is used only to mark assigned answers: accept equivalent wording, synonyms, and concise correct answers when they preserve the intended meaning and grammar; do not accept responses whose meaning changes. Other new lesson deliveries, including Treasure Island chapters and manually scheduled lessons, are limited to one per student per 24 hours; overdue scheduled deliveries are deferred until that interval has passed. Resending the current video does not send another exercise or reset progress. Lesson entries in `lessons.json` must include a matching video under `media/lessons/<grade_key>/` (for example, `media/lessons/grade_3_secondary/lesson_1.mp4`), an exercise, and its answer key. Lesson videos in that folder are read in numeric order; an unconfigured lesson or missing number blocks later videos rather than skipping ahead. The available Grade 3 Secondary files are numbered 1–6 and 8–10; there is no video 7. Lessons 1 and 2 have sequential exercise-and-answer-key configuration; lesson 5 is standalone, and later videos are not automatically sent until their preceding lesson entries are configured. Other grades remain placeholders and will not receive another grade's lessons. A student with an active lesson can ask the agent to resend the current video (for example, “رسل لي الفيديو”); this resends only the video and does not reset lesson progress. Add each other grade's lesson videos and matching exercise/answer-key entries before enabling lesson delivery for that grade.
+
+The agent recognizes all Sudanese grade/stage combinations: grades 1–6 in ابتدائي, 1–3 in متوسط, and 1–3 in ثانوي. Incoming students default to Year 3 Secondary, so the agent does not ask for a grade; a grade explicitly stated by a student or stored in their profile takes precedence. WhatsApp replies stay focused on the lesson cycle: when a student messages without an active task, the agent starts or resumes the next configured lesson by sending its video and exercise, without greetings, introductions, or unrelated replies. If the student has not submitted an answer more than eight hours after receiving a video lesson, the agent sends one reminder for that lesson; submitting an answer or receiving a newer lesson prevents the reminder. It grades submitted answers, gives brief correction feedback, and delivers the next numbered lesson immediately after a correct submission. AI is used only to mark assigned answers: accept equivalent wording, synonyms, and concise correct answers when they preserve the intended meaning and grammar; do not accept responses whose meaning changes. Other new lesson deliveries, including Treasure Island chapters and manually scheduled lessons, are limited to one per student per 24 hours; overdue scheduled deliveries are deferred until that interval has passed. Resending the current video does not send another exercise or reset progress. Lesson entries in `lessons.json` must include a matching video under `media/lessons/<grade_key>/` (for example, `media/lessons/grade_3_secondary/lesson_1.mp4`), an exercise, and its answer key. Lesson videos in that folder are read in numeric order; an unconfigured lesson or missing number blocks later videos rather than skipping ahead. The available Grade 3 Secondary files are numbered 1–6 and 8–10; there is no video 7. Lessons 1 and 2 have sequential exercise-and-answer-key configuration; lesson 5 is standalone, and later videos are not automatically sent until their preceding lesson entries are configured. Other grades remain placeholders and will not receive another grade's lessons. A student with an active lesson can ask the agent to resend the current video (for example, “رسل لي الفيديو”); this resends only the video and does not reset lesson progress. Add each other grade's lesson videos and matching exercise/answer-key entries before enabling lesson delivery for that grade.
 
 ### Treasure Island course
+
 The **Curriculum & Lessons** dashboard has a separate **Treasure Island** section for Grade 3 Secondary. Add each chapter there with its own title, video, exercise, and answer key; uploaded videos go into `media/lessons/grade_3_secondary/treasure_island/`. Students can ask for Treasure Island and choose a chapter by its displayed number or title. Each chapter is graded independently: its active task and completed chapter list are stored separately from the regular sequential English curriculum, and completing a chapter does not advance or reset regular lesson progress. Configure chapter videos and exercises in the dashboard before offering the course to students.
 
-### Monthly subscription prices
-The dashboard Payments page summarizes distinct students marked paid in the selected month at 17,000 SDG per student. Enter the SDG amount for 1 USD to see the equivalent total; the rate is saved in that browser.
+### Student payment ledger and historical payment calendar
+
+The dashboard's **Payment ledger** tracks each student's rolling 30-day period from enrollment. Student claims and receipt scans remain **Pending review** until you confirm or reject them there; payment status replies use this ledger. Amount and currency are optional.
+
+The older **Payments** calendar is separate: it shows manually paid WhatsApp contact labels by the date they were marked, using the historical 17,000 SDG monthly summary. Enter the SDG amount for 1 USD to see the equivalent total; the rate is saved in that browser. **Mark paid** and **Mark unpaid** on the Es contacts page manage those WhatsApp labels and the historical calendar; use the **Payment ledger** to update a student's current 30-day status.
 
 ### Grammar course
+
 The separate interactive grammar course is not available through the live WhatsApp agent while it is limited to video lessons, assigned exercises, and marking.
 
 ### Saving new student phone numbers
+
 When a previously unknown phone number messages the agent, Termux opens Android's prefilled contact form using `Es - <WhatsApp profile name>` (or the number if no profile name is available). Tap **Save** on the phone to add it to the address book. The agent cannot silently write to Android contacts through Baileys. This phonebook prompt is available only when running on Android in Termux.
 
 In the **WhatsApp agent** live chat queue, pause handling to hold all waiting chats, or use **Cancel** on a specific waiting student to skip that queued batch. Incoming messages remain saved; an active response cannot be cancelled and will finish normally.
@@ -131,19 +173,19 @@ The local admin dashboard's metric cards are interactive: **Direct chats** opens
 
 In **Curriculum & Lessons**, each configured lesson with an available video has a **Send to inactive Es** action. It previews the eligible eShool contact count and, after confirmation, queues that lesson video individually for contacts whose latest saved WhatsApp activity is more than 10 days old. Contacts without an activity timestamp, blocked contacts, and students who opted out are excluded. The recipient list is rechecked at confirmation; if it changed, preview again. Broadcasts use the existing five-second per-recipient gap and can take hours for a large cohort. Monitor or stop a queued job on the **Broadcasts** page.
 
-Students can ask the WhatsApp agent to send a configured lesson at a particular time. The agent asks for the grade if it is unknown, clarifies incomplete or ambiguous dates/times, then repeats the exact lesson and time in Sudan time (Africa/Khartoum) and waits for a clear yes before saving a one-time delivery. Schedules are stored locally and survive restarts; the agent must be running and connected for delivery. Review schedules on the **Scheduled lessons** page to edit the time, send now, or cancel. Interrupted deliveries are marked failed with an uncertain result rather than automatically resent, to avoid duplicate lesson videos.
+One-time lessons can be scheduled from the dashboard's **Scheduled lessons** page. Schedules are stored locally and survive restarts; the agent must be running and connected for delivery. Review schedules there to edit the time, send now, or cancel. Interrupted deliveries are marked failed with an uncertain result rather than automatically resent, to avoid duplicate lesson videos.
 
 Teachers can also create a one-time schedule from the **Scheduled lessons** page. Choose a student from saved direct-chat contacts or lesson-progress records, select one of that student's configured lessons, and set the delivery time in Sudan time. Only lessons with an available video, exercise, and answer key are offered. The selected time must be in the future.
 
 The dashboard briefly caches selected summaries and lists in this browser tab's session storage to make reloads and repeated views faster. Live updates and manual refreshes invalidate the cache; locking the dashboard clears it. Chat message history, live agent status, and queue data are not cached.
 
-When a student has no lesson-progress record, the agent checks saved outgoing WhatsApp history for a configured lesson video caption/marker or its exercise text. It uses that evidence to resume after the latest recognized lesson rather than automatically restarting at lesson one. Ordinary conversation or a student's own copied exercise answers do not count as evidence. For an established conversation without recognizable lesson history, it leaves lesson delivery paused rather than guessing and restarting at lesson one.
+When a student has no lesson-progress record, the agent checks saved outgoing WhatsApp history for a configured lesson video caption/marker or its exercise text and resumes after the latest recognized lesson. Ordinary conversation or a student's own copied exercise answers do not count as evidence. If no lesson history can be recognized, it starts at lesson one.
 
 Student progress refreshes when lesson state changes and when a tracked student sends a message. Its **Last student message** column uses the latest incoming timestamp from saved chat history, merges linked phone-number and LID histories, and moves the most recently active students to the top. The **Texts received** column shows total saved incoming messages and counts for the last 7 and 30 days; **Active days (30d)** shows how many UTC calendar days included an incoming message in the last 30 days. These are incoming student messages only, not agent replies, and totals reflect the locally saved history. A new message updates activity time but does not change lesson status unless the agent successfully evaluates a task submission or delivers another lesson. The overview's weekly graph labels daily unique direct chats with incoming messages and adds a separate line for new conversations, identified by the first saved incoming message in the local history. Linked phone-number and LID histories are counted as one chat. Dates use the browser's local timezone, and today may be incomplete. The **WhatsApp agent** sidebar tab and overview card open the same recent handled-chat list. At the top of that view, the **Live chat queue** shows the active conversation followed by chats in FIFO order; it refreshes live and animates position changes. A chat is added when a message arrives, waits through the configured debounce period, and leaves the queue when the agent finishes responding. New messages received during an active response create a fresh queue entry at the end. The list shows contact names and waiting/handling durations, not message contents. This view also shows recent terminal output from the agent, live media upload status and progress, and a scannable pairing QR while WhatsApp is requesting device linking; start or restart the agent with `npm start` to see new output or request a fresh QR. Media delivery results and progress are kept locally in `data/agent_media_activity.json`; terminal output is kept in a rolling log (up to 1 MB) and refreshes while the view is open; logs may include student message text. The QR is cleared after the agent connects and is only shown briefly after it is generated. The status card reports connected only while the agent's connection heartbeat is fresh; it refreshes every 10 seconds and retains the last successful connection time. It also shows the linked WhatsApp account name and phone number when available; Baileys does not expose the physical phone model. It shows **Unknown** when the agent has not reported status yet; restart the agent with `npm start` to enable status updates. The Es-contacts list reloads its saved records every 30 seconds. Click **Update from WhatsApp** to ask the connected agent to resync WhatsApp's contact app-state and refresh the saved contact list after the sync completes; use **Reload list** only to redraw contacts already stored locally. New contacts must first be saved on the phone and synced by WhatsApp to the linked agent. Select a direct chat to review its history, compose a one-to-one message, and view a 30- or 90-day 24-hour activity graph and weekday/hour heatmap. Click a student's name on the Es contacts page to view the same activity graph and heatmap. Activity uses incoming-message timestamps in the browser's timezone; it shows historical messaging patterns, not current online availability. Direct messages are queued for the connected agent, which checks the configured allow/block rules, owner blocks, and opt-outs before sending. The Es list reads the agent's local `data/contacts.json` records; it does not query Android's address book directly.
 
 On the Es contacts page, choose **Eligible Es contacts** to message eligible Es contacts saved in the phone book, or **Non-Es** to target tracked one-to-one chats, including unsaved contacts. Both groups exclude opted-out, owner-blocked, configured-blocked, dashboard-blocked, owner, and disallowed numbers; eligibility is rechecked before each recipient. Select all is limited to 5,000 recipients per broadcast. If more than 5,000 are eligible, the page explicitly selects only the first 5,000; queue that broadcast, then use **Select batch** to replace the current selection with the next 5,000 before queuing another message. Use the formatting toolbar above the bulk-message box for bold, italic, strikethrough, monospace, lists, links, and clear formatting. The style buttons insert WhatsApp text formatting (`*bold*`, `_italic_`, `~strikethrough~`, or triple-backtick monospace); Ctrl+B, Ctrl+I, and Ctrl+Shift+X are also supported. Select text before applying a style, or click a style with no selection to type inside its markers. Use **Attach media or file** to add up to five images, videos, audio files, or supported documents (300 MB maximum per file), or choose **Record voice note** and allow microphone access. Microphone recording requires a secure browser context: use `http://localhost:3001` on the computer running the dashboard, or serve the dashboard over HTTPS when accessing it from another device. After you stop recording, its preview appears immediately while the upload completes. Review and remove queued attachments before sending. A message accompanies the first image, video, or document as its caption; with audio-only attachments, the text is sent separately. Recorded audio is sent as a WhatsApp voice note when supported by the browser's recording format. Broadcasts are sent individually with the same five-second recipient gap.
 
-When a student explicitly says in a message that they have paid (in supported English or Arabic phrases), the agent adds a **paid** WhatsApp chat label and the dashboard displays **Paid · student-reported** for that phone number. This is based on the student's statement, not payment verification; a receipt image by itself does not trigger the label. You can also use **Mark paid** or **Mark unpaid** beside any Es contact to manage the dashboard status manually; the connected agent will add or remove the matching WhatsApp chat label. Each manual **Mark paid** action records a one-month payment period in the **Payments** calendar, where you can see which students were marked paid on each date and when that month ends. Existing manually marked paid labels use their saved mark date; student-reported labels are not included in the calendar. The dashboard confirms when a manual change is saved and shows the same paid badge in the Chats list and conversation header. Baileys applies WhatsApp labels to chats, not to the Android address-book contact card.
+When a student explicitly says in a message that they have paid (in supported English or Arabic phrases), or submits a receipt that the scanner recognizes, the agent records a **Pending review** report in the **Payment ledger**. Neither a student's statement nor a scanned receipt automatically confirms payment. WhatsApp students can ask `/payment` in their direct chat for their current status. You can separately use **Mark paid** or **Mark unpaid** beside an Es contact to manage its WhatsApp chat label and historical calendar entry; those legacy controls do not change the rolling status in the **Payment ledger**. The dashboard confirms when a manual label change is saved and shows the same label badge in the Chats list and conversation header. Baileys applies WhatsApp labels to chats, not to the Android address-book contact card.
 
 Baileys may identify a saved contact using both a phone-number JID and an LID. The agent preserves this link so the dashboard can display the contact and resolve its phone number; newly saved or renamed phone contacts appear after WhatsApp syncs the contact update to the linked agent.
 
@@ -157,7 +199,7 @@ The admin dashboard asks you to create a password the first time it is opened. U
 
 When the agent reconnects after the linked WhatsApp device was unavailable, it processes messages WhatsApp explicitly fetches for that unavailable-device session and replies using the normal eligibility, opt-out, and conversation flow. It ignores ordinary old-history sync messages, so reconnecting does not trigger replies to past conversations. Messages are only recovered when WhatsApp delivers them to the linked device.
 
-The agent does not ask students about English difficulties, ask permission before sending lessons, or answer unrelated chat. It automatically sends matching configured content when their grade is known; if the grade is unknown, it uses the default Grade 3 Secondary curriculum.
+The agent does not ask students about English difficulties, ask permission before sending lessons, or answer unrelated chat. It automatically sends matching configured content; if the grade is unknown, it uses the default Grade 3 Secondary curriculum.
 
 The Es contacts page lets you **Ban** a number or **Delete** it from the local contact records. Both actions persist the number in `data/blocked_contacts.json`, which the agent checks before replying, following up, or sending queued messages. Delete also removes matching phone/LID aliases from `data/contacts.json`; it does not erase chat history or Android's address book. Use **Allow again** to remove a number from the block list. The contacts table's gender selector supports manual Female, Male, or Not identified values, stored by phone number in `data/contact_gender.json`; selecting Auto restores inference from client messages. Gender is also shown on dashboard chat cards and in the open conversation header. The Overview shows Female, Male, and Not identified counts and percentages across saved Es phone-book contacts, along with how many values were manually set or inferred. These statistics update live when synced contacts or gender values change. Automatic gender is inferred only when messages contain a clear first-person gendered self-description (for example, "أنا طالبة"); it does not guess from the contact name and may be wrong.
 
@@ -181,6 +223,7 @@ After WhatsApp syncs history, the dashboard's **Chats** view shows the locally r
 
 > [!TIP]
 > **How to scan the QR code when it is on the same phone:**
+>
 > 1. In Termux, start the agent:
 >    ```bash
 >    npm start
@@ -188,7 +231,7 @@ After WhatsApp syncs history, the dashboard's **Chats** view shows the locally r
 > 2. When the QR code appears in the Termux screen, take a **Screenshot** of your phone screen.
 > 3. Send that screenshot to a laptop/second screen or friend's phone.
 > 4. Open **WhatsApp** on your Honor X6b > **Three dots (top right)** > **Linked Devices** > **Link a device** and scan the QR code from the second screen!
-> 
+>
 > *Alternatively:* You can run `npm start` on your PC first, scan the QR code with your phone to log in, and then copy the generated `auth_info_baileys` folder into your phone's Termux. Once authenticated, it does not need to be scanned again!
 
 ---

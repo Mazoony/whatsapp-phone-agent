@@ -87,13 +87,12 @@ test('first replies greet and ask only for grade when unknown, never about probl
       'first-reply-grade-known@s.whatsapp.net', 'New Student', 'أهلاً، أنا في الصف الثالث الثانوي', [], 'grade_3_secondary',
       true
     );
-    assert.match(promptContents[0], /Sudanese Arabic if they wrote in Arabic, and English only if they wrote in English/i);
+    assert.match(promptContents[0], /natural Sudanese Arabic, regardless of the language they used/i);
     assert.match(promptContents[0], /ask only which grade and stage/i);
     assert.match(promptContents[0], /Never ask permission to send lessons or ask about their English difficulties/);
     assert.match(promptContents[1], /The student's grade is known, and the app will send the matching lesson video and exercise/);
     for (const prompt of promptContents) {
-      assert.match(prompt, /Match the language of the student's latest message/);
-      assert.match(prompt, /For an Arabic message, reply in natural Sudanese Arabic\. Use English only when the student wrote in English/);
+      assert.match(prompt, /Always communicate with the student in natural, polite Sudanese Arabic, regardless of the language of their message/);
       assert.doesNotMatch(prompt, /What is the biggest difficulty you face in English\?/);
       assert.doesNotMatch(prompt, /May I send you a lesson now\?/);
     }
@@ -103,10 +102,10 @@ test('first replies greet and ask only for grade when unknown, never about probl
   }
 });
 
-test('system instructions require Sudanese Arabic for Arabic messages and English only for English messages', () => {
+test('system instructions require Sudanese Arabic regardless of student message language', () => {
   const systemPrompt = config.getSystemPrompt();
-  assert.match(systemPrompt, /إذا كتب بالعربية، رد باللهجة السودانية فقط/);
-  assert.match(systemPrompt, /استخدم الإنجليزية فقط عندما تكون رسالة الطالب بالإنجليزية/);
+  assert.match(systemPrompt, /اتكلم مع الطالب دائماً باللهجة السودانية الدارجة المهذبة، مهما كانت لغة رسالته/);
+  assert.match(systemPrompt, /لكن الشرح والكلام معاه يكون بالسوداني/);
 });
 
 test('Year 3 Secondary AI context contains the requested English curriculum', () => {
@@ -235,6 +234,7 @@ test('incoming text gets a local response when Gemini keys are unavailable', asy
       message.role === 'user' && message.content.includes('17,000 Sudanese pounds (SDG)')));
     assert.ok(body.messages.some(message =>
       message.role === 'user' && message.content.includes('currently working on "Present Simple: Adding -s"')));
+    assert.ok(JSON.stringify(body.messages).includes('Always communicate with the student in natural, polite Sudanese Arabic'));
     return {
       ok: true,
       json: async () => ({ message: { content: 'Of course, what would you like help with?' } })
@@ -368,7 +368,7 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
     }, 'He go to school.'), {
       isTaskSubmission: true,
       allCorrect: false,
-      feedback: 'One or more answers need correction. Try again.'
+      feedback: 'في إجابة محتاجة تصحيح. حاول تاني.'
     });
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
@@ -414,7 +414,7 @@ test('task grading accepts a single-word answer as a complete submission', async
     }, 'interprets'), {
       isTaskSubmission: true,
       allCorrect: true,
-      feedback: 'Correct.'
+      feedback: 'صحيح، ممتاز.'
     });
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
@@ -422,7 +422,7 @@ test('task grading accepts a single-word answer as a complete submission', async
   }
 });
 
-test('task grading gives short feedback in the submitted language', async () => {
+test('task grading gives Sudanese Arabic feedback for English submissions', async () => {
   const previousKeys = [...config.geminiApiKeys];
   const previousFetch = globalThis.fetch;
   config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
@@ -441,9 +441,9 @@ test('task grading gives short feedback in the submitted language', async () => 
   try {
     const result = await evaluateStudentTask({
       title: 'Present Simple',
-      taskMessage: 'أكمل الجملة.',
+      taskMessage: 'Complete the sentence.',
       answerKey: ['goes']
-    }, 'الإجابة غلط');
+    }, 'The answer is wrong.');
     assert.equal(result.feedback, 'في إجابة محتاجة تصحيح. حاول تاني.');
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);

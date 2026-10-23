@@ -11,7 +11,9 @@ import {
   createDashboardDataCache,
   createAdminDashboardServer as createAuthenticatedDashboardServer,
   getDashboardAgentStatus,
+  getDashboardTelegramAgentStatus,
   getDashboardConversation,
+  getNextLessonToSkip,
   getDashboardOverview,
   listDashboardStudentProgress,
   getDashboardStudentActivity,
@@ -104,6 +106,160 @@ const sampleData = {
   }
 };
 
+test('student progress identifies a configured next lesson for WhatsApp and Telegram learners', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-skip-lesson-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const videoFile = path.join(directory, 'lesson_2.mp4');
+  fs.writeFileSync(videoFile, 'video');
+  const lessons = {
+    grade_3_secondary: {
+      name: 'Third Secondary',
+      lessons: [
+        { id: 'lesson_1', title: 'Lesson One' },
+        {
+          id: 'lesson_2',
+          title: 'Lesson Two',
+          videoFile,
+          taskMessage: 'Answer this question.',
+          answerKey: ['Correct answer']
+        }
+      ]
+    }
+  };
+  const data = {
+    ...sampleData,
+    lessons,
+    progress: {
+      '1001@s.whatsapp.net': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_task'
+      }
+    },
+    telegramProgress: {
+      'telegram:-100123:44': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_reattempt',
+        telegramChatId: '-100123',
+        telegramUserId: 44
+      }
+    }
+  };
+
+  const progress = listDashboardStudentProgress(data);
+  assert.deepEqual(progress.students.map(student => ({
+    platform: student.platform,
+    canSkip: student.canSkipToNextLesson,
+    nextLessonId: student.nextLessonId,
+    nextLessonTitle: student.nextLessonTitle
+  })), [
+    { platform: 'WhatsApp', canSkip: true, nextLessonId: 'lesson_2', nextLessonTitle: 'Lesson Two' },
+    { platform: 'Telegram', canSkip: true, nextLessonId: 'lesson_2', nextLessonTitle: 'Lesson Two' }
+  ]);
+  assert.equal(getNextLessonToSkip({ ...data.progress['1001@s.whatsapp.net'], status: 'consulting' }, lessons), null);
+  assert.equal(getNextLessonToSkip({
+    ...data.progress['1001@s.whatsapp.net'],
+    currentLessonId: 'lesson_2'
+  }, lessons), null);
+});
+
+test('dashboard queues validated lesson skips for both platforms and exposes queue state', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-skip-api-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const videoFile = path.join(directory, 'lesson_2.mp4');
+  const whatsappQueueFile = path.join(directory, 'whatsapp-skip.json');
+  const telegramQueueFile = path.join(directory, 'telegram-skip.json');
+  const agentStatusFile = path.join(directory, 'agent_status.json');
+  fs.writeFileSync(videoFile, 'video');
+  fs.writeFileSync(agentStatusFile, JSON.stringify({
+    connectionState: 'connected',
+    updatedAt: new Date().toISOString()
+  }));
+  const data = {
+    ...sampleData,
+    lessons: {
+      grade_3_secondary: {
+        name: 'Third Secondary',
+        lessons: [
+          { id: 'lesson_1', title: 'Lesson One' },
+          {
+            id: 'lesson_2',
+            title: 'Lesson Two',
+            videoFile,
+            taskMessage: 'Answer this question.',
+            answerKey: ['Correct answer']
+          }
+        ]
+      }
+    },
+    progress: {
+      '1001@s.whatsapp.net': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_task'
+      }
+    },
+    telegramProgress: {
+      'telegram:-100123:44': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_task',
+        telegramChatId: '-100123',
+        telegramUserId: 44
+      }
+    }
+  };
+  const server = createAdminDashboardServer({
+    readData: () => data,
+    agentStatusFile,
+    whatsappLessonSkipRequestsFile: whatsappQueueFile,
+    telegramLessonSkipRequestsFile: telegramQueueFile
+  });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const postSkip = (platform, jid, currentLessonId = 'lesson_1', includeOrigin = true) =>
+    fetch(`${origin}/api/admin/progress/skip-lesson`, {
+      method: 'POST',
+      headers: {
+        ...(includeOrigin ? { Origin: origin } : {}),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ platform, jid, currentLessonId })
+    });
+
+  const denied = await postSkip('WhatsApp', '1001@s.whatsapp.net', 'lesson_1', false);
+  assert.equal(denied.status, 403);
+  assert.equal(fs.existsSync(whatsappQueueFile), false);
+
+  const whatsappResponse = await postSkip('WhatsApp', '1001@s.whatsapp.net');
+  assert.equal(whatsappResponse.status, 202);
+  assert.equal((await whatsappResponse.json()).status, 'queued');
+  assert.equal(JSON.parse(fs.readFileSync(whatsappQueueFile, 'utf8'))[0].nextLessonId, 'lesson_2');
+
+  const telegramResponse = await postSkip('Telegram', 'telegram:-100123:44');
+  assert.equal(telegramResponse.status, 202);
+  assert.equal((await telegramResponse.json()).status, 'queued');
+  assert.equal(JSON.parse(fs.readFileSync(telegramQueueFile, 'utf8'))[0].chatId, '-100123');
+
+  const progressResponse = await fetch(`${origin}/api/admin/progress`);
+  assert.equal(progressResponse.status, 200);
+  const progress = await progressResponse.json();
+  assert.equal(progress.students.find(student => student.platform === 'WhatsApp').skipRequest.status, 'queued');
+  assert.equal(progress.students.find(student => student.platform === 'Telegram').skipRequest.status, 'queued');
+
+  data.progress['1001@s.whatsapp.net'].currentLessonId = 'lesson_2';
+  data.progress['1001@s.whatsapp.net'].currentLessonIndex = 1;
+  const stale = await postSkip('WhatsApp', '1001@s.whatsapp.net');
+  assert.equal(stale.status, 409);
+});
+
 test('recent agent message feed combines direct chats chronologically and resolves linked LID names', () => {
   const messages = listRecentAgentMessages({
     history: {
@@ -180,21 +336,99 @@ test('overview gender statistics count only saved Es phone-book contacts', () =>
     weeklyChatActivity: {
       timeZone: 'UTC',
       days: [
-        { date: '2023-11-08', day: 'Wed', chats: 0, newChats: 0 },
-        { date: '2023-11-09', day: 'Thu', chats: 0, newChats: 0 },
-        { date: '2023-11-10', day: 'Fri', chats: 0, newChats: 0 },
-        { date: '2023-11-11', day: 'Sat', chats: 0, newChats: 0 },
-        { date: '2023-11-12', day: 'Sun', chats: 0, newChats: 0 },
-        { date: '2023-11-13', day: 'Mon', chats: 0, newChats: 0 },
-        { date: '2023-11-14', day: 'Tue', chats: 2, newChats: 2 }
+        { date: '2023-11-08', day: 'Wed', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+        { date: '2023-11-09', day: 'Thu', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+        { date: '2023-11-10', day: 'Fri', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+        { date: '2023-11-11', day: 'Sat', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+        { date: '2023-11-12', day: 'Sun', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+        { date: '2023-11-13', day: 'Mon', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+        { date: '2023-11-14', day: 'Tue', chats: 2, newChats: 2, telegramActiveStudents: 0 }
       ]
     },
     studentsWithProgress: 1,
     awaitingTask: 1,
     awaitingReattempt: 0,
     completed: 0,
+    telegramStudents: 0,
+    telegramJoinedToday: 0,
+    telegramJoinedLast7Days: 0,
+    telegramDailyJoins: [
+      { date: '2023-11-08', students: 0 },
+      { date: '2023-11-09', students: 0 },
+      { date: '2023-11-10', students: 0 },
+      { date: '2023-11-11', students: 0 },
+      { date: '2023-11-12', students: 0 },
+      { date: '2023-11-13', students: 0 },
+      { date: '2023-11-14', students: 0 }
+    ],
     configuredLessons: 1
   });
+});
+
+test('overview and student progress report Telegram learner joins and lesson activity', () => {
+  const now = Date.parse('2026-10-16T12:00:00.000Z');
+  const nowSeconds = Math.floor(now / 1000);
+  const day = 24 * 60 * 60 * 1000;
+  const data = {
+    ...sampleData,
+    telegramProgress: {
+      'telegram:-100123:41': {
+        name: 'Amina Telegram',
+        telegramChatId: '-100123',
+        telegramUserId: 41,
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_task',
+        joinedAt: new Date(now).toISOString(),
+        deliveredAt: new Date(now).toISOString(),
+        lastActivityAt: new Date(now).toISOString(),
+        submissionsReceived: 2,
+        lessonsCompleted: 1,
+        activityTimestamps: [
+          new Date(now - day).toISOString(),
+          new Date(now).toISOString()
+        ]
+      },
+      'telegram:-100123:42': {
+        name: 'Musa Telegram',
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_reattempt',
+        deliveredAt: new Date(now - day).toISOString(),
+        submissionsReceived: 1,
+      }
+    }
+  };
+
+  const overview = getDashboardOverview(data, nowSeconds, 'UTC');
+  assert.equal(overview.studentsWithProgress, 3);
+  assert.equal(overview.awaitingTask, 2);
+  assert.equal(overview.awaitingReattempt, 1);
+  assert.equal(overview.telegramStudents, 2);
+  assert.equal(overview.telegramJoinedToday, 1);
+  assert.equal(overview.telegramJoinedLast7Days, 2);
+  assert.equal(overview.telegramDailyJoins.at(-1).students, 1);
+  assert.equal(overview.telegramDailyJoins.at(-2).students, 1);
+
+  const progress = listDashboardStudentProgress(data, nowSeconds, 'UTC');
+  assert.equal(progress.total, 3);
+  const telegram = progress.students.filter(student => student.platform === 'Telegram');
+  assert.deepEqual(telegram.map(student => student.name).sort(), ['Amina Telegram', 'Musa Telegram']);
+  const amina = telegram.find(student => student.name === 'Amina Telegram');
+  assert.equal(amina.totalIncomingMessages, 2);
+  assert.equal(amina.incomingMessagesLast7Days, 2);
+  assert.equal(amina.activeDaysLast30Days, 2);
+  assert.equal(amina.lessonsCompleted, 1);
+  assert.equal(progress.insights.engagementTrend.at(-1).telegramActiveStudents, 1);
+  assert.equal(progress.insights.engagementTrend.at(-2).telegramActiveStudents, 2);
+  assert.equal(progress.insights.telegramEnrollment.joinedToday, 1);
+  assert.equal(progress.insights.telegramEnrollment.joinedLast7Days, 2);
+  assert.equal(progress.insights.engagementTrend.at(-1).activeStudents, 1);
+  const musa = telegram.find(student => student.name === 'Musa Telegram');
+  assert.equal(musa.joinedAt, new Date(now - day).toISOString());
+  assert.equal(musa.incomingMessagesLast7Days, 1);
 });
 
 test('weekly dashboard activity counts distinct direct chats for the local calendar days', () => {
@@ -221,15 +455,45 @@ test('weekly dashboard activity counts distinct direct chats for the local calen
   assert.deepEqual(activity, {
     timeZone: 'UTC',
     days: [
-      { date: '2026-10-10', day: 'Sat', chats: 2, newChats: 2 },
-      { date: '2026-10-11', day: 'Sun', chats: 0, newChats: 0 },
-      { date: '2026-10-12', day: 'Mon', chats: 1, newChats: 0 },
-      { date: '2026-10-13', day: 'Tue', chats: 0, newChats: 0 },
-      { date: '2026-10-14', day: 'Wed', chats: 0, newChats: 0 },
-      { date: '2026-10-15', day: 'Thu', chats: 0, newChats: 0 },
-      { date: '2026-10-16', day: 'Fri', chats: 1, newChats: 0 }
+      { date: '2026-10-10', day: 'Sat', chats: 2, newChats: 2, telegramActiveStudents: 0 },
+      { date: '2026-10-11', day: 'Sun', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+      { date: '2026-10-12', day: 'Mon', chats: 1, newChats: 0, telegramActiveStudents: 0 },
+      { date: '2026-10-13', day: 'Tue', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+      { date: '2026-10-14', day: 'Wed', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+      { date: '2026-10-15', day: 'Thu', chats: 0, newChats: 0, telegramActiveStudents: 0 },
+      { date: '2026-10-16', day: 'Fri', chats: 1, newChats: 0, telegramActiveStudents: 0 }
     ]
   });
+});
+
+test('weekly dashboard activity counts distinct Telegram learners per local calendar day', () => {
+  const now = Date.parse('2026-10-16T12:00:00.000Z');
+  const activity = getDashboardWeeklyChatActivity({
+    ...sampleData,
+    telegramProgress: {
+      'telegram:-100123:41': {
+        activityTimestamps: [
+          '2026-10-10T09:00:00.000Z',
+          '2026-10-10T10:00:00.000Z',
+          '2026-10-12T12:00:00.000Z'
+        ]
+      },
+      'telegram:-100123:42': {
+        activityTimestamps: ['2026-10-10T11:00:00.000Z']
+      },
+      'telegram:-100123:43': {
+        deliveredAt: '2026-10-15T12:00:00.000Z'
+      },
+      'telegram:-100123:44': {
+        deliveredAt: '2026-10-09T12:00:00.000Z'
+      }
+    }
+  }, 'UTC', now);
+
+  assert.deepEqual(
+    activity.days.map(day => day.telegramActiveStudents),
+    [2, 0, 1, 0, 0, 1, 0]
+  );
 });
 
 test('weekly dashboard activity counts a returning chat once as new across linked phone and LID histories', () => {
@@ -411,6 +675,7 @@ test('student progress insights show calendar-day engagement and stale lesson fo
   assert.deepEqual(today, {
     date: '2026-10-16',
     activeStudents: 1,
+    telegramActiveStudents: 0,
     incomingMessages: 1
   });
   assert.deepEqual(result.insights.followUpStudents.map(student => ({
@@ -1018,7 +1283,7 @@ test('Es contacts API reflects new agent-synced contacts without restarting the 
   }
 });
 
-test('Es contacts API exposes inferred paid labels', async () => {
+test('Es contacts API does not treat student-reported claims as confirmed payments', async () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-paid-contact-test-'));
   const phoneNumber = '249123456789';
   const paymentLabelsFile = path.join(temporaryDirectory, 'contact_payment_labels.json');
@@ -1049,11 +1314,78 @@ test('Es contacts API exposes inferred paid labels', async () => {
     assert.equal(response.status, 200);
     const result = await response.json();
     const paidContact = result.contacts.find(contact => contact.phoneNumber === phoneNumber);
-    assert.equal(paidContact.paid.label, 'paid');
-    assert.equal(paidContact.paid.source, 'student-reported');
+    assert.equal(paidContact.paid, null);
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard lists and reviews rolling student payment-ledger records', async t => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-payment-ledger-test-'));
+  t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
+  const paymentLedgerFile = path.join(temporaryDirectory, 'student_payment_ledger.json');
+  const enrolledAt = '2026-01-01T12:00:00.000Z';
+  const studentKey = '1001@s.whatsapp.net';
+  const data = {
+    ...sampleData,
+    progress: {
+      [studentKey]: {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        status: 'awaiting_task',
+        enrolledAt,
+        deliveredAt: enrolledAt
+      }
+    }
+  };
+  const server = createAdminDashboardServer({
+    readData: () => data,
+    paymentLedgerFile
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const ledgerUrl = `${origin}/api/admin/payment-ledger`;
+    const initialResponse = await fetch(ledgerUrl);
+    assert.equal(initialResponse.status, 200);
+    const initial = await initialResponse.json();
+    assert.equal(initial.students.length, 1);
+    assert.equal(initial.students[0].studentKey, studentKey);
+    assert.equal(initial.students[0].payment.status, 'unpaid');
+
+    const deniedResponse = await fetch(ledgerUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentKey, status: 'paid' })
+    });
+    assert.equal(deniedResponse.status, 403);
+
+    const reviewResponse = await fetch(ledgerUrl, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        studentKey,
+        status: 'paid',
+        amount: 17000,
+        currency: 'SDG'
+      })
+    });
+    assert.equal(reviewResponse.status, 200);
+    const reviewed = await reviewResponse.json();
+    assert.equal(reviewed.payment.status, 'paid');
+    assert.equal(reviewed.payment.amount, 17000);
+    assert.equal(reviewed.payment.currency, 'SDG');
+
+    const invalidResponse = await fetch(ledgerUrl, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentKey, status: 'verified' })
+    });
+    assert.equal(invalidResponse.status, 400);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
   }
 });
 
@@ -1434,6 +1766,58 @@ test('agent status API reports live connection heartbeat and handled chat total'
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('Telegram agent status requires a fresh heartbeat and is exposed through the dashboard API', async t => {
+  const now = Date.now();
+  const connectedStatus = {
+    connectionState: 'connected',
+    botUsername: 'lesson_bot',
+    lastConnectedAt: new Date(now - 60_000).toISOString(),
+    updatedAt: new Date(now - 5_000).toISOString()
+  };
+  assert.deepEqual(getDashboardTelegramAgentStatus(connectedStatus, now), {
+    connectionState: 'connected',
+    connected: true,
+    botUsername: 'lesson_bot',
+    lastConnectedAt: connectedStatus.lastConnectedAt,
+    lastHeartbeatAt: connectedStatus.updatedAt
+  });
+  assert.equal(getDashboardTelegramAgentStatus({
+    ...connectedStatus,
+    connectionState: 'retrying'
+  }, now).connectionState, 'retrying');
+  assert.equal(getDashboardTelegramAgentStatus({
+    ...connectedStatus,
+    updatedAt: new Date(now - 60_000).toISOString()
+  }, now).connectionState, 'disconnected');
+  assert.equal(getDashboardTelegramAgentStatus(null, now).connectionState, 'unknown');
+
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-telegram-agent-status-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const telegramAgentStatusFile = path.join(directory, 'telegram_agent_status.json');
+  fs.writeFileSync(telegramAgentStatusFile, JSON.stringify(connectedStatus));
+  const server = createAdminDashboardServer({
+    readData: () => sampleData,
+    telegramAgentStatusFile
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const response = await fetch(
+      `http://127.0.0.1:${server.address().port}/api/admin/telegram-agent-status`
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      connectionState: 'connected',
+      connected: true,
+      botUsername: 'lesson_bot',
+      lastConnectedAt: connectedStatus.lastConnectedAt,
+      lastHeartbeatAt: connectedStatus.updatedAt
+    });
+  } finally {
+    await new Promise(resolve => server.close(resolve));
   }
 });
 

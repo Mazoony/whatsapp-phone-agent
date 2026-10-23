@@ -312,11 +312,7 @@ class LessonManager {
   hasActiveLesson(jid, phoneJid = null) {
     const student = this.getStudent(jid, phoneJid);
     if (!student) return false;
-    return [
-      'awaiting_task',
-      'awaiting_reattempt',
-      'awaiting_next_lesson_schedule'
-    ].includes(student.status);
+    return ['awaiting_task', 'awaiting_reattempt'].includes(student.status);
   }
 
   getTreasureIslandLessons() {
@@ -381,14 +377,14 @@ class LessonManager {
         await this.sendTreasureIslandText(
           sock,
           jid,
-          'Please finish your active lesson exercise first. You can choose a Treasure Island chapter after I check your answers.'
+          'كمّل تمرين الحصة الحالية أول. بعد ما أراجع إجاباتك بتقدر تختار فصل من Treasure Island.'
         );
         return true;
       }
       const lessons = this.getTreasureIslandLessons();
       if (lessons.length === 0) {
         await this.sendTreasureIslandText(
-          sock, jid, 'Treasure Island lessons are not available yet. Please check back later.'
+          sock, jid, 'دروس Treasure Island ما جاهزة هسي. جرّب تاني بعدين.'
         );
         return true;
       }
@@ -396,7 +392,7 @@ class LessonManager {
       await this.sendTreasureIslandText(
         sock,
         jid,
-        `Choose a Treasure Island lesson by replying with its number or title:\n\n${lessons
+        `اختار درس من Treasure Island وأرسل رقمو أو عنوانو:\n\n${lessons
           .map((lesson, index) => `${index + 1}. ${lesson.title || lesson.id}`)
           .join('\n')}`
       );
@@ -416,7 +412,7 @@ class LessonManager {
         await this.sendTreasureIslandText(
           sock,
           jid,
-          'Your active Treasure Island chapter is no longer available. Ask me for the Treasure Island lesson list to choose another chapter.'
+          'الفصل الحالي من Treasure Island ما بقى متوفر. أرسل لي قائمة دروس Treasure Island عشان تختار فصل تاني.'
         );
         return true;
       }
@@ -428,7 +424,7 @@ class LessonManager {
     if (lessons.length === 0) {
       this.setTreasureIslandState(jid, phoneJid, { pendingLessonSelection: false });
       await this.sendTreasureIslandText(
-        sock, jid, 'There are no complete Treasure Island lessons available right now.'
+        sock, jid, 'ما في دروس Treasure Island كاملة ومتوفرة هسي.'
       );
       return true;
     }
@@ -444,7 +440,7 @@ class LessonManager {
       await this.sendTreasureIslandText(
         sock,
         jid,
-        'I could not match that choice. Reply with a number or the exact title from the Treasure Island list.'
+        'ما قدرت أحدد اختيارك. أرسل رقم الدرس أو عنوانو زي ما ظاهر في قائمة Treasure Island.'
       );
       return true;
     }
@@ -463,7 +459,7 @@ class LessonManager {
     } catch (error) {
       console.error(`[LessonManager] Cannot deliver Treasure Island ${lesson.id} to ${jid}:`, error.message);
       await this.sendTreasureIslandText(
-        sock, jid, `The video for "${lesson.title}" is currently unavailable, so I did not send the exercise.`
+        sock, jid, `فيديو "${lesson.title}" ما متوفر هسي، عشان كدا ما أرسلت التمرين.`
       );
       return false;
     }
@@ -483,7 +479,7 @@ class LessonManager {
       await this.sendTreasureIslandText(
         sock,
         jid,
-        `The video for "${lesson.title}" could not be sent, so I did not send the exercise. Please ask me to resend the video.`
+        `ما قدرت أرسل فيديو "${lesson.title}"، عشان كدا ما أرسلت التمرين. أطلب مني أعيد إرسال الفيديو.`
       );
       return false;
     }
@@ -495,7 +491,7 @@ class LessonManager {
       await this.sendTreasureIslandText(
         sock,
         jid,
-        `The video for "${lesson.title}" was sent, but I could not send its exercise. Please ask me to send Treasure Island again.`
+        `الفيديو "${lesson.title}" وصل، لكن ما قدرت أرسل التمرين. أطلب مني أرسل درس Treasure Island تاني.`
       );
       return false;
     }
@@ -522,9 +518,8 @@ class LessonManager {
       result = await evaluateStudentTask(lesson, text, pushName);
     } catch (error) {
       console.error(`[LessonManager] Could not grade Treasure Island task from ${jid}:`, error.message);
-      const gradingFailure = /[\u0600-\u06FF]/.test(text)
-        ? 'ما قدرت أصحح إجابتك هسي بسبب مشكلة فنية. إجابتك ما اتسجلت كغلط؛ أرسلها تاني بعد شوية.'
-        : 'I could not mark your answers because of a temporary technical issue. They were not marked wrong; please send them again later.';
+      const gradingFailure =
+        'ما قدرت أصحح إجابتك هسي بسبب مشكلة فنية. إجابتك ما اتسجلت كغلط؛ أرسلها تاني بعد شوية.';
       await sendHumanizedMessage(
         sock,
         jid,
@@ -624,6 +619,17 @@ class LessonManager {
     return { status: laterVideoExists ? 'awaiting_content' : 'completed' };
   }
 
+  getNextLessonToDeliver(jid, gradeKey, phoneJid = null) {
+    const student = this.getStudent(jid, phoneJid);
+    if (!student || student.status === 'consulting') {
+      return this.getWelcomeSampleLesson(gradeKey)
+        ? { status: 'ready', lessonIndex: 0 }
+        : { status: 'awaiting_content' };
+    }
+    if (!student.currentLessonId) return { status: 'awaiting_content' };
+    return this.getNextSequentialLesson(gradeKey, student.currentLessonId);
+  }
+
   isLessonVideoRequest(text) {
     if (typeof text !== 'string') return false;
     const normalized = text
@@ -691,7 +697,7 @@ class LessonManager {
       } catch (error) {
         console.error(`[LessonManager] Cannot resend Treasure Island video for ${treasureLesson.id}:`, error.message);
         await this.sendTreasureIslandText(
-          sock, jid, `The video for "${treasureLesson.title}" is currently unavailable.`
+          sock, jid, `فيديو "${treasureLesson.title}" ما متوفر هسي.`
         );
         return true;
       }
@@ -765,7 +771,7 @@ class LessonManager {
       ?.find(item => item.id === treasureLessonId);
     if (treasureLesson) {
       if (!treasureLesson.taskMessage?.trim()) {
-        await this.sendTreasureIslandText(sock, jid, 'The exercise for this chapter is not configured.');
+        await this.sendTreasureIslandText(sock, jid, 'تمرين الفصل دا لسه ما جاهز.');
         return true;
       }
       await this.sendTreasureIslandText(sock, jid, treasureLesson.taskMessage);
@@ -781,12 +787,7 @@ class LessonManager {
         ?.find(item => item.id === student.currentLessonId) || null;
     }
     if (!lesson?.taskMessage?.trim()) {
-      const message = /[\u0600-\u06FF]/.test(
-        [...(historyManager.history[jid] || [])].reverse()
-          .find(item => item.role === 'client')?.text || ''
-      )
-        ? 'ما لقيت تمرين حالي أرسله ليك. أرسل لي صفك أو اطلب فيديو الدرس أول.'
-        : 'I could not find a current exercise to resend. Tell me your grade or ask for the lesson video first.';
+      const message = 'ما لقيت تمرين حالي أرسله ليك. أرسل لي صفك أو أطلب فيديو الدرس أول.';
       await sock.sendMessage(jid, { text: message });
       return false;
     }
@@ -902,12 +903,15 @@ class LessonManager {
     }
 
     // 4. Update student progress state
+    const previousProgress = this.getStudent(jid, phoneJid);
+    const deliveredAt = new Date().toISOString();
     const progressEntry = {
       grade: gradeKey,
       currentLessonIndex: lessonIndex,
       currentLessonId: lesson.id,
       status: 'awaiting_task',
-      deliveredAt: new Date().toISOString()
+      deliveredAt,
+      enrolledAt: previousProgress?.enrolledAt || deliveredAt
     };
     this.progress[jid] = progressEntry;
     if (phoneJid && phoneJid !== jid) {
@@ -930,12 +934,7 @@ class LessonManager {
   async canDeliverLessonToday(sock, jid, phoneJid = null) {
     const lastDeliveryAt = this.getLatestLessonDeliveryAt(jid, phoneJid);
     if (lastDeliveryAt !== null && Date.now() - lastDeliveryAt < DAILY_LESSON_INTERVAL_MS) {
-      const lastClientMessage = [...(historyManager.history[jid] || [])]
-        .reverse()
-        .find(message => message.role === 'client')?.text || '';
-      const response = /[\u0600-\u06FF]/.test(lastClientMessage)
-        ? 'إنت استلمت حصة خلال آخر ٢٤ ساعة. الحصة الجاية حتوصلك بعد ما تكمل المدة اليومية.'
-        : 'You already received a lesson in the last 24 hours. Your next lesson will arrive when the daily interval has passed.';
+      const response = 'إنت استلمت حصة خلال آخر ٢٤ ساعة. الحصة الجاية حتوصلك بعد ما تكمل المدة اليومية.';
       await sock.sendMessage(jid, {
         text: response
       });
@@ -952,7 +951,7 @@ class LessonManager {
     const currentLesson = this.getCurrentLesson(jid, phoneJid);
     if (!currentLesson) return false;
     const student = this.getStudent(jid, phoneJid);
-    if (!['awaiting_task', 'awaiting_reattempt', 'awaiting_next_lesson_schedule'].includes(student?.status)) return false;
+    if (!['awaiting_task', 'awaiting_reattempt'].includes(student?.status)) return false;
 
     console.log(`[LessonManager] Evaluating task submission from ${pushName} for ${currentLesson.id}...`);
 
@@ -961,9 +960,8 @@ class LessonManager {
       evalResult = await evaluateStudentTask(currentLesson, text, pushName);
     } catch (error) {
       console.error(`[LessonManager] Could not grade task submission from ${jid}:`, error.message);
-      const gradingFailure = /[\u0600-\u06FF]/.test(text)
-        ? 'ما قدرت أصحح إجابتك هسي بسبب مشكلة فنية. إجابتك ما اتسجلت كغلط؛ أرسلها تاني بعد شوية.'
-        : 'I could not mark your answers because of a temporary technical issue. They were not marked wrong; please send them again later.';
+      const gradingFailure =
+        'ما قدرت أصحح إجابتك هسي بسبب مشكلة فنية. إجابتك ما اتسجلت كغلط؛ أرسلها تاني بعد شوية.';
       await sendHumanizedMessage(
         sock,
         jid,
@@ -986,7 +984,7 @@ class LessonManager {
       ? this.getNextSequentialLesson(student.grade, currentLessonId)
       : null;
     const feedback = nextLesson?.status === 'ready'
-      ? (/[\u0600-\u06FF]/.test(text) ? 'صحيح.' : 'Correct.')
+      ? 'صحيح، ممتاز.'
       : evalResult.feedback;
 
     await sendHumanizedMessage(sock, jid, feedback, config.typingWordsPerMinute);

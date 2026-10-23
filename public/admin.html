@@ -183,7 +183,7 @@
     .weekly-chat-panel { padding: 15px 17px 12px; }
     .weekly-chat-panel h2 { margin: 0; font-size: 13px; }
     .weekly-chat-panel p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
-    .weekly-chat-chart { overflow-x: auto; margin-top: 8px; }
+    .weekly-chat-chart { position: relative; overflow-x: auto; margin-top: 8px; }
     .weekly-chat-chart svg { display: block; width: 100%; min-width: 540px; height: auto; }
     .weekly-chat-chart text { fill: var(--muted); font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
     .weekly-chat-chart .weekly-chat-grid { stroke: #e5ebe7; stroke-width: 1; }
@@ -191,6 +191,14 @@
     .weekly-chat-chart .weekly-chat-point { fill: white; stroke: #23875a; stroke-width: 3; }
     .weekly-chat-chart .weekly-chat-new-line { fill: none; stroke: #5278c7; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
     .weekly-chat-chart .weekly-chat-new-point { fill: white; stroke: #5278c7; stroke-width: 3; }
+    .weekly-chat-chart .weekly-chat-telegram-line { fill: none; stroke: #8e55b9; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .weekly-chat-chart .weekly-chat-telegram-point { fill: white; stroke: #8e55b9; stroke-width: 3; }
+    .weekly-chat-chart .weekly-chat-telegram-hit-line { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; }
+    .weekly-chat-chart .weekly-chat-telegram-hit-point { fill: transparent; stroke: transparent; stroke-width: 12; pointer-events: all; cursor: crosshair; }
+    .weekly-chat-chart .weekly-chat-telegram-hit-line:focus-visible { stroke: #8e55b955; outline: none; }
+    .weekly-chat-chart .weekly-chat-telegram-hit-point:focus-visible { fill: #8e55b944; stroke: #8e55b9; outline: none; }
+    .weekly-chat-tooltip { position: absolute; z-index: 5; max-width: 250px; padding: 8px 10px; border: 1px solid #d9c9e8; border-radius: 7px; background: #fff; box-shadow: 0 4px 14px #17231e24; color: #342442; font-size: 10px; line-height: 1.5; pointer-events: none; }
+    .weekly-chat-tooltip[hidden] { display: none; }
     .weekly-chat-chart .weekly-chat-count { font-size: 10px; font-weight: 750; paint-order: stroke; stroke: white; stroke-width: 3px; stroke-linejoin: round; }
     .weekly-chat-chart .weekly-chat-count-all { fill: #17633f; }
     .weekly-chat-chart .weekly-chat-count-new { fill: #385ba1; }
@@ -198,6 +206,7 @@
     .weekly-chat-legend span { display: inline-flex; align-items: center; gap: 5px; }
     .weekly-chat-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: #23875a; }
     .weekly-chat-legend .weekly-chat-new-key { background: #5278c7; }
+    .weekly-chat-legend .weekly-chat-telegram-key { background: #8e55b9; }
     .weekly-chat-summary { margin-top: 3px !important; }
     .payment-calendar-panel { padding: 16px; }
     .payment-calendar-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -276,6 +285,8 @@
     .composer-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
     .primary-button { border: 0; border-radius: 8px; padding: 9px 14px; background: var(--green); color: white; font-weight: 700; }
     .primary-button:disabled { cursor: not-allowed; opacity: .5; }
+    .skip-lesson-button { white-space: nowrap; }
+    .skip-lesson-status { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
     .broadcast-jobs { margin-top: 14px; }
     .broadcast-job { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #eff2f0; padding: 11px 14px; font-size: 11px; }
     .broadcast-job:last-child { border-bottom: 0; }
@@ -336,7 +347,14 @@
     .presence-timeline li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 5px 2px; border-top: 1px solid #edf1ee; color: #53645a; font-size: 9px; }
     .presence-timeline .online-label { color: #16804b; font-weight: 700; }
     .activity-chart-title { margin: 12px 0 0; font-size: 10px; color: #52635a; font-weight: 700; }
+    .student-insight-chart-wrap { position: relative; min-height: 64px; margin-top: 7px; }
     .student-insight-chart { display: grid; grid-template-columns: repeat(30, minmax(3px, 1fr)); align-items: end; gap: 3px; min-height: 64px; margin-top: 7px; }
+    .student-insight-chart-wrap .student-insight-chart { margin-top: 0; }
+    .student-insight-telegram-line { position: absolute; inset: 0; z-index: 2; width: 100%; height: 64px; overflow: visible; pointer-events: none; }
+    .student-insight-telegram-line polyline { fill: none; stroke: #8e55b9; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .telegram-join-chart { display: grid; grid-template-columns: repeat(7, minmax(18px, 1fr)); align-items: end; gap: 8px; min-height: 76px; margin-top: 8px; }
+    .telegram-join-day { display: flex; min-width: 0; height: 70px; flex-direction: column; align-items: center; justify-content: end; gap: 4px; color: var(--muted); font-size: 9px; }
+    .telegram-join-day i { display: block; width: min(100%, 20px); min-height: 2px; border-radius: 4px 4px 0 0; background: #23875a; }
     .student-insight-day { display: flex; min-width: 0; height: 58px; align-items: end; justify-content: center; }
     .student-insight-bar { display: block; width: min(100%, 12px); min-height: 2px; border-radius: 3px 3px 0 0; background: #23875a; }
     .student-insight-bars { display: flex; width: 100%; height: 54px; align-items: end; justify-content: center; gap: 1px; }
@@ -350,6 +368,7 @@
     .student-insight-legend span { display: inline-flex; align-items: center; gap: 4px; }
     .student-insight-legend i { width: 8px; height: 8px; border-radius: 2px; background: #23875a; }
     .student-insight-legend .outgoing-key { background: #79a8cf; }
+    .student-insight-legend .telegram-key { width: 13px; height: 0; border-top: 2px solid #8e55b9; border-radius: 0; background: transparent; }
     .student-insight-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; color: var(--muted); font-size: 10px; }
     .student-insight-summary strong { color: var(--ink); }
     .lesson-follow-through { margin-top: 10px; padding: 10px; border: 1px solid #e5ece7; border-radius: 8px; background: #fbfdfb; font-size: 10px; }
@@ -416,6 +435,14 @@
     .status.awaiting_reattempt { background: #fce9e7; color: #a3423c; }
     .status.awaiting_content { background: #fff4df; color: #986113; }
     .status.completed { background: var(--green-soft); color: var(--green); }
+    .status.pending_review { background: #fff4df; color: #986113; }
+    .status.paid { background: var(--green-soft); color: var(--green); }
+    .status.rejected { background: #fce9e7; color: #a3423c; }
+    .payment-ledger-amount, .payment-ledger-actions { display: flex; align-items: center; gap: 5px; min-width: 175px; }
+    .payment-ledger-amount input, .payment-ledger-actions select { min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 6px; color: var(--ink); background: white; font: inherit; font-size: 10px; }
+    .payment-ledger-amount input:first-child { width: 90px; }
+    .payment-ledger-amount input:last-child { width: 60px; }
+    .payment-ledger-actions select { flex: 1; }
     .pagination { display: flex; justify-content: center; align-items: center; gap: 11px; padding: 12px; color: var(--muted); font-size: 11px; }
     .pagination button { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 5px 9px; }
     .error { margin: 14px 0; padding: 11px 13px; border: 1px solid #f1cccc; background: #fff5f4; border-radius: 9px; color: var(--red); font-size: 12px; }
@@ -573,7 +600,8 @@
         <button class="nav-item" data-section="agent"><span class="nav-icon">●</span>WhatsApp agent</button>
         <button class="nav-item" data-section="es-contacts"><span class="nav-icon">✳</span>Es contacts</button>
         <button class="nav-item" data-section="progress"><span class="nav-icon">◷</span>Student progress</button>
-        <button class="nav-item" data-section="payment-calendar"><span class="nav-icon">$</span>Payments</button>
+        <button class="nav-item" data-section="payment-ledger"><span class="nav-icon">$</span>Payment ledger</button>
+        <button class="nav-item" data-section="payment-calendar"><span class="nav-icon">▦</span>Payment calendar</button>
         <button class="nav-item" data-section="scheduled-lessons"><span class="nav-icon">◷</span>Scheduled lessons</button>
         <button class="nav-item" data-section="curriculum"><span class="nav-icon">📚</span>Curriculum</button>
       </nav>
@@ -602,7 +630,12 @@
           <button class="metric metric-button" data-go="progress" aria-label="View students with lesson progress">
             <span class="metric-top"><span>Students tracked</span><span class="metric-icon">♧</span></span>
             <span class="metric-value" id="metric-students">—</span>
-            <span class="metric-foot">With lesson progress records · View list →</span>
+            <span class="metric-foot">WhatsApp and Telegram lesson records · View list →</span>
+          </button>
+          <button class="metric metric-button" data-go="progress" aria-label="View Telegram learners">
+            <span class="metric-top"><span>Telegram learners</span><span class="metric-icon">✈</span></span>
+            <span class="metric-value" id="metric-telegram-students">—</span>
+            <span class="metric-foot" id="metric-telegram-joins">Joined today — · last 7 days —</span>
           </button>
           <button class="metric metric-button" data-go="es-contacts" aria-label="View Es phone-book contacts">
             <span class="metric-top"><span>Es contacts</span><span class="metric-icon">✳</span></span>
@@ -625,15 +658,21 @@
             <span class="metric-foot" id="agent-status-detail">Connection status updates automatically · View handled chats →</span>
             <span class="metric-foot agent-account-detail" id="agent-account-detail">Linked WhatsApp account: not reported</span>
           </button>
+          <article class="metric" aria-label="Telegram bot connection status">
+            <div class="metric-top"><span>Telegram bot</span><span class="metric-icon">✈</span></div>
+            <div class="metric-value agent-status-line"><i class="agent-status-dot" id="telegram-agent-status-dot"></i><span id="telegram-agent-status-value">Checking…</span></div>
+            <div class="metric-foot" id="telegram-agent-status-detail">Connection status updates automatically</div>
+          </article>
         </div>
 
-        <div class="section-heading"><div><h2>Chats throughout the week</h2><p>Unique direct chats with incoming messages and new conversations, day by day.</p></div></div>
+        <div class="section-heading"><div><h2>Chats throughout the week</h2><p>Unique WhatsApp chats and active Telegram learners, day by day.</p></div></div>
         <article class="panel weekly-chat-panel">
           <div id="weekly-chat-summary" class="weekly-chat-summary" aria-live="polite">Loading the last seven days…</div>
           <div id="weekly-chat-chart" class="weekly-chat-chart" aria-live="polite"></div>
           <div class="weekly-chat-legend" aria-label="Chart legend">
             <span><i></i>All active chats</span>
             <span><i class="weekly-chat-new-key"></i>New chats</span>
+            <span><i class="weekly-chat-telegram-key"></i>Telegram active learners · scaled separately</span>
           </div>
         </article>
 
@@ -685,7 +724,7 @@
             <h3>Student engagement · last 30 days</h3>
             <p class="activity-summary" id="progress-engagement-summary" aria-live="polite">Loading student engagement…</p>
             <div id="progress-engagement-chart"></div>
-            <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span></div>
+            <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
           </article>
           <article class="panel roster-insight-panel">
             <h3>Students to check in with</h3>
@@ -951,6 +990,23 @@
         <p class="activity-note">Older manually marked paid records use their saved mark date. Student-reported payment labels are not included. Dates use your browser's local timezone.</p>
       </section>
 
+      <section class="section" id="section-payment-ledger">
+        <div class="section-heading">
+          <div>
+            <h2>Student payment ledger</h2>
+            <p>Each payment period is 30 days from the student's enrollment date. Student claims and receipt scans stay pending until you review them.</p>
+          </div>
+          <button class="pagination button" id="payment-ledger-refresh" type="button">Refresh</button>
+        </div>
+        <article class="panel table-wrap">
+          <table>
+            <thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Payment period</th><th>Status</th><th>Amount</th><th>Evidence / reference</th><th>Actions</th></tr></thead>
+            <tbody id="payment-ledger-rows"><tr><td colspan="8" class="empty">Loading payment records…</td></tr></tbody>
+          </table>
+        </article>
+        <p class="activity-note">Only dashboard-confirmed payments are recorded as paid. Telegram status requests are answered privately; a group payment report receives a neutral acknowledgement.</p>
+      </section>
+
       <section class="section" id="section-progress">
         <div class="section-heading"><div><h2>Student progress</h2><p>Students with a saved lesson progress record.</p></div></div>
         <article class="panel workbook-panel">
@@ -961,12 +1017,18 @@
           </div>
           <a class="primary-button workbook-download" id="workbook-download" href="/api/admin/student-workbook.xlsx" download="students.xlsx" aria-disabled="true">Download Excel</a>
         </article>
+        <article class="panel roster-insight-panel telegram-enrollment-panel">
+          <h3>Telegram group learners</h3>
+          <p class="activity-summary" id="telegram-enrollment-summary" aria-live="polite">Loading Telegram enrollment…</p>
+          <div class="telegram-join-chart" id="telegram-join-chart" aria-label="Daily Telegram learner joins over the last seven days"></div>
+          <div class="student-insight-legend"><span><i></i>First `/lesson` command</span></div>
+        </article>
         <div class="roster-insights">
           <article class="panel roster-insight-panel">
             <h3>Student engagement · last 30 days</h3>
             <p class="activity-summary" id="progress-engagement-summary-page" aria-live="polite">Loading student engagement…</p>
             <div id="progress-engagement-chart-page"></div>
-            <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span></div>
+            <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
           </article>
           <article class="panel roster-insight-panel">
             <h3>Students to check in with</h3>
@@ -975,7 +1037,7 @@
           </article>
         </div>
         <div class="panel table-wrap">
-          <table><thead><tr><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Last student message</th><th>Texts received</th><th>Active days (30d)</th><th>Last delivery</th></tr></thead><tbody id="progress-rows"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Telegram joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Action</th></tr></thead><tbody id="progress-rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
         </div>
       </section>
 
@@ -1947,11 +2009,31 @@
       $(`#bar-${name}`).style.width = `${Math.min(100, value / max * 100)}%`;
     }
 
-    function renderWeeklyChatActivity(activity) {
+    function renderWeeklyChatActivity(activity, telegramStudents = []) {
       const container = $('#weekly-chat-chart');
-      const days = activity.days;
-      if (!Array.isArray(days) || days.length !== 7) {
+      if (!Array.isArray(activity?.days) || activity.days.length !== 7) {
         throw new Error('Weekly chat activity data is incomplete.');
+      }
+      const days = activity.days.map(day => ({ ...day }));
+      if (days.every(day => day.telegramActiveStudents === undefined)) {
+        const telegramCounts = new Map();
+        const dateFormatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: activity.timeZone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        for (const student of telegramStudents.filter(item =>
+          item.platform === 'Telegram' && (item.lastStudentActivityAt || item.deliveredAt || item.joinedAt))) {
+          const timestamp = Date.parse(student.lastStudentActivityAt || student.deliveredAt || student.joinedAt);
+          if (!Number.isFinite(timestamp)) continue;
+          const parts = Object.fromEntries(
+            dateFormatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
+          );
+          const date = `${parts.year}-${parts.month}-${parts.day}`;
+          telegramCounts.set(date, (telegramCounts.get(date) || 0) + 1);
+        }
+        for (const day of days) day.telegramActiveStudents = telegramCounts.get(day.date) || 0;
       }
       const width = 760;
       const height = 250;
@@ -1962,6 +2044,7 @@
       const plotWidth = width - left - right;
       const plotHeight = height - top - bottom;
       const maximum = Math.max(1, ...days.flatMap(day => [day.chats, day.newChats]));
+      const maximumTelegram = Math.max(1, ...days.map(day => day.telegramActiveStudents || 0));
       const ticks = [...new Set([0, Math.ceil(maximum / 2), maximum])];
       const grid = ticks.map(value => {
         const y = top + plotHeight - (value / maximum) * plotHeight;
@@ -1971,10 +2054,19 @@
         const x = left + index * (plotWidth / (days.length - 1));
         const y = top + plotHeight - (day.chats / maximum) * plotHeight;
         const newY = top + plotHeight - (day.newChats / maximum) * plotHeight;
-        return { ...day, x, y, newY };
+        const telegramY = top + plotHeight - (day.telegramActiveStudents / maximumTelegram) * plotHeight;
+        return { ...day, x, y, newY, telegramY };
       });
       const line = points.map(point => `${point.x},${point.y}`).join(' ');
       const newLine = points.map(point => `${point.x},${point.newY}`).join(' ');
+      const telegramLine = points.map(point => `${point.x},${point.telegramY}`).join(' ');
+      const telegramHitLines = points.slice(1).map((point, index) => {
+        const previous = points[index];
+        const describe = day =>
+          `${day.day}, ${day.date}: ${day.chats} active ${day.chats === 1 ? 'WhatsApp chat' : 'WhatsApp chats'}, ${day.newChats} new ${day.newChats === 1 ? 'chat' : 'chats'}, ${day.telegramActiveStudents} Telegram active ${day.telegramActiveStudents === 1 ? 'learner' : 'learners'}`;
+        const description = `${describe(previous)}; ${describe(point)}`;
+        return `<line class="weekly-chat-telegram-hit-line" x1="${previous.x}" y1="${previous.telegramY}" x2="${point.x}" y2="${point.telegramY}" tabindex="0" role="img" aria-label="${escapeHtml(description)}" aria-describedby="weekly-chat-tooltip" data-weekly-tooltip="${escapeHtml(description)}"><title>${escapeHtml(description)}</title></line>`;
+      }).join('');
       const marks = points.map(point => {
         const labelDate = new Intl.DateTimeFormat(undefined, {
           month: 'numeric',
@@ -1982,28 +2074,71 @@
           timeZone: 'UTC'
         }).format(new Date(`${point.date}T00:00:00Z`));
         const description = `${point.day}, ${labelDate}: ${point.chats} active ${point.chats === 1 ? 'chat' : 'chats'}, ${point.newChats} new`;
-        return `<circle class="weekly-chat-point" cx="${point.x}" cy="${point.y}" r="5"><title>${escapeHtml(description)}</title></circle><circle class="weekly-chat-new-point" cx="${point.x}" cy="${point.newY}" r="4"><title>${escapeHtml(description)}</title></circle><text class="weekly-chat-count weekly-chat-count-all" x="${point.x}" y="${point.y - 10}" text-anchor="middle">${point.chats}</text><text class="weekly-chat-count weekly-chat-count-new" x="${point.x}" y="${point.newY + 16}" text-anchor="middle">${point.newChats}</text><text x="${point.x}" y="${height - 23}" text-anchor="middle">${escapeHtml(point.day)}</text><text x="${point.x}" y="${height - 9}" text-anchor="middle">${escapeHtml(labelDate)}</text>`;
+        const telegramDescription = `${point.day}, ${point.date}: ${point.chats} active ${point.chats === 1 ? 'WhatsApp chat' : 'WhatsApp chats'}, ${point.newChats} new ${point.newChats === 1 ? 'chat' : 'chats'}, ${point.telegramActiveStudents} Telegram active ${point.telegramActiveStudents === 1 ? 'learner' : 'learners'}`;
+        return `<circle class="weekly-chat-point" cx="${point.x}" cy="${point.y}" r="5"><title>${escapeHtml(description)}</title></circle><circle class="weekly-chat-new-point" cx="${point.x}" cy="${point.newY}" r="4"><title>${escapeHtml(description)}</title></circle>${point.telegramActiveStudents ? `<circle class="weekly-chat-telegram-point" cx="${point.x}" cy="${point.telegramY}" r="4"></circle>` : ''}<text class="weekly-chat-count weekly-chat-count-all" x="${point.x}" y="${point.y - 10}" text-anchor="middle">${point.chats}</text><text class="weekly-chat-count weekly-chat-count-new" x="${point.x}" y="${point.newY + 16}" text-anchor="middle">${point.newChats}</text><text x="${point.x}" y="${height - 23}" text-anchor="middle">${escapeHtml(point.day)}</text><text x="${point.x}" y="${height - 9}" text-anchor="middle">${escapeHtml(labelDate)}</text><circle class="weekly-chat-telegram-hit-point" cx="${point.x}" cy="${point.telegramY}" r="8" tabindex="0" role="img" aria-label="${escapeHtml(telegramDescription)}" aria-describedby="weekly-chat-tooltip" data-weekly-tooltip="${escapeHtml(telegramDescription)}"><title>${escapeHtml(telegramDescription)}</title></circle>`;
       }).join('');
       container.innerHTML = `
-        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Daily active chats and new conversations for the last seven days">
+        <svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Daily active WhatsApp chats and new conversations, with Telegram active learners shown on a separate scale, for the last seven days">
           ${grid}
           <polyline class="weekly-chat-line" points="${line}"></polyline>
           <polyline class="weekly-chat-new-line" points="${newLine}"></polyline>
+          <polyline class="weekly-chat-telegram-line" points="${telegramLine}"></polyline>
+          ${telegramHitLines}
           ${marks}
-        </svg>`;
+        </svg>
+        <div class="weekly-chat-tooltip" id="weekly-chat-tooltip" role="tooltip" hidden></div>`;
+      const tooltip = container.querySelector('.weekly-chat-tooltip');
+      const showTooltip = (target, clientX, clientY) => {
+        tooltip.textContent = target.dataset.weeklyTooltip;
+        tooltip.hidden = false;
+        const bounds = container.getBoundingClientRect();
+        const targetBounds = target.getBoundingClientRect();
+        const x = clientX ?? (targetBounds.left + targetBounds.right) / 2;
+        const y = clientY ?? (targetBounds.top + targetBounds.bottom) / 2;
+        const minLeft = container.scrollLeft + 8;
+        const maxLeft = Math.max(minLeft, container.scrollLeft + container.clientWidth - tooltip.offsetWidth - 8);
+        const minTop = container.scrollTop + 8;
+        const maxTop = Math.max(minTop, container.scrollTop + container.clientHeight - tooltip.offsetHeight - 8);
+        tooltip.style.left = `${Math.min(maxLeft, Math.max(minLeft, x - bounds.left + container.scrollLeft + 12))}px`;
+        tooltip.style.top = `${Math.min(maxTop, Math.max(minTop, y - bounds.top + container.scrollTop + 12))}px`;
+      };
+      container.onpointermove = event => {
+        const target = event.target.closest?.('[data-weekly-tooltip]');
+        if (target && container.contains(target)) showTooltip(target, event.clientX, event.clientY);
+        else tooltip.hidden = true;
+      };
+      container.onpointerleave = () => { tooltip.hidden = true; };
+      container.onfocusin = event => {
+        const target = event.target.closest?.('[data-weekly-tooltip]');
+        if (target && container.contains(target)) showTooltip(target);
+      };
+      container.onfocusout = event => {
+        if (!container.contains(event.relatedTarget)) tooltip.hidden = true;
+      };
       const total = days.reduce((sum, day) => sum + day.chats, 0);
       const newTotal = days.reduce((sum, day) => sum + day.newChats, 0);
+      const telegramTotal = days.reduce((sum, day) => sum + day.telegramActiveStudents, 0);
       $('#weekly-chat-summary').textContent =
-        `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
+        `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats · ${telegramTotal.toLocaleString()} Telegram active learner-days over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
     }
 
     async function loadOverview() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const data = await api(`/api/admin/overview?${new URLSearchParams({ timeZone })}`);
-      renderWeeklyChatActivity(data.weeklyChatActivity);
+      let telegramStudents = [];
+      if (Array.isArray(data.weeklyChatActivity?.days) &&
+        data.weeklyChatActivity.days.length === 7 &&
+        data.weeklyChatActivity.days.every(day => day.telegramActiveStudents === undefined)) {
+        const progress = await api(`/api/admin/progress?${new URLSearchParams({ timeZone })}`);
+        telegramStudents = progress.students || [];
+      }
+      renderWeeklyChatActivity(data.weeklyChatActivity, telegramStudents);
       $('#metric-chats').textContent = data.totalChats.toLocaleString();
       $('#metric-active').textContent = data.activeToday.toLocaleString();
       $('#metric-students').textContent = data.studentsWithProgress.toLocaleString();
+      $('#metric-telegram-students').textContent = data.telegramStudents.toLocaleString();
+      $('#metric-telegram-joins').textContent =
+        `Joined today ${data.telegramJoinedToday.toLocaleString()} · last 7 days ${data.telegramJoinedLast7Days.toLocaleString()}`;
       $('#metric-es').textContent = data.esContacts.toLocaleString();
       $('#metric-permanent-history').textContent = data.permanentHistoryContacts.toLocaleString();
       $('#metric-handled').textContent = data.handledChats.toLocaleString();
@@ -2297,32 +2432,77 @@
       container.innerHTML = `<strong>Lesson follow-through</strong><div>${escapeHtml(lessonProgress.gradeName)} · ${escapeHtml(lessonProgress.lessonTitle || 'No current lesson')} · ${escapeHtml(labels[lessonProgress.status] || lessonProgress.status)}</div><small>Last lesson delivery: ${escapeHtml(formatDate(lessonProgress.deliveredAt))}</small>`;
     }
 
-    function renderRosterInsights(insights, summarySelector, chartSelector, followUpSummarySelector, followUpListSelector, timeZone) {
+    function renderRosterInsights(insights, summarySelector, chartSelector, followUpSummarySelector, followUpListSelector, timeZone, students) {
       const summary = $(summarySelector);
       const chart = $(chartSelector);
       const followUpSummary = $(followUpSummarySelector);
       const followUpList = $(followUpListSelector);
       const trend = insights?.engagementTrend || [];
-      const maximumActive = Math.max(1, ...trend.map(day => day.activeStudents));
+      if (trend.length && trend.every(day => day.telegramActiveStudents === undefined)) {
+        const telegramByDate = new Map();
+        for (const student of students.filter(item =>
+          item.platform === 'Telegram' && !item.lastStudentActivityAt && !item.joinedAt && item.deliveredAt)) {
+          const timestamp = Date.parse(student.deliveredAt);
+          if (!Number.isFinite(timestamp)) continue;
+          const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+            timeZone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          }).formatToParts(new Date(timestamp)).map(part => [part.type, part.value]));
+          const date = `${parts.year}-${parts.month}-${parts.day}`;
+          telegramByDate.set(date, (telegramByDate.get(date) || 0) + 1);
+        }
+        for (const day of trend) day.telegramActiveStudents = telegramByDate.get(day.date) || 0;
+      }
+      const maximumActive = Math.max(1, ...trend.map(day =>
+        Math.max(day.activeStudents, day.telegramActiveStudents || 0)));
+      const maximumTelegram = Math.max(1, ...trend.map(day => day.telegramActiveStudents || 0));
       const maximumMessages = Math.max(1, ...trend.map(day => day.incomingMessages));
+      const telegramLinePoints = trend.map((day, index) => {
+        const x = trend.length > 1 ? 5 + index * 290 / (trend.length - 1) : 150;
+        const y = 59 - (day.telegramActiveStudents || 0) / maximumTelegram * 50;
+        return `${x},${y}`;
+      }).join(' ');
       const activeStudents = insights?.activeStudentsLast7Days || 0;
       const messagesLast7Days = trend.slice(-7).reduce((total, day) => total + day.incomingMessages, 0);
       summary.textContent = `${activeStudents.toLocaleString()} tracked students · ${messagesLast7Days.toLocaleString()} messages in the last 7 calendar days · 30-day daily trend (${timeZone}).`;
       chart.innerHTML = trend.length ? `
-        <div class="student-insight-chart" role="img" aria-label="Daily active tracked students and incoming student messages over the last 30 days">
-          ${trend.map(day => {
-            const activeHeight = day.activeStudents ? Math.max(2, day.activeStudents / maximumActive * 54) : 0;
-            const messageHeight = day.incomingMessages ? Math.max(2, day.incomingMessages / maximumMessages * 54) : 0;
-            return `<div class="student-insight-day" title="${escapeHtml(day.date)}: ${day.activeStudents} active students · ${day.incomingMessages} messages"><span class="student-insight-bars"><i class="student-insight-bar" style="height:${activeHeight}px"></i><i class="student-insight-bar messages" style="height:${messageHeight}px"></i></span></div>`;
-          }).join('')}
+        <div class="student-insight-chart-wrap" role="img" aria-label="Daily active tracked students and incoming student messages over the last 30 days. Telegram active students use a separate scale.">
+          <div class="student-insight-chart">
+            ${trend.map(day => {
+              const activeHeight = day.activeStudents ? Math.max(2, day.activeStudents / maximumActive * 54) : 0;
+              const messageHeight = day.incomingMessages ? Math.max(2, day.incomingMessages / maximumMessages * 54) : 0;
+              return `<div class="student-insight-day" title="${escapeHtml(day.date)}: ${day.activeStudents} active students · ${day.incomingMessages} messages · ${day.telegramActiveStudents || 0} Telegram active"><span class="student-insight-bars"><i class="student-insight-bar" style="height:${activeHeight}px"></i><i class="student-insight-bar messages" style="height:${messageHeight}px"></i></span></div>`;
+            }).join('')}
+          </div>
+          <svg class="student-insight-telegram-line" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true"><polyline points="${telegramLinePoints}"></polyline></svg>
         </div>` : '<div class="empty">No tracked student engagement data.</div>';
       const followUps = insights?.followUpStudents || [];
       followUpSummary.textContent = `${followUps.length.toLocaleString()} students are awaiting a task or reattempt with no recorded student message or lesson delivery for at least 7 days.`;
-      followUpList.innerHTML = followUps.length ? followUps.slice(0, 10).map(student => `
-        <button class="roster-follow-up-item" data-open-chat="${escapeHtml(student.jid)}">
-          <span><strong>${escapeHtml(student.name)}</strong><br><small>${escapeHtml(student.gradeName)} · ${escapeHtml(student.lessonTitle || 'Lesson pending')}</small></span>
-          <span><span class="status ${escapeHtml(student.status)}">${student.status === 'awaiting_reattempt' ? 'Reattempt' : 'Awaiting exercise'}</span><br><small>${student.daysSinceActivity}d since activity</small></span>
-        </button>`).join('') : '<div class="empty">No overdue lesson follow-ups right now.</div>';
+      followUpList.innerHTML = followUps.length ? followUps.slice(0, 10).map(student => {
+        const content = `
+          <span><strong>${escapeHtml(student.name)}</strong><br><small>${escapeHtml(student.platform || 'WhatsApp')} · ${escapeHtml(student.gradeName)} · ${escapeHtml(student.lessonTitle || 'Lesson pending')}</small></span>
+          <span><span class="status ${escapeHtml(student.status)}">${student.status === 'awaiting_reattempt' ? 'Reattempt' : 'Awaiting exercise'}</span><br><small>${student.daysSinceActivity}d since activity</small></span>`;
+        return student.platform === 'Telegram'
+          ? `<div class="roster-follow-up-item">${content}</div>`
+          : `<button class="roster-follow-up-item" data-open-chat="${escapeHtml(student.jid)}">${content}</button>`;
+      }).join('') : '<div class="empty">No overdue lesson follow-ups right now.</div>';
+    }
+
+    function renderTelegramEnrollment(enrollment, timeZone) {
+      const days = enrollment?.dailyJoins || [];
+      const maximum = Math.max(1, ...days.map(day => day.students));
+      $('#telegram-enrollment-summary').textContent =
+        `${(enrollment?.totalStudents || 0).toLocaleString()} tracked learners · ${(enrollment?.joinedToday || 0).toLocaleString()} joined today · ${(enrollment?.joinedLast7Days || 0).toLocaleString()} in the last 7 calendar days · ${timeZone}. Counts start when a learner first uses /lesson.`;
+      $('#telegram-join-chart').innerHTML = days.length ? days.map(day => {
+        const height = day.students ? Math.max(3, day.students / maximum * 46) : 2;
+        const label = new Intl.DateTimeFormat(undefined, {
+          weekday: 'short',
+          timeZone: 'UTC'
+        }).format(new Date(`${day.date}T12:00:00Z`));
+        return `<div class="telegram-join-day" title="${escapeHtml(day.date)}: ${day.students} joined"><span>${day.students}</span><i style="height:${height}px"></i><small>${escapeHtml(label)}</small></div>`;
+      }).join('') : '<div class="empty">No Telegram enrollment dates recorded yet.</div>';
     }
 
     function renderPresenceMetrics(presence, containerSelector) {
@@ -2493,13 +2673,15 @@
     async function loadProgress() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const { students, insights } = await api(`/api/admin/progress?${new URLSearchParams({ timeZone })}`);
+      renderTelegramEnrollment(insights.telegramEnrollment, timeZone);
       renderRosterInsights(
         insights,
         '#progress-engagement-summary',
         '#progress-engagement-chart',
         '#progress-follow-up-summary',
         '#progress-follow-up-list',
-        timeZone
+        timeZone,
+        students
       );
       renderRosterInsights(
         insights,
@@ -2507,10 +2689,52 @@
         '#progress-engagement-chart-page',
         '#progress-follow-up-summary-page',
         '#progress-follow-up-list-page',
-        timeZone
+        timeZone,
+        students
       );
-      $('#progress-rows').innerHTML = students.length ? students.map(student => `
-        <tr><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${formatDate(student.deliveredAt)}</td></tr>`).join('') : '<tr><td colspan="8" class="empty">No student progress recorded yet.</td></tr>';
+      $('#progress-rows').innerHTML = students.length ? students.map(student => {
+        const skipRequest = student.skipRequest;
+        const isWaiting = ['queued', 'processing'].includes(skipRequest?.status);
+        const skipButtonLabel = isWaiting
+          ? skipRequest.status === 'processing' ? 'Sending…' : 'Queued…'
+          : skipRequest?.status === 'failed' ? 'Retry skip' : 'Skip to next lesson';
+        const skipStatusText = isWaiting
+          ? 'The next lesson will be sent when the agent processes this request.'
+          : skipRequest?.status === 'failed'
+            ? `Previous attempt failed: ${escapeHtml(skipRequest.error || 'delivery error')}`
+            : `Next: ${escapeHtml(student.nextLessonTitle)}`;
+        const skipAction = student.canSkipToNextLesson
+          ? `<button class="pagination button skip-lesson-button" type="button" data-skip-platform="${escapeHtml(student.platform)}" data-skip-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${isWaiting ? 'disabled' : ''}>${skipButtonLabel}</button><small class="skip-lesson-status">${skipStatusText}</small>`
+          : '—';
+        return `<tr><td>${escapeHtml(student.platform)}</td><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td>${skipAction}</td></tr>`;
+      }).join('') : '<tr><td colspan="12" class="empty">No student progress recorded yet.</td></tr>';
+      $('#progress-rows').querySelectorAll('.skip-lesson-button').forEach(button => {
+        button.addEventListener('click', async () => {
+          const platform = button.dataset.skipPlatform;
+          const jid = button.dataset.skipJid;
+          const student = students.find(item => item.platform === platform && item.jid === jid);
+          if (!student || !window.confirm(
+            `Skip ${student.name} from ${student.lessonTitle} to ${student.nextLessonTitle}? They will no longer be graded on the current lesson.`
+          )) return;
+          button.disabled = true;
+          button.textContent = 'Queuing…';
+          try {
+            await api('/api/admin/progress/skip-lesson', {
+              method: 'POST',
+              body: JSON.stringify({
+                platform,
+                jid,
+                currentLessonId: button.dataset.currentLesson
+              })
+            });
+            await loadProgress();
+          } catch (error) {
+            button.disabled = false;
+            button.textContent = 'Skip to next lesson';
+            showError(`Could not skip this student to the next lesson: ${error.message}`);
+          }
+        });
+      });
     }
 
     async function loadWorkbookStatus() {
@@ -2591,6 +2815,33 @@
       } else {
         accountDetail.textContent = 'Linked WhatsApp account has not been reported';
       }
+    }
+
+    async function loadTelegramAgentStatus() {
+      const status = await api('/api/admin/telegram-agent-status');
+      const statusLabels = {
+        connected: 'Connected',
+        connecting: 'Connecting',
+        retrying: 'Reconnecting',
+        disconnected: 'Disconnected',
+        unknown: 'Not reported'
+      };
+      $('#telegram-agent-status-value').textContent =
+        statusLabels[status.connectionState] || 'Not reported';
+      $('#telegram-agent-status-dot').className =
+        `agent-status-dot ${status.connectionState === 'retrying' ? 'connecting' : status.connectionState}`;
+      const detail = status.connectionState === 'connected'
+        ? `Last connected ${formatDate(status.lastConnectedAt)}${status.botUsername ? ` · @${status.botUsername}` : ''}`
+        : status.connectionState === 'connecting'
+          ? 'Starting Telegram polling'
+          : status.connectionState === 'retrying'
+            ? 'Telegram polling is retrying after a connection error'
+            : status.connectionState === 'disconnected' && status.lastConnectedAt
+              ? `Last connected ${formatDate(status.lastConnectedAt)} · heartbeat is stale or disconnected`
+              : status.connectionState === 'disconnected'
+                ? 'Telegram agent reported a disconnected state'
+                : 'Start the bot with npm run telegram to report its status';
+      $('#telegram-agent-status-detail').textContent = detail;
     }
 
     async function loadAgentLogs() {
@@ -2952,6 +3203,74 @@
       renderPaymentCalendar();
     }
 
+    async function loadPaymentLedger() {
+      const { students } = await api('/api/admin/payment-ledger');
+      const statusLabels = {
+        unpaid: 'Unpaid',
+        pending_review: 'Pending review',
+        paid: 'Paid',
+        rejected: 'Rejected'
+      };
+      $('#payment-ledger-rows').innerHTML = students.length
+        ? students.map(student => {
+          const payment = student.payment;
+          const periodEnd = new Date(Date.parse(payment.periodEnd) - 1).toISOString();
+          const details = payment.details || {};
+          const evidence = [
+            payment.source === 'telegram-receipt' || payment.source === 'whatsapp-receipt'
+              ? 'Receipt submitted'
+              : payment.source === 'telegram-claim' || payment.source === 'whatsapp-claim'
+                ? 'Student reported payment'
+                : '',
+            details.bank,
+            details.transactionId ? `Ref: ${details.transactionId}` : '',
+            details.adminNote
+          ].filter(Boolean).map(escapeHtml).join(' · ');
+          return `<tr data-payment-ledger-key="${escapeHtml(student.studentKey)}">
+            <td>${escapeHtml(student.platform)}</td>
+            <td>${escapeHtml(student.name)}</td>
+            <td>${escapeHtml(student.gradeName)}</td>
+            <td>${escapeHtml(formatDate(payment.periodStart, false))} – ${escapeHtml(formatDate(periodEnd, false))}</td>
+            <td><span class="status ${escapeHtml(payment.status)}">${escapeHtml(statusLabels[payment.status] || payment.status)}</span>${payment.claimedAt ? `<small class="skip-lesson-status">Reported ${escapeHtml(formatDate(payment.claimedAt))}</small>` : ''}</td>
+            <td><div class="payment-ledger-amount"><input type="number" min="0" step="any" inputmode="decimal" aria-label="Amount for ${escapeHtml(student.name)}" data-payment-amount value="${payment.amount ?? ''}" placeholder="Optional"><input type="text" maxlength="3" aria-label="Currency for ${escapeHtml(student.name)}" data-payment-currency value="${escapeHtml(payment.currency || 'SDG')}"></div></td>
+            <td>${evidence || '—'}</td>
+            <td><div class="payment-ledger-actions"><select aria-label="Payment status for ${escapeHtml(student.name)}" data-payment-status>${Object.entries(statusLabels).map(([value, label]) => `<option value="${value}" ${value === payment.status ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="pagination button" type="button" data-payment-save>Save</button></div></td>
+          </tr>`;
+        }).join('')
+        : '<tr><td colspan="8" class="empty">No students with lesson progress are available yet.</td></tr>';
+
+      $('#payment-ledger-rows').querySelectorAll('[data-payment-save]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const row = button.closest('tr');
+          const statusSelect = row.querySelector('[data-payment-status]');
+          const amountInput = row.querySelector('[data-payment-amount]');
+          const currencyInput = row.querySelector('[data-payment-currency]');
+          const nextStatus = statusSelect.value;
+          if (nextStatus === 'paid' && !window.confirm(
+            `Confirm this student's payment as received for the current 30-day period?`
+          )) return;
+          button.disabled = true;
+          button.textContent = 'Saving…';
+          try {
+            await api('/api/admin/payment-ledger', {
+              method: 'POST',
+              body: JSON.stringify({
+                studentKey: row.dataset.paymentLedgerKey,
+                status: nextStatus,
+                amount: amountInput.value === '' ? null : Number(amountInput.value),
+                currency: currencyInput.value
+              })
+            });
+            await loadPaymentLedger();
+          } catch (error) {
+            button.disabled = false;
+            button.textContent = 'Save';
+            showError(`Could not update this payment record: ${error.message}`);
+          }
+        });
+      });
+    }
+
     async function loadAgentQr() {
       if (!handledChatsOnly) return;
       const result = await api('/api/admin/agent-qr');
@@ -3205,6 +3524,7 @@
           loadScheduledLessons(),
           loadManualScheduleOptions(),
           loadAgentStatus(),
+          loadTelegramAgentStatus(),
           loadWorkbookStatus(),
           loadCurriculumOverview().catch(() => {})
         ]);
@@ -3243,11 +3563,16 @@
             tasks.push(loadPaymentCalendar());
           }
         }
-        if (has('student_progress.json', 'lessons.json')) {
+        if (has('student_progress.json', 'telegram_progress.json', 'lessons.json')) {
             tasks.push(loadOverview(), loadProgress(), loadWorkbookStatus(), loadCurriculumOverview());
+        }
+        if (has('student_payment_ledger.json') &&
+            document.querySelector('#section-payment-ledger').classList.contains('active')) {
+          tasks.push(loadPaymentLedger());
         }
           if (has('contacts.json', 'chat_history.json', 'students.xlsx')) tasks.push(loadWorkbookStatus());
         if (has('agent_status.json')) tasks.push(loadAgentStatus());
+        if (has('telegram_agent_status.json')) tasks.push(loadTelegramAgentStatus());
         if (has('agent_qr.json') && handledChatsOnly) tasks.push(loadAgentQr());
         if (has('agent_media_activity.json') &&
             handledChatsOnly &&
@@ -3284,6 +3609,9 @@
       if (name === 'payment-calendar') {
         loadPaymentCalendar().catch(error => showError(`Could not load payment calendar: ${error.message}`));
       }
+      if (name === 'payment-ledger') {
+        loadPaymentLedger().catch(error => showError(`Could not load payment ledger: ${error.message}`));
+      }
       if (name === 'scheduled-lessons') {
         loadScheduledLessons().catch(error => showError(`Could not load scheduled lessons: ${error.message}`));
       }
@@ -3293,7 +3621,8 @@
         agent: ['WhatsApp agent', 'A readable live view of incoming messages and the agent’s replies, alongside its terminal log.'],
         'es-contacts': ['Es contacts', 'Review Es contacts synced from your phone book.'],
         progress: ['Student progress', 'Review students and their current lesson status.'],
-        'payment-calendar': ['Payments', 'Review the students marked paid and their one-month coverage dates.'],
+        'payment-ledger': ['Payment ledger', 'Review student payment claims and confirm the current 30-day period.'],
+        'payment-calendar': ['Payment calendar', 'Review historical payment dates and collected amounts.'],
         'scheduled-lessons': ['Scheduled lessons', 'Create and manage one-time lesson deliveries. Times use Sudan time.'],
         curriculum: ['Curriculum & Lessons', 'Upload lesson videos, configure tasks, and establish answer keys by stage and school year.']
       };
@@ -3313,6 +3642,9 @@
         1
       );
       renderPaymentCalendar();
+    });
+    $('#payment-ledger-refresh').addEventListener('click', () => {
+      loadPaymentLedger().catch(error => showError(`Could not refresh payment ledger: ${error.message}`));
     });
     $('#payment-calendar-next').addEventListener('click', () => {
       paymentCalendarMonth = new Date(
