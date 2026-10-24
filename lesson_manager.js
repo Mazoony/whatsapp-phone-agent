@@ -11,7 +11,7 @@ import { getPhoneJid } from './phonebook.js';
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve('data');
 const PROGRESS_FILE = path.join(DATA_DIR, 'student_progress.json');
-const LESSONS_FILE = path.resolve('lessons.json');
+const LESSONS_FILE = path.join(APP_DIR, 'lessons.json');
 const DAILY_LESSON_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function resolveLessonVideoPath(videoFile) {

@@ -16,9 +16,16 @@ const TASK_EVALUATION_FORMAT = {
   type: 'object',
   properties: {
     isTaskSubmission: { type: 'boolean' },
-    allCorrect: { type: 'boolean' }
+    allCorrect: { type: 'boolean' },
+    answeredQuestionNumbers: { type: 'array', items: { type: 'integer' } },
+    correctQuestionNumbers: { type: 'array', items: { type: 'integer' } }
   },
-  required: ['isTaskSubmission', 'allCorrect'],
+  required: [
+    'isTaskSubmission',
+    'allCorrect',
+    'answeredQuestionNumbers',
+    'correctQuestionNumbers'
+  ],
   additionalProperties: false
 };
 
@@ -36,30 +43,62 @@ function getTaskFeedback(isTaskSubmission, allCorrect) {
  * @param {object} lesson The lesson object containing taskMessage and answerKey
  * @param {string} studentSubmission The message sent by the student
  * @param {string} studentName The student's name
- * @returns {Promise<{ isTaskSubmission: boolean, allCorrect: boolean, feedback: string }>}
+ * @param {object} options Optional pending question numbers for partial corrections
+ * @returns {Promise<{ isTaskSubmission: boolean, allCorrect: boolean, answeredQuestionNumbers: number[], correctQuestionNumbers: number[], feedback: string }>}
  */
-export async function evaluateStudentTask(lesson, studentSubmission, studentName = 'الطالب') {
+export async function evaluateStudentTask(
+  lesson,
+  studentSubmission,
+  studentName = 'الطالب',
+  { pendingQuestionNumbers } = {}
+) {
   if (typeof studentSubmission !== 'string' || !studentSubmission.trim()) {
-    return { isTaskSubmission: false, allCorrect: false, feedback: '' };
+    return {
+      isTaskSubmission: false,
+      allCorrect: false,
+      answeredQuestionNumbers: [],
+      correctQuestionNumbers: [],
+      feedback: ''
+    };
   }
   if (typeof lesson?.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
       !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0) {
     throw new Error('Cannot grade a lesson without configured questions and an answer key.');
   }
+  const pending = Array.isArray(pendingQuestionNumbers)
+    ? [...new Set(pendingQuestionNumbers.filter(number =>
+        Number.isInteger(number) && number >= 1 && number <= lesson.answerKey.length))]
+    : lesson.answerKey.map((_, index) => index + 1);
+  if (pending.length === 0) {
+    return {
+      isTaskSubmission: false,
+      allCorrect: false,
+      answeredQuestionNumbers: [],
+      correctQuestionNumbers: [],
+      feedback: ''
+    };
+  }
+  const pendingAnswers = pending.map(questionNumber => ({
+    questionNumber,
+    expectedAnswer: lesson.answerKey[questionNumber - 1]
+  }));
 
   const prompt = `
 You are an encouraging Sudanese English teacher. Mark ${studentName}'s attempt using this lesson:
 QUESTIONS: ${lesson.taskMessage}
-ANSWER KEY: ${JSON.stringify(lesson.answerKey)}
+PENDING ANSWERS: ${JSON.stringify(pendingAnswers)}
 STUDENT: "${studentSubmission}"
 
-If the message is unrelated to this exercise, return isTaskSubmission=false.
-Otherwise compare every answer with its question and the answer key. Judge meaning and the grammar being tested, not exact wording. Accept correct paraphrases, synonyms, valid equivalent forms, contractions, concise answers, and minor typos that do not change meaning. A one-word answer can be complete. Match unnumbered answers in order only when the order is clear. Reject answers that change meaning or use the wrong form when that form is tested. If meaning is ambiguous, do not assume correctness; ask for clarification. allCorrect is true only when every answer is correct.
+Only grade answers in the student's latest message; previously accepted answers are not part of this message. If the message is unrelated to this exercise, return isTaskSubmission=false and empty arrays. Otherwise, identify which pending question numbers the student actually answered. Use explicit question numbers when present, but do not require students to number their answers. For unnumbered answers, match each answer to the pending question whose wording and expected answer best fit its meaning. A single answer may be matched by its content even when several questions remain, if the match is clear and unique. For several unnumbered answers, use their order when it clearly corresponds to the exercise or remaining question order; also use the content of each answer to resolve the match when possible. If the mapping is genuinely ambiguous, do not guess. Never treat a missing answer as wrong or answered.
+
+Judge meaning and the grammar being tested, not exact wording. Accept correct paraphrases, synonyms, valid equivalent forms, contractions, concise answers, and minor typos that do not change meaning. A one-word answer can be complete. Reject answers that change meaning or use the wrong form when that form is tested. If meaning is ambiguous, do not assume correctness. answeredQuestionNumbers contains only questions answered in this message. correctQuestionNumbers is the subset of those answers that are correct. allCorrect is true only when this message answers every question in PENDING ANSWERS and every one is correct.
 
 Return only this JSON shape. Do not generate feedback; the app sends it:
 {
   "isTaskSubmission": boolean,
-  "allCorrect": boolean
+  "allCorrect": boolean,
+  "answeredQuestionNumbers": number[],
+  "correctQuestionNumbers": number[]
 }
 `;
 
@@ -80,8 +119,7 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
         const rawText = res.response.text()?.trim();
         const cleaned = rawText.replace(/^```json/i, '').replace(/```$/i, '').trim();
         const parsed = JSON.parse(cleaned);
-        if (typeof parsed.isTaskSubmission !== 'boolean' ||
-            typeof parsed.allCorrect !== 'boolean') {
+        if (!isValidTaskEvaluation(parsed, lesson.answerKey.length, pending)) {
           throw new Error('Gemini returned task grading in an invalid format.');
         }
 
@@ -103,11 +141,10 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
     const rawText = await generateLocalResponse(prompt, {
       systemInstruction: 'Evaluate the student answer using the provided rubric. Follow the requested JSON format exactly.',
       format: TASK_EVALUATION_FORMAT,
-      numPredict: 128
+      numPredict: 256
     });
     const parsed = JSON.parse(rawText);
-    if (typeof parsed.isTaskSubmission !== 'boolean' ||
-        typeof parsed.allCorrect !== 'boolean') {
+    if (!isValidTaskEvaluation(parsed, lesson.answerKey.length, pending)) {
       throw new Error('Ollama returned task grading in an invalid format.');
     }
     console.log('[Grader] Task evaluated using local Ollama.');
@@ -119,4 +156,21 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
     console.error('[Grader Error] Gemini and local Ollama failed:', localError.message, lastError?.message || '');
     throw new Error(`Could not evaluate the student's task: ${localError.message}`);
   }
+}
+
+function isValidTaskEvaluation(result, answerCount, pendingQuestionNumbers) {
+  if (typeof result?.isTaskSubmission !== 'boolean' ||
+      typeof result?.allCorrect !== 'boolean' ||
+      !Array.isArray(result.answeredQuestionNumbers) ||
+      !Array.isArray(result.correctQuestionNumbers)) {
+    return false;
+  }
+  const pending = new Set(pendingQuestionNumbers);
+  const answered = new Set(result.answeredQuestionNumbers);
+  const correct = new Set(result.correctQuestionNumbers);
+  return answered.size === result.answeredQuestionNumbers.length &&
+    correct.size === result.correctQuestionNumbers.length &&
+    [...answered].every(number => Number.isInteger(number) && number >= 1 &&
+      number <= answerCount && pending.has(number)) &&
+    [...correct].every(number => answered.has(number));
 }

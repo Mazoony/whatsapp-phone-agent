@@ -341,19 +341,28 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
       type: 'object',
       properties: {
         isTaskSubmission: { type: 'boolean' },
-        allCorrect: { type: 'boolean' }
+        allCorrect: { type: 'boolean' },
+        answeredQuestionNumbers: { type: 'array', items: { type: 'integer' } },
+        correctQuestionNumbers: { type: 'array', items: { type: 'integer' } }
       },
-      required: ['isTaskSubmission', 'allCorrect'],
+      required: [
+        'isTaskSubmission',
+        'allCorrect',
+        'answeredQuestionNumbers',
+        'correctQuestionNumbers'
+      ],
       additionalProperties: false
     });
-    assert.deepEqual(body.options, { num_predict: 128 });
+    assert.deepEqual(body.options, { num_predict: 256 });
     return {
       ok: true,
       json: async () => ({
         message: {
           content: JSON.stringify({
             isTaskSubmission: true,
-            allCorrect: false
+            allCorrect: false,
+            answeredQuestionNumbers: [1],
+            correctQuestionNumbers: []
           })
         }
       })
@@ -368,6 +377,8 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
     }, 'He go to school.'), {
       isTaskSubmission: true,
       allCorrect: false,
+      answeredQuestionNumbers: [1],
+      correctQuestionNumbers: [],
       feedback: 'في إجابة محتاجة تصحيح. حاول تاني.'
     });
   } finally {
@@ -392,6 +403,9 @@ test('task grading accepts a single-word answer as a complete submission', async
       message.role === 'user' &&
       message.content.includes('Accept correct paraphrases, synonyms, valid equivalent forms')));
     assert.ok(body.messages.some(message =>
+      message.role === 'user' &&
+      message.content.includes("do not require students to number their answers")));
+    assert.ok(body.messages.some(message =>
       message.role === 'user' && message.content.includes('interprets')));
     return {
       ok: true,
@@ -399,7 +413,9 @@ test('task grading accepts a single-word answer as a complete submission', async
         message: {
           content: JSON.stringify({
             isTaskSubmission: true,
-            allCorrect: true
+            allCorrect: true,
+            answeredQuestionNumbers: [1],
+            correctQuestionNumbers: [1]
           })
         }
       })
@@ -414,6 +430,8 @@ test('task grading accepts a single-word answer as a complete submission', async
     }, 'interprets'), {
       isTaskSubmission: true,
       allCorrect: true,
+      answeredQuestionNumbers: [1],
+      correctQuestionNumbers: [1],
       feedback: 'صحيح، ممتاز.'
     });
   } finally {
@@ -432,7 +450,9 @@ test('task grading gives Sudanese Arabic feedback for English submissions', asyn
       message: {
         content: JSON.stringify({
           isTaskSubmission: true,
-          allCorrect: false
+          allCorrect: false,
+          answeredQuestionNumbers: [1],
+          correctQuestionNumbers: []
         })
       }
     })

@@ -68,18 +68,6 @@
         ]
       },
       {
-        "id": "lesson_2",
-        "title": "الحصة الثانية: قاعدة أدوات الربط والشرط المتقدم (Conditionals & Connectors)",
-        "videoFile": "media/lessons/grade_3_secondary/lesson_2.mp4",
-        "caption": "🎬 فيديو الحصة الثانية - الصف الثالث ثانوي | مستر مازن (eShool)",
-        "introMessage": "ما شاء الله تبارك الله عليك! 🔥 بما إنك أتقنت الحصة الأولى وحليت تمرينها بنجاح، دي الحصة الثانية ليك لمتابعة التميز في الشهادة الثانوية هسي 👇",
-        "taskMessage": "📝 *تمرين الحصة الثانية (Task 2):*\n\n1️⃣ *Join the sentences using (Although):*\n• He was tired. He completed his homework.\n\n2️⃣ *Complete the third conditional sentence:*\n• If she had woken up early, she (not miss) the bus.\n\n✍️ *رسل لي إجاباتك هنا عشان أصححها ليك!*",
-        "answerKey": [
-          "1: Although he was tired, he completed his homework.",
-          "2: would not have missed / wouldn't have missed"
-        ]
-      },
-      {
         "id": "lesson_3",
         "title": "الحصة 3 Present Simple - Singular - the verb ends in -y",
         "videoFile": "media/lessons/grade_3_secondary/lesson_3.mp4",
@@ -117,6 +105,18 @@
           "Does / stop — This is a yes/no question. Use the base verb stop.",
           "does / do — Use where to ask about a place. Here, do is the main verb.",
           "does / clean — Use how often to ask about frequency."
+        ]
+      },
+      {
+        "id": "lesson_2",
+        "title": "الحصة الثانية: قاعدة أدوات الربط والشرط المتقدم (Conditionals & Connectors)",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_2.mp4",
+        "caption": "🎬 فيديو الحصة الثانية - الصف الثالث ثانوي | مستر مازن (eShool)",
+        "introMessage": "ما شاء الله تبارك الله عليك! 🔥 بما إنك أتقنت الحصة الأولى وحليت تمرينها بنجاح، دي الحصة الثانية ليك لمتابعة التميز في الشهادة الثانوية هسي 👇",
+        "taskMessage": "1. Ahmed __________ to school by bus every morning. (go)\n\n2. My mother __________ the dishes after dinner every day. (wash)\n\n3. The teacher __________ the lesson clearly every time. (teach)\n\n4. Sara __________ TV after finishing her homework. (watch)\n\n5. My father __________ his car every weekend. (fix)\n\n6. The bus __________ near our house every morning. (pass)\n\n7. Hassan __________ his homework before he plays football. (do)\n\n8. The goalkeeper __________ the ball carefully during every match. (catch)\n\n9. A good student __________ carefully to the teacher every lesson. (listen)\n\n10. The school bus __________ at the gate every afternoon. (reach)",
+        "answerKey": [
+          "1: Although he was tired, he completed his homework.",
+          "2: would not have missed / wouldn't have missed"
         ]
       },
       {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>eShool | Local Admin</title>
+  <title>eShool | Telegram Learning Dashboard</title>
   <style>
     :root {
       color-scheme: light;
@@ -69,6 +69,7 @@
     .section-heading h2 { font-size: 16px; margin: 0; letter-spacing: -.2px; }
     .section-heading p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
     .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+    .telegram-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 720px; }
     .metric { background: var(--paper); border: 1px solid var(--line); border-radius: 13px; padding: 16px 17px; box-shadow: var(--shadow); }
     .metric-button { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; }
     .metric-button:hover { border-color: #a9cdb6; box-shadow: 0 12px 30px rgba(30, 90, 60, .12); }
@@ -542,11 +543,11 @@
     .modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid var(--line); background: #fafcfb; }
     .footer-buttons { display: flex; gap: 10px; }
     .phone-mockup { max-width: 380px; width: 100%; border-radius: 24px; border: 9px solid #1a2c24; background: #eef2ee; overflow: hidden; box-shadow: 0 20px 48px rgba(0,0,0,.25); margin: 0 auto; }
-    .phone-header { background: #075e54; color: white; padding: 11px 13px; display: flex; align-items: center; gap: 10px; }
-    .phone-avatar { width: 34px; height: 34px; border-radius: 50%; background: #25d366; display: grid; place-items: center; font-weight: 850; color: white; font-size: 14px; }
+    .phone-header { background: #229ed9; color: white; padding: 11px 13px; display: flex; align-items: center; gap: 10px; }
+    .phone-avatar { width: 34px; height: 34px; border-radius: 50%; background: #168acd; display: grid; place-items: center; font-weight: 850; color: white; font-size: 14px; }
     .phone-contact strong { display: block; font-size: 12px; }
     .phone-contact small { font-size: 10px; opacity: .85; }
-    .phone-chat { padding: 14px; max-height: 480px; overflow-y: auto; background-color: #efeae2; background-image: var(--chat-doodle); background-size: 200px 200px; display: flex; flex-direction: column; gap: 9px; }
+    .phone-chat { padding: 14px; max-height: 480px; overflow-y: auto; background-color: #eaf3fa; display: flex; flex-direction: column; gap: 9px; }
     .preview-bubble { max-width: 88%; background: white; border-radius: 9px; padding: 9px 12px; font-size: 11px; line-height: 1.45; white-space: pre-wrap; align-self: flex-start; box-shadow: 0 1px 2px rgba(0,0,0,.15); position: relative; border-top-left-radius: 2px; }
     .preview-bubble.video-card { background: white; padding: 6px; }
     .preview-video-placeholder { width: 100%; height: 130px; background: #13241c; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; gap: 5px; font-size: 11px; }
@@ -590,32 +591,49 @@
   <div class="layout">
     <aside>
       <div class="brand">
-        <div class="brand-icon">e</div>
-        <div><strong>eShool Admin</strong><small>Local monitoring</small></div>
+        <div class="brand-icon">✈</div>
+        <div><strong>eShool Telegram</strong><small>Learning dashboard</small></div>
       </div>
-      <div class="nav-label">Workspace</div>
+      <div class="nav-label">Telegram learning</div>
       <nav aria-label="Dashboard sections">
         <button class="nav-item active" data-section="overview"><span class="nav-icon">▦</span>Overview</button>
+        <button class="nav-item" data-section="progress"><span class="nav-icon">◷</span>Student progress</button>
+        <button class="nav-item" data-section="curriculum"><span class="nav-icon">📚</span>Lessons &amp; curriculum</button>
+        <button class="nav-item" data-section="payment-ledger"><span class="nav-icon">$</span>Payment ledger</button>
+        <button class="nav-item" data-section="payment-calendar"><span class="nav-icon">▦</span>Payment calendar</button>
+      </nav>
+      <div class="nav-label">WhatsApp tools</div>
+      <nav aria-label="WhatsApp tools">
         <button class="nav-item" data-section="chats"><span class="nav-icon">▤</span>Chats</button>
         <button class="nav-item" data-section="agent"><span class="nav-icon">●</span>WhatsApp agent</button>
         <button class="nav-item" data-section="es-contacts"><span class="nav-icon">✳</span>Es contacts</button>
-        <button class="nav-item" data-section="progress"><span class="nav-icon">◷</span>Student progress</button>
-        <button class="nav-item" data-section="payment-ledger"><span class="nav-icon">$</span>Payment ledger</button>
-        <button class="nav-item" data-section="payment-calendar"><span class="nav-icon">▦</span>Payment calendar</button>
-        <button class="nav-item" data-section="scheduled-lessons"><span class="nav-icon">◷</span>Scheduled lessons</button>
-        <button class="nav-item" data-section="curriculum"><span class="nav-icon">📚</span>Curriculum</button>
+        <button class="nav-item" data-section="scheduled-lessons"><span class="nav-icon">◷</span>Scheduled WhatsApp lessons</button>
       </nav>
-      <div class="side-note"><b>Private local dashboard</b>Data stays on this computer. Confirmed bulk messages are queued for WhatsApp.</div>
+      <div class="side-note"><b>Telegram lessons first</b>Manage learners, lesson progress, and curriculum here. WhatsApp tools remain in a separate section.</div>
     </aside>
 
     <main>
       <header class="topbar">
-        <div><h1 id="page-title">Overview</h1><p class="subheading" id="page-subtitle">A quick view of chat activity and student progress. <span class="live-update-indicator" id="live-update-status">Live updates on</span></p></div>
+        <div><h1 id="page-title">Telegram overview</h1><p class="subheading" id="page-subtitle">Monitor bot status, learners, and lesson progress. <span class="live-update-indicator" id="live-update-status">Live updates on</span></p></div>
         <div class="top-actions"><span class="local-tag"><i class="local-dot"></i> Local only</span><button class="pagination button" id="dashboard-logout" type="button">Lock</button><button class="refresh" id="refresh" title="Refresh data" aria-label="Refresh data">↻</button></div>
       </header>
       <div id="error" class="error" hidden></div>
 
       <section class="section active" id="section-overview">
+        <div class="metrics telegram-overview-metrics">
+          <button class="metric metric-button" data-go="progress" aria-label="View Telegram learners">
+            <span class="metric-top"><span>Telegram learners</span><span class="metric-icon">✈</span></span>
+            <span class="metric-value" id="metric-telegram-students">—</span>
+            <span class="metric-foot" id="metric-telegram-joins">Joined today — · last 7 days —</span>
+          </button>
+          <article class="metric" aria-label="Telegram bot connection status">
+            <div class="metric-top"><span>Telegram bot</span><span class="metric-icon">✈</span></div>
+            <div class="metric-value agent-status-line"><i class="agent-status-dot" id="telegram-agent-status-dot"></i><span id="telegram-agent-status-value">Checking…</span></div>
+            <div class="metric-foot" id="telegram-agent-status-detail">Connection status updates automatically</div>
+          </article>
+        </div>
+
+        <div class="section-heading"><div><h2>Other dashboard activity</h2><p>WhatsApp chats and contact-management statistics.</p></div></div>
         <div class="metrics">
           <button class="metric metric-button" data-go="chats" aria-label="View all direct chats">
             <span class="metric-top"><span>Direct chats</span><span class="metric-icon">▤</span></span>
@@ -631,11 +649,6 @@
             <span class="metric-top"><span>Students tracked</span><span class="metric-icon">♧</span></span>
             <span class="metric-value" id="metric-students">—</span>
             <span class="metric-foot">WhatsApp and Telegram lesson records · View list →</span>
-          </button>
-          <button class="metric metric-button" data-go="progress" aria-label="View Telegram learners">
-            <span class="metric-top"><span>Telegram learners</span><span class="metric-icon">✈</span></span>
-            <span class="metric-value" id="metric-telegram-students">—</span>
-            <span class="metric-foot" id="metric-telegram-joins">Joined today — · last 7 days —</span>
           </button>
           <button class="metric metric-button" data-go="es-contacts" aria-label="View Es phone-book contacts">
             <span class="metric-top"><span>Es contacts</span><span class="metric-icon">✳</span></span>
@@ -658,14 +671,9 @@
             <span class="metric-foot" id="agent-status-detail">Connection status updates automatically · View handled chats →</span>
             <span class="metric-foot agent-account-detail" id="agent-account-detail">Linked WhatsApp account: not reported</span>
           </button>
-          <article class="metric" aria-label="Telegram bot connection status">
-            <div class="metric-top"><span>Telegram bot</span><span class="metric-icon">✈</span></div>
-            <div class="metric-value agent-status-line"><i class="agent-status-dot" id="telegram-agent-status-dot"></i><span id="telegram-agent-status-value">Checking…</span></div>
-            <div class="metric-foot" id="telegram-agent-status-detail">Connection status updates automatically</div>
-          </article>
         </div>
 
-        <div class="section-heading"><div><h2>Chats throughout the week</h2><p>Unique WhatsApp chats and active Telegram learners, day by day.</p></div></div>
+        <div class="section-heading"><div><h2>Telegram learners &amp; weekly activity</h2><p>Track Telegram learner activity alongside the WhatsApp chat trend.</p></div></div>
         <article class="panel weekly-chat-panel">
           <div id="weekly-chat-summary" class="weekly-chat-summary" aria-live="polite">Loading the last seven days…</div>
           <div id="weekly-chat-chart" class="weekly-chat-chart" aria-live="polite"></div>
@@ -1044,8 +1052,8 @@
       <section class="section" id="section-scheduled-lessons">
         <div class="section-heading">
           <div>
-            <h2>One-time lesson deliveries</h2>
-            <p>Schedule a lesson for a student using Sudan time (Africa/Khartoum). Scheduled sends need the WhatsApp agent to be running.</p>
+            <h2>One-time WhatsApp lesson deliveries</h2>
+            <p>Schedule a lesson for a WhatsApp student using Sudan time (Africa/Khartoum). Scheduled sends need the WhatsApp agent to be running.</p>
           </div>
           <button class="pagination button" id="refresh-scheduled-lessons" type="button">Refresh</button>
         </div>
@@ -1245,15 +1253,15 @@
                 </div>
               </div>
 
-              <!-- WhatsApp Messages Section -->
+              <!-- Lesson messages -->
               <div class="form-row-grid-2">
-                <label for="lesson-form-intro">WhatsApp Intro Message (رسالة التقديم)
+                <label for="lesson-form-intro">Telegram Intro Message (رسالة التقديم)
                   <textarea id="lesson-form-intro" rows="3" placeholder="يا هلا بيك! الحصة الأولى عن المضارع البسيط في الجملة المثبتة مع المفرد..."></textarea>
                   <small class="field-hint">Sent to the student right before/with the video.</small>
                 </label>
                 <label for="lesson-form-caption">Video Caption (وصف الفيديو المرفق)
                   <textarea id="lesson-form-caption" rows="3" placeholder="🎬 فيديو الحصة الأولى - الصف الثالث ثانوي | مستر مازن (eShool)"></textarea>
-                  <small class="field-hint">Appears under the video attachment on WhatsApp.</small>
+                  <small class="field-hint">Displayed with the video sent by the Telegram bot.</small>
                 </label>
               </div>
 
@@ -1305,13 +1313,13 @@
         <div class="modal-backdrop" id="preview-modal" hidden>
           <div class="modal-dialog preview-modal-dialog">
             <div class="modal-header">
-              <h3>WhatsApp Delivery Preview · معاينة رسائل الطالب</h3>
+              <h3>Telegram Lesson Preview · معاينة رسائل الطالب</h3>
               <button class="modal-close" id="close-preview-modal-btn" type="button" aria-label="Close">✕</button>
             </div>
             <div class="phone-mockup">
               <div class="phone-header">
-                <div class="phone-avatar">M</div>
-                <div class="phone-contact"><strong>مستر مازن (eShool)</strong><small>Online</small></div>
+                <div class="phone-avatar">✈</div>
+                <div class="phone-contact"><strong>مستر مازن (eShool)</strong><small>Telegram bot</small></div>
               </div>
               <div class="phone-chat" id="preview-chat-body"></div>
             </div>
@@ -3616,15 +3624,15 @@
         loadScheduledLessons().catch(error => showError(`Could not load scheduled lessons: ${error.message}`));
       }
       const titles = {
-        overview: ['Overview', 'A quick view of chat activity and student progress.'],
+        overview: ['Telegram overview', 'Monitor bot status, learners, and lesson progress.'],
         chats: ['Chats', 'Search and review locally saved conversations.'],
         agent: ['WhatsApp agent', 'A readable live view of incoming messages and the agent’s replies, alongside its terminal log.'],
         'es-contacts': ['Es contacts', 'Review Es contacts synced from your phone book.'],
         progress: ['Student progress', 'Review students and their current lesson status.'],
         'payment-ledger': ['Payment ledger', 'Review student payment claims and confirm the current 30-day period.'],
         'payment-calendar': ['Payment calendar', 'Review historical payment dates and collected amounts.'],
-        'scheduled-lessons': ['Scheduled lessons', 'Create and manage one-time lesson deliveries. Times use Sudan time.'],
-        curriculum: ['Curriculum & Lessons', 'Upload lesson videos, configure tasks, and establish answer keys by stage and school year.']
+        'scheduled-lessons': ['Scheduled WhatsApp lessons', 'Create and manage one-time WhatsApp lesson deliveries. Times use Sudan time.'],
+        curriculum: ['Lessons & curriculum', 'Manage the lessons, tasks, videos, and answer keys used by the Telegram bot.']
       };
       $('#page-title').textContent = titles[name][0];
       $('#page-subtitle').textContent = titles[name][1];
@@ -4678,7 +4686,7 @@
                       </div>
                     </div>
                     <div class="lesson-actions">
-                      <button class="btn-action" type="button" data-preview-lesson="${escapeHtml(lesson.id)}" data-is-standalone="false">Preview WhatsApp</button>
+                      <button class="btn-action" type="button" data-preview-lesson="${escapeHtml(lesson.id)}" data-is-standalone="false">Preview Telegram lesson</button>
                       ${lesson.videoExists ? `<button class="btn-action" type="button" data-broadcast-lesson="${escapeHtml(lesson.id)}" data-is-standalone="false">Send to inactive Es</button>` : ''}
                       <button class="btn-action" type="button" data-edit-lesson="${escapeHtml(lesson.id)}" data-is-standalone="false">Edit</button>
                       <button class="btn-action" type="button" data-move-lesson="${escapeHtml(lesson.id)}" data-direction="up" ${index === 0 ? 'disabled style="opacity:.4"' : ''}>▲</button>
@@ -4714,7 +4722,7 @@
                       </div>
                     </div>
                     <div class="lesson-actions">
-                      <button class="btn-action" type="button" data-preview-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Preview WhatsApp</button>
+                      <button class="btn-action" type="button" data-preview-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Preview Telegram lesson</button>
                       ${lesson.videoExists ? `<button class="btn-action" type="button" data-broadcast-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Send to inactive Es</button>` : ''}
                       <button class="btn-action" type="button" data-edit-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Edit</button>
                       <button class="btn-action btn-danger" type="button" data-delete-lesson="${escapeHtml(lesson.id)}" data-is-standalone="true">Delete</button>
@@ -5010,7 +5018,7 @@
       xhr.send(file);
     }
 
-    function openWhatsAppPreviewModal(lesson) {
+    function openTelegramPreviewModal(lesson) {
       const modal = $('#preview-modal');
       const chatBody = $('#preview-chat-body');
       if (!modal || !chatBody || !lesson) return;
@@ -5405,14 +5413,14 @@
           return;
         }
 
-          // Preview lesson WhatsApp mockup
+          // Preview Telegram lesson delivery
           const previewBtn = event.target.closest('[data-preview-lesson]');
         if (previewBtn) {
           const lessonId = previewBtn.dataset.previewLesson;
           const isStandalone = previewBtn.dataset.isStandalone === 'true';
           const list = isStandalone ? selectedGradeCurriculum.standaloneLessons : selectedGradeCurriculum.lessons;
           const lesson = list.find(l => l.id === lessonId);
-          if (lesson) openWhatsAppPreviewModal(lesson);
+          if (lesson) openTelegramPreviewModal(lesson);
           return;
         }
 

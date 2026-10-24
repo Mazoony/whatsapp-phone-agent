@@ -89,6 +89,14 @@ function taskFailureMessage() {
   return 'ما قدرت أصحح إجابتك هسي بسبب مشكلة فنية. ما اتسجلت كغلط؛ أرسلها تاني بعد شوية.';
 }
 
+function privateLessonStartMessage() {
+  return 'عشان أرسل الدروس وأصحح الإجابات في الخاص، افتح المحادثة الخاصة معاي واضغط Start، وبعدها أرسل /lesson هنا مرة تانية.';
+}
+
+function isPrivateChatUnavailable(error) {
+  return /bot can't initiate conversation|user is deactivated|chat not found|have no rights to send/i.test(error.message);
+}
+
 export class TelegramBotApi {
   constructor(token, fetchImpl = globalThis.fetch) {
     if (typeof token !== 'string' || !token.trim()) {
@@ -295,8 +303,8 @@ export class TelegramLessonAgent {
         : '';
     if (!text) {
       if (Array.isArray(message.photo) && message.photo.length) {
-        await this.bot.sendMessage(
-          chatId,
+        await this.sendPrivateNotice(
+          studentKey,
           'عشان خصوصيتك، أرسل إيصال الدفع في الخاص. افتح المحادثة الخاصة معاي واضغط Start، وبعدها أرسل صورة الإيصال.'
         );
         return;
@@ -316,11 +324,9 @@ export class TelegramLessonAgent {
           state.telegramPrivateChatId,
           formatStudentPaymentStatus(payment)
         );
-        await this.bot.sendMessage(chatId, 'أرسلت ليك حالة الدفع في الخاص.');
       } else {
-        await this.bot.sendMessage(
-          chatId,
-          'عشان خصوصيتك، افتح المحادثة الخاصة معاي واضغط Start، وبعدها أرسل /payment عشان تعرف حالة الدفع.'
+        this.logger.info(
+          `[Telegram] Could not send payment status to ${studentKey}; no private chat has been started.`
         );
       }
       return;
@@ -334,8 +340,8 @@ export class TelegramLessonAgent {
           enrolledAt: state.enrolledAt || state.joinedAt || state.deliveredAt,
           source: 'telegram-claim'
         });
-        await this.bot.sendMessage(
-          chatId,
+        await this.sendPrivateNotice(
+          studentKey,
           payment.status === 'paid'
             ? 'دفعك للفترة الحالية متأكد من قبل. حفظت البلاغ الجديد للرجوع ليه.'
             : 'وصل بلاغ الدفع للمراجعة، وما حيتسجل كمدفوع إلا بعد ما نتأكد منه. أرسل /payment في الخاص عشان تعرف حالة الدفع.'
@@ -349,8 +355,41 @@ export class TelegramLessonAgent {
       this.logger.info(`[Telegram] Starting or resuming a lesson for ${studentName}.`);
       await this.runStudentOperation(studentKey, async () => {
         this.recordStudentActivity(studentKey, chatId, message.from);
-        await this.startOrResumeLesson(chatId, studentKey, message.message_id);
+        const privateChatId = String(message.from.id);
+        this.progress[studentKey].telegramPrivateChatId = privateChatId;
+        this.saveProgress();
+        try {
+          await this.startOrResumeLesson(privateChatId, studentKey);
+          await this.bot.sendMessage(
+            chatId,
+            'تمام يا بطل، ردي وصل ليك في الخاص. راجع المحادثة هناك.',
+            message.message_id
+          );
+        } catch (error) {
+          this.logger.error(`[Telegram] Could not deliver a private lesson to ${studentKey}: ${error.message}`);
+          if (isPrivateChatUnavailable(error)) {
+            delete this.progress[studentKey].telegramPrivateChatId;
+            this.saveProgress();
+            await this.bot.sendMessage(
+              chatId,
+              privateLessonStartMessage(),
+              message.message_id
+            );
+            return;
+          }
+          await this.sendPrivateNotice(
+            studentKey,
+            'واجهت مشكلة فنية في إرسال الدرس في الخاص. جرّب /lesson تاني بعد شوية.'
+          );
+        }
       });
+      return;
+    }
+    if (this.progress[studentKey]?.telegramPrivateChatId) {
+      await this.sendPrivateNotice(
+        studentKey,
+        'عشان خصوصيتك، أرسل إجابتك في المحادثة الخاصة معاي.',
+      );
       return;
     }
     if (!this.progress[studentKey] ||
@@ -367,10 +406,9 @@ export class TelegramLessonAgent {
     await this.runStudentOperation(studentKey, async () => {
       const currentState = this.progress[studentKey];
       if (!currentState || currentState.currentLessonId !== submittedLessonId) {
-        await this.bot.sendMessage(
-          chatId,
+        await this.sendPrivateNotice(
+          studentKey,
           'الحصة اتغيرت قبل ما أراجع إجابتك. جاوب على تمرين آخر حصة وصلتك.',
-          message.message_id
         );
         return;
       }
@@ -383,6 +421,25 @@ export class TelegramLessonAgent {
         submission: text
       });
     });
+  }
+
+  async sendPrivateNotice(studentKey, text) {
+    const privateChatId = this.progress[studentKey]?.telegramPrivateChatId;
+    if (!privateChatId) {
+      this.logger.info(
+        `[Telegram] Could not send a private notice to ${studentKey}; no private chat has been started.`
+      );
+      return false;
+    }
+    try {
+      await this.bot.sendMessage(privateChatId, text);
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `[Telegram] Could not send a private notice to ${studentKey}: ${error.message}`
+      );
+      return false;
+    }
   }
 
   recordStudentActivity(studentKey, chatId, user, { submission = false } = {}) {
@@ -465,6 +522,34 @@ export class TelegramLessonAgent {
       return;
     }
 
+    if (isLessonCommand(text)) {
+      await this.runStudentOperation(studentKey, async () => {
+        this.recordStudentActivity(studentKey, state.telegramChatId, message.from);
+        state.telegramPrivateChatId = String(message.chat.id);
+        this.saveProgress();
+        try {
+          await this.startOrResumeLesson(
+            String(message.chat.id),
+            studentKey,
+            message.message_id
+          );
+        } catch (error) {
+          this.logger.error(`[Telegram] Could not deliver a private lesson to ${studentKey}: ${error.message}`);
+          if (isPrivateChatUnavailable(error)) {
+            delete this.progress[studentKey].telegramPrivateChatId;
+            this.saveProgress();
+          }
+          await this.bot.sendMessage(
+            String(message.chat.id),
+            isPrivateChatUnavailable(error)
+              ? 'ما قدرت أرسل ليك رسالة. أرسل /start في المحادثة الخاصة وبعدها جرّب /lesson.'
+              : 'واجهت مشكلة فنية في إرسال الدرس. جرّب /lesson تاني بعد شوية.'
+          );
+        }
+      });
+      return;
+    }
+
     if (Array.isArray(message.photo) && message.photo.length) {
       try {
         const photo = [...message.photo].sort((left, right) =>
@@ -504,9 +589,42 @@ export class TelegramLessonAgent {
       return;
     }
 
+    if (text && !text.startsWith('/') &&
+        ['awaiting_task', 'awaiting_reattempt'].includes(state.status)) {
+      const submittedLessonId = state.currentLessonId;
+      await this.runStudentOperation(studentKey, async () => {
+        const currentState = this.progress[studentKey];
+        if (!currentState ||
+            currentState.currentLessonId !== submittedLessonId ||
+            !['awaiting_task', 'awaiting_reattempt'].includes(currentState.status)) {
+          await this.bot.sendMessage(
+            String(message.chat.id),
+            'الحصة اتغيرت قبل ما أراجع إجابتك. جاوب على تمرين آخر حصة وصلتك.'
+          );
+          return;
+        }
+        const studentName = getStudentName(message.from);
+        this.recordStudentActivity(
+          studentKey,
+          currentState.telegramChatId,
+          message.from,
+          { submission: true }
+        );
+        currentState.telegramPrivateChatId = String(message.chat.id);
+        await this.gradeSubmission({
+          chatId: String(message.chat.id),
+          studentKey,
+          studentName,
+          messageId: message.message_id,
+          submission: text
+        });
+      });
+      return;
+    }
+
     await this.bot.sendMessage(
       String(message.chat.id),
-      'أرسل /payment عشان تعرف حالة الدفع، أو /paid عشان تبلغ عن الدفع، أو أرسل صورة الإيصال للمراجعة.'
+      'أرسل /lesson عشان تبدأ أو تواصل الدروس، أو /payment عشان تعرف حالة الدفع، أو /paid عشان تبلغ عن الدفع.'
     );
   }
 
@@ -618,6 +736,7 @@ export class TelegramLessonAgent {
   }
 
   async startOrResumeLesson(chatId, studentKey, messageId) {
+    this.lessonManager.refreshLessonsConfig?.();
     const state = this.progress[studentKey];
     if (state && ['awaiting_task', 'awaiting_reattempt'].includes(state.status)) {
       const lesson = this.lessonManager.lessonsConfig[state.grade]?.lessons?.[state.currentLessonIndex];
@@ -663,13 +782,14 @@ export class TelegramLessonAgent {
       );
     }
     const video = fs.readFileSync(videoPath);
+    const deliveryChatId = this.progress[studentKey]?.telegramPrivateChatId || chatId;
     await this.bot.sendVideo(
-      chatId,
+      deliveryChatId,
       video,
       lesson.caption || lesson.title || '',
       replyToMessageId
     );
-    await this.bot.sendMessage(chatId, lesson.taskMessage, replyToMessageId);
+    await this.bot.sendMessage(deliveryChatId, lesson.taskMessage, replyToMessageId);
 
     const previous = this.progress[studentKey] || {};
     this.progress[studentKey] = {
@@ -680,7 +800,8 @@ export class TelegramLessonAgent {
       status: 'awaiting_task',
       deliveredAt: new Date().toISOString(),
       joinedAt: previous.joinedAt || new Date().toISOString(),
-      lessonsCompleted: previous.lessonsCompleted || 0
+      lessonsCompleted: previous.lessonsCompleted || 0,
+      correctQuestionNumbers: []
     };
     this.saveProgress();
   }
@@ -728,15 +849,27 @@ export class TelegramLessonAgent {
   }
 
   async gradeSubmission({ chatId, studentKey, studentName, messageId, submission }) {
+    this.lessonManager.refreshLessonsConfig?.();
     const state = this.progress[studentKey];
     const lesson = this.lessonManager.lessonsConfig[state.grade]?.lessons?.[state.currentLessonIndex];
     if (!isReadyLesson(lesson)) {
       throw new Error(`Active Telegram lesson is missing its task or answer key for ${studentKey}.`);
     }
 
+    const previouslyCorrect = new Set(
+      Array.isArray(state.correctQuestionNumbers)
+        ? state.correctQuestionNumbers.filter(number =>
+            Number.isInteger(number) && number >= 1 && number <= lesson.answerKey.length)
+        : []
+    );
+    const pendingQuestionNumbers = lesson.answerKey
+      .map((_, index) => index + 1)
+      .filter(number => !previouslyCorrect.has(number));
     let result;
     try {
-      result = await this.evaluateTask(lesson, submission, studentName);
+      result = await this.evaluateTask(lesson, submission, studentName, {
+        pendingQuestionNumbers
+      });
     } catch (error) {
       this.logger.error(`[Telegram] Could not grade a task for ${studentKey}: ${error.message}`);
       await this.bot.sendMessage(chatId, taskFailureMessage(), messageId);
@@ -744,13 +877,48 @@ export class TelegramLessonAgent {
     }
     if (!result.isTaskSubmission) return;
 
-    await this.bot.sendMessage(chatId, result.feedback, messageId);
-    if (!result.allCorrect) {
-      state.status = 'awaiting_reattempt';
-      this.saveProgress();
+    const pending = new Set(pendingQuestionNumbers);
+    const answeredQuestionNumbers = Array.isArray(result.answeredQuestionNumbers)
+      ? [...new Set(result.answeredQuestionNumbers.filter(number => pending.has(number)))]
+      : [];
+    const correctQuestionNumbers = Array.isArray(result.correctQuestionNumbers)
+      ? new Set(result.correctQuestionNumbers.filter(number =>
+          answeredQuestionNumbers.includes(number)))
+      : new Set();
+    if (answeredQuestionNumbers.length === 0) {
+      await this.bot.sendMessage(
+        chatId,
+        'ما قدرت أحدد رقم إجابتك. أرسل الإجابة ومعاها رقم السؤال، مثلاً: 2. goes',
+        messageId
+      );
       return;
     }
 
+    state.correctQuestionNumbers = [...new Set([
+      ...previouslyCorrect,
+      ...correctQuestionNumbers
+    ])].sort((left, right) => left - right);
+    const remainingQuestionNumbers = lesson.answerKey
+      .map((_, index) => index + 1)
+      .filter(number => !state.correctQuestionNumbers.includes(number));
+    if (remainingQuestionNumbers.length > 0) {
+      state.status = 'awaiting_reattempt';
+      this.saveProgress();
+      const incorrectQuestionNumbers = answeredQuestionNumbers
+        .filter(number => !correctQuestionNumbers.has(number));
+      const incorrectFeedback = incorrectQuestionNumbers.length > 0
+        ? ` إجاباتك الخاطئة في الأسئلة: ${incorrectQuestionNumbers.join('، ')}.`
+        : '';
+      const list = remainingQuestionNumbers.join('، ');
+      await this.bot.sendMessage(
+        chatId,
+        `حفظت الإجابات الصحيحة.${incorrectFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس، مع رقم كل سؤال.`,
+        messageId
+      );
+      return;
+    }
+
+    await this.bot.sendMessage(chatId, 'صحيح، ممتاز! كل الإجابات صحيحة.', messageId);
     state.lessonsCompleted = (state.lessonsCompleted || 0) + 1;
     state.status = 'awaiting_content';
     this.saveProgress();

@@ -18,6 +18,8 @@ const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 test('a correct submission immediately delivers the next numbered lesson', async () => {
   const jid = 'immediate-lesson-progression-test@s.whatsapp.net';
   const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  const nextLessonTask = lessonManager.lessonsConfig.grade_3_secondary.lessons
+    .find(candidate => candidate.id === 'lesson_2').taskMessage;
   const originalProgress = lessonManager.progress[jid];
   const originalSaveProgress = lessonManager.saveProgress;
   const originalAddMessage = historyManager.addMessage;
@@ -42,7 +44,9 @@ test('a correct submission immediately delivers the next numbered lesson', async
       message: {
         content: JSON.stringify({
           isTaskSubmission: true,
-          allCorrect: true
+          allCorrect: true,
+          answeredQuestionNumbers: [1],
+          correctQuestionNumbers: [1]
         })
       }
     })
@@ -68,7 +72,7 @@ test('a correct submission immediately delivers the next numbered lesson', async
       [
         'صحيح، ممتاز.',
         'video',
-        lessonManager.lessonsConfig.grade_3_secondary.lessons[1].taskMessage
+        nextLessonTask
       ]
     );
   } finally {
