@@ -587,7 +587,7 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       recent30.map(timestamp => calendarDateKey(timestamp, timeZone))
     );
     const lastActivityAt = Date.parse(student.lastActivityAt || student.deliveredAt || '');
-    const joinedAt = Date.parse(student.joinedAt || student.deliveredAt || '');
+    const joinedAt = Date.parse(student.groupJoinedAt || '');
     const lesson = lessonForStudent(student, data.lessons);
     const nextLesson = getNextLessonToSkip(student, data.lessons);
     return {
@@ -1085,7 +1085,7 @@ export function getDashboardOverview(data, now = Date.now(), timeZone = 'UTC') {
   const progressRecords = Object.values(data.progress);
   const telegramProgressRecords = Object.values(data.telegramProgress || {});
   const joinedDates = telegramProgressRecords
-    .map(student => Date.parse(student.joinedAt || student.deliveredAt || ''))
+    .map(student => Date.parse(student.groupJoinedAt || ''))
     .filter(timestamp => Number.isFinite(timestamp) && timestamp <= nowTimestamp)
     .map(timestamp => calendarDateKey(timestamp, timeZone));
   const today = calendarDateKey(nowTimestamp, timeZone);

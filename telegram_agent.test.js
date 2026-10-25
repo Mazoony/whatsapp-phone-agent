@@ -150,7 +150,7 @@ test('Telegram /lesson sends the lesson privately and confirms in the group', as
   assert.equal(sent[1].text, 'Answer question 1.');
   assert.equal(sent[1].replyToMessageId, undefined);
   assert.equal(sent[2].chatId, '-100123');
-  assert.match(sent[2].text, /ردي وصل ليك في الخاص/);
+  assert.match(sent[2].text, /رديت عليك في الخاص.*كل التوفيق يا رب/);
   assert.equal(sent[2].replyToMessageId, 17);
   const progress = agent.progress['telegram:-100123:44'];
   assert.equal(progress.grade, 'grade_3_secondary');
@@ -161,6 +161,52 @@ test('Telegram /lesson sends the lesson privately and confirms in the group', as
   assert.equal(progress.status, 'awaiting_task');
   assert.ok(progress.joinedAt);
   assert.equal(progress.name, 'Student 44');
+});
+
+test('Telegram records group member names and join dates from service messages', async t => {
+  const { agent, sent } = createFixture(t);
+  const joinedAtSeconds = 1_797_000_000;
+  await agent.handleUpdate({
+    update_id: 90,
+    message: {
+      message_id: 91,
+      date: joinedAtSeconds,
+      chat: { id: -100123, type: 'supergroup' },
+      new_chat_members: [
+        {
+          id: 44,
+          first_name: 'Maha',
+          last_name: 'Ahmed',
+          username: 'maha_ahmed'
+        },
+        { id: 99, first_name: 'Bot account', is_bot: true }
+      ]
+    }
+  });
+
+  const student = agent.progress['telegram:-100123:44'];
+  assert.equal(student.name, 'Maha Ahmed');
+  assert.equal(student.telegramUsername, 'maha_ahmed');
+  assert.equal(student.telegramUserId, 44);
+  assert.equal(student.telegramChatId, '-100123');
+  assert.equal(student.groupJoinedAt, new Date(joinedAtSeconds * 1000).toISOString());
+  assert.equal(student.status, 'awaiting_content');
+  assert.equal(agent.progress['telegram:-100123:99'], undefined);
+  assert.equal(sent.length, 0);
+});
+
+test('Telegram introduces the lessons and payment details to unregistered private contacts', async t => {
+  const { agent, sent } = createFixture(t);
+
+  await agent.handleUpdate(privateUpdate({ userId: 77, text: '/start' }));
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].chatId, '77');
+  assert.match(sent[0].text, /أدخل مجموعة الدروس وأرسل \/lesson/);
+  assert.match(sent[0].text, /17 ألف جنيه سوداني/);
+  assert.match(sent[0].text, /رقم الحساب: 2865022/);
+  assert.match(sent[0].text, /مازن محمد أحمد الصديق صالح/);
+  assert.match(sent[0].text, /أرسل إشعار الدفع هنا/);
 });
 
 test('Telegram asks students to start the private chat before sending lessons there', async t => {
@@ -181,20 +227,51 @@ test('Telegram asks students to start the private chat before sending lessons th
 
   assert.deepEqual(sent.slice(-3).map(message => message.type), ['video', 'text', 'text']);
   assert.deepEqual(sent.slice(-3).map(message => message.chatId), ['44', '44', '-100123']);
-  assert.match(sent.at(-1).text, /ردي وصل ليك في الخاص/);
+  assert.match(sent.at(-1).text, /رديت عليك في الخاص.*كل التوفيق يا رب/);
 });
 
-test('Telegram /lesson in private resends the active task privately', async t => {
+test('Telegram /lesson in private resends the active video and task privately', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
   sent.length = 0;
 
   await agent.handleUpdate(privateUpdate({ text: '/lesson', messageId: 18 }));
 
-  assert.equal(sent.length, 1);
+  assert.deepEqual(sent.map(message => message.type), ['video', 'text']);
   assert.equal(sent[0].chatId, '44');
-  assert.equal(sent[0].text, 'Answer question 1.');
+  assert.equal(sent[0].video.toString(), 'lesson_1');
   assert.equal(sent[0].replyToMessageId, 18);
+  assert.equal(sent[1].chatId, '44');
+  assert.equal(sent[1].text, 'Answer question 1.');
+  assert.equal(sent[1].replyToMessageId, 18);
+});
+
+test('Telegram /number privately sends that lesson and makes it active', async t => {
+  const { agent, directory, lessonManager, sent } = createFixture(t);
+  const lesson6 = {
+    id: 'lesson_6',
+    title: 'Lesson 6',
+    videoFile: 'lesson_6.mp4',
+    caption: 'Watch lesson 6',
+    taskMessage: 'Answer all ten questions.',
+    answerKey: Array.from({ length: 10 }, (_, index) => `answer ${index + 1}`)
+  };
+  fs.writeFileSync(path.join(directory, lesson6.videoFile), Buffer.from(lesson6.id));
+  lessonManager.lessonsConfig.grade_3_secondary.lessons.push(lesson6);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  sent.length = 0;
+
+  await agent.handleUpdate(privateUpdate({ text: '/6', messageId: 19 }));
+
+  assert.deepEqual(sent.map(message => message.type), ['video', 'text']);
+  assert.ok(sent.every(message => message.chatId === '44'));
+  assert.equal(sent[0].video.toString(), 'lesson_6');
+  assert.equal(sent[1].text, 'Answer all ten questions.');
+  const progress = agent.progress['telegram:-100123:44'];
+  assert.equal(progress.currentLessonId, 'lesson_6');
+  assert.equal(progress.currentLessonIndex, 2);
+  assert.equal(progress.status, 'awaiting_task');
+  assert.deepEqual(progress.correctQuestionNumbers, []);
 });
 
 test('Telegram grading keeps students isolated and sends the next lesson after a correct answer', async t => {
@@ -216,7 +293,11 @@ test('Telegram grading keeps students isolated and sends the next lesson after a
   assert.ok(agent.progress['telegram:-100123:44'].joinedAt);
   assert.deepEqual(
     sent.slice(-3).map(message => message.type === 'video' ? 'video' : message.text),
-    ['صحيح، ممتاز! كل الإجابات صحيحة.', 'video', 'Answer question 2.']
+    [
+      'ممتاز! كل الإجابات صحيحة،\n\nيلا دا مستوى ناس الـ93 وفوق والله!\n\nخلينا نستمر كدا وحننبهر بالنتيجة.\n\nبجيك هسي الفيديو البعدو.',
+      'video',
+      'Answer question 2.'
+    ]
   );
   assert.ok(sent.slice(-3).every(message => message.chatId === '44'));
   assert.equal(sent.slice(-3)[0].replyToMessageId, 20);
@@ -242,6 +323,34 @@ test('Telegram uses admin lesson edits when delivering the next lesson without r
   assert.equal(sent.at(-1).text, 'Updated task from the admin dashboard.');
 });
 
+test('Telegram clears previously accepted answers when an active lesson task changes', async t => {
+  const { agent, lessonManager, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  const student = agent.progress['telegram:-100123:44'];
+  student.correctQuestionNumbers = [1];
+  lessonManager.lessonsConfig.grade_3_secondary.lessons[0] = {
+    ...lessonManager.lessonsConfig.grade_3_secondary.lessons[0],
+    taskMessage: 'Updated two-question task.',
+    answerKey: ['updated answer one', 'updated answer two']
+  };
+  let gradedQuestions;
+  agent.evaluateTask = async (_lesson, _submission, _studentName, { pendingQuestionNumbers }) => {
+    gradedQuestions = pendingQuestionNumbers;
+    return {
+      isTaskSubmission: true,
+      allCorrect: true,
+      answeredQuestionNumbers: pendingQuestionNumbers,
+      correctQuestionNumbers: pendingQuestionNumbers
+    };
+  };
+
+  await agent.handleUpdate(privateUpdate({ text: 'both updated answers' }));
+
+  assert.deepEqual(gradedQuestions, [1, 2]);
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_2');
+  assert.match(sent.at(-3).text, /صحيح، ممتاز/);
+});
+
 test('Telegram keeps lesson answers and grading feedback out of the group', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
@@ -251,7 +360,7 @@ test('Telegram keeps lesson answers and grading feedback out of the group', asyn
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
   assert.equal(sent.filter(message => message.chatId === '-100123').length, groupMessagesBeforeAnswer);
   assert.equal(sent.at(-1).chatId, '44');
-  assert.match(sent.at(-1).text, /أرسل إجابتك في المحادثة الخاصة/);
+  assert.equal(sent.at(-1).text, 'رسل لي الأجوبة في المحادثة الخاصة معاي.');
   await agent.handleUpdate(privateUpdate({ text: 'correct answer', messageId: 22 }));
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_2');
   assert.ok(sent.slice(-3).every(message => message.chatId === '44'));
@@ -426,7 +535,11 @@ test('Telegram retains correct answers and accepts only the corrected question',
   assert.deepEqual(agent.progress['telegram:-100123:44'].correctQuestionNumbers, []);
   assert.deepEqual(
     sent.slice(-3).map(message => message.type === 'video' ? 'video' : message.text),
-    ['صحيح، ممتاز! كل الإجابات صحيحة.', 'video', 'Answer question 2.']
+    [
+      'ممتاز! كل الإجابات صحيحة،\n\nيلا دا مستوى ناس الـ93 وفوق والله!\n\nخلينا نستمر كدا وحننبهر بالنتيجة.\n\nبجيك هسي الفيديو البعدو.',
+      'video',
+      'Answer question 2.'
+    ]
   );
   assert.ok(sent.slice(-3).every(message => message.chatId === '44'));
 });
@@ -459,7 +572,7 @@ test('students marked complete can receive lessons added to the curriculum later
   assert.deepEqual(sent.map(message => message.chatId), ['44', '44', '-100123']);
   assert.deepEqual(
     sent.map(message => message.type === 'video' ? 'video' : message.text),
-    ['video', 'Answer question 3.', 'تمام يا بطل، ردي وصل ليك في الخاص. راجع المحادثة هناك.']
+    ['video', 'Answer question 3.', 'تمام، رديت عليك في الخاص. راجع المحادثة هناك، كل التوفيق يا رب.']
   );
 });
 
@@ -478,7 +591,7 @@ test('completed students are told they are done when no lessons remain configure
   assert.equal(sent[0].chatId, '44');
   assert.equal(sent[0].text, 'كملت كل الدروس المتوفرة حالياً يا بطل.');
   assert.equal(sent[1].chatId, '-100123');
-  assert.match(sent[1].text, /ردي وصل ليك في الخاص/);
+  assert.match(sent[1].text, /رديت عليك في الخاص.*كل التوفيق يا رب/);
 });
 
 test('Telegram grading failures do not mark answers wrong', async t => {
@@ -529,7 +642,7 @@ test('Telegram payment claims remain pending until an administrator reviews them
   assert.equal(payment.status, 'pending_review');
   assert.equal(sent.filter(message => message.chatId === '-100123').length, groupMessagesBeforeClaim);
   assert.equal(sent.at(-1).chatId, '44');
-  assert.match(sent.at(-1).text, /ما حيتسجل كمدفوع إلا بعد ما نتأكد منه/);
+  assert.match(sent.at(-1).text, /وصل إشعار الدفع للمراجعة، حنراجعه وبأكد ليك\. موفق يا رب!/);
 });
 
 test('Telegram payment status is sent privately and group replies do not disclose it', async t => {
@@ -607,7 +720,7 @@ test('Telegram receipt scans are recorded as pending review', async t => {
   assert.equal(payment.status, 'pending_review');
   assert.equal(payment.amount, 17000);
   assert.equal(payment.details.transactionId, 'TX-1');
-  assert.match(sent.at(-1).text, /ما حيتسجل الدفع كمدفوع إلا بعد ما نتأكد منه/);
+  assert.equal(sent.at(-1).text, 'وصل إشعار الدفع للمراجعة، حنراجعه وبأكد ليك. موفق يا رب!');
 });
 
 test('Telegram sends a due unanswered lesson reminder once and records it', async t => {

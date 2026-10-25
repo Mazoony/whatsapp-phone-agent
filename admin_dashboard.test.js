@@ -381,6 +381,7 @@ test('overview and student progress report Telegram learner joins and lesson act
         currentLessonId: 'lesson_1',
         status: 'awaiting_task',
         joinedAt: new Date(now).toISOString(),
+        groupJoinedAt: new Date(now).toISOString(),
         deliveredAt: new Date(now).toISOString(),
         lastActivityAt: new Date(now).toISOString(),
         submissionsReceived: 2,
@@ -396,6 +397,7 @@ test('overview and student progress report Telegram learner joins and lesson act
         currentLessonIndex: 0,
         currentLessonId: 'lesson_1',
         status: 'awaiting_reattempt',
+        groupJoinedAt: new Date(now - day).toISOString(),
         deliveredAt: new Date(now - day).toISOString(),
         submissionsReceived: 1,
       }

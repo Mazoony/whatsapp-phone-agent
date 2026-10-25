@@ -1016,7 +1016,7 @@
       </section>
 
       <section class="section" id="section-progress">
-        <div class="section-heading"><div><h2>Student progress</h2><p>Students with a saved lesson progress record.</p></div></div>
+        <div class="section-heading"><div><h2>Student progress</h2><p>Includes Telegram group members, their recorded join dates, and lesson progress.</p></div></div>
         <article class="panel workbook-panel">
           <div>
             <h3>Student data workbook</h3>
@@ -1026,10 +1026,10 @@
           <a class="primary-button workbook-download" id="workbook-download" href="/api/admin/student-workbook.xlsx" download="students.xlsx" aria-disabled="true">Download Excel</a>
         </article>
         <article class="panel roster-insight-panel telegram-enrollment-panel">
-          <h3>Telegram group learners</h3>
+          <h3>Telegram group members</h3>
           <p class="activity-summary" id="telegram-enrollment-summary" aria-live="polite">Loading Telegram enrollment…</p>
-          <div class="telegram-join-chart" id="telegram-join-chart" aria-label="Daily Telegram learner joins over the last seven days"></div>
-          <div class="student-insight-legend"><span><i></i>First `/lesson` command</span></div>
+          <div class="telegram-join-chart" id="telegram-join-chart" aria-label="Daily Telegram group member joins over the last seven days"></div>
+          <div class="student-insight-legend"><span><i></i>Recorded group join date</span></div>
         </article>
         <div class="roster-insights">
           <article class="panel roster-insight-panel">
@@ -1045,7 +1045,7 @@
           </article>
         </div>
         <div class="panel table-wrap">
-          <table><thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Telegram joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Action</th></tr></thead><tbody id="progress-rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Action</th></tr></thead><tbody id="progress-rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
         </div>
       </section>
 
@@ -2502,7 +2502,7 @@
       const days = enrollment?.dailyJoins || [];
       const maximum = Math.max(1, ...days.map(day => day.students));
       $('#telegram-enrollment-summary').textContent =
-        `${(enrollment?.totalStudents || 0).toLocaleString()} tracked learners · ${(enrollment?.joinedToday || 0).toLocaleString()} joined today · ${(enrollment?.joinedLast7Days || 0).toLocaleString()} in the last 7 calendar days · ${timeZone}. Counts start when a learner first uses /lesson.`;
+        `${(enrollment?.totalStudents || 0).toLocaleString()} tracked learners · ${(enrollment?.joinedToday || 0).toLocaleString()} joined today · ${(enrollment?.joinedLast7Days || 0).toLocaleString()} in the last 7 calendar days · ${timeZone}. Join dates are recorded from when the bot is added to the group.`;
       $('#telegram-join-chart').innerHTML = days.length ? days.map(day => {
         const height = day.students ? Math.max(3, day.students / maximum * 46) : 2;
         const label = new Intl.DateTimeFormat(undefined, {

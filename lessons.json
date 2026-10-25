@@ -75,12 +75,12 @@
         "introMessage": "يا هلا بيك! دي الحصة: الحصة 3 Present Simple - Singular - the verb ends in -y. برسل ليك الفيديو والتمرين هسي 👇",
         "taskMessage": "1. Ahmed __________ English every evening. (study)\n2. My mother __________ delicious meals for our family. (enjoy)\n3. The baby __________ whenever he is hungry. (cry)\n4. She __________ her homework before dinner. (finish?)\n5. My father __________ to work every morning. (drive)\n6. The teacher __________ the students with their assignments. (help)\n7. He __________ his room every Saturday. (tidy)\n8. The little boy __________ his toys with his friends. (share)\n9. A good student __________ hard before an exam. (study)\n10. My brother __________ his bicycle to school every day. (carry)",
         "answerKey": [
-          "drives — My father - singular",
-          "helps — The teacher - singular",
+          "studies — Ahmed is singular; change consonant + y to -ies.",
+          "enjoys — My mother is singular; enjoy ends in a vowel + y, so add -s.",
           "cries — The baby singular and consonant before the letter -y",
           "finishes — She - verb ends in -sh",
-          "drives — May father singular",
-          "helps — The teacher - singular",
+          "drives — My father is singular.",
+          "helps — The teacher is singular.",
           "tidies — He - consonant before the letter -y",
           "shares — The little boy singular",
           "studies — A good dtudent - singular and a consonant before the letter -y",
@@ -115,8 +115,16 @@
         "introMessage": "ما شاء الله تبارك الله عليك! 🔥 بما إنك أتقنت الحصة الأولى وحليت تمرينها بنجاح، دي الحصة الثانية ليك لمتابعة التميز في الشهادة الثانوية هسي 👇",
         "taskMessage": "1. Ahmed __________ to school by bus every morning. (go)\n\n2. My mother __________ the dishes after dinner every day. (wash)\n\n3. The teacher __________ the lesson clearly every time. (teach)\n\n4. Sara __________ TV after finishing her homework. (watch)\n\n5. My father __________ his car every weekend. (fix)\n\n6. The bus __________ near our house every morning. (pass)\n\n7. Hassan __________ his homework before he plays football. (do)\n\n8. The goalkeeper __________ the ball carefully during every match. (catch)\n\n9. A good student __________ carefully to the teacher every lesson. (listen)\n\n10. The school bus __________ at the gate every afternoon. (reach)",
         "answerKey": [
-          "1: Although he was tired, he completed his homework.",
-          "2: would not have missed / wouldn't have missed"
+          "1: goes",
+          "2: washes",
+          "3: teaches",
+          "4: watches",
+          "5: fixes",
+          "6: passes",
+          "7: does",
+          "8: catches",
+          "9: listens",
+          "10: reaches"
         ]
       },
       {
@@ -142,6 +150,48 @@
           "13. maintains — Review: add -s to the verb with a singular subject.",
           "14. permits — Review: add -s to the verb with a singular subject.",
           "15. confirms — Review: add -s to the verb with a singular subject."
+        ]
+      },
+      {
+        "id": "lesson_6",
+        "title": "الحصة السادسة: تكوين الأسئلة في المضارع البسيط باستخدام does",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_6.mp4",
+        "caption": "🎬 فيديو الحصة السادسة - الصف الثالث ثانوي | مستر مازن (eShool)",
+        "introMessage": "في الحصة السادسة حنراجع تكوين الأسئلة في المضارع البسيط باستخدام does. ركّز على ترتيب الكلمات واستخدام الفعل الأساسي بعد does.",
+        "taskMessage": "📝 *تمرين الحصة السادسة (Task 6):*\n\n1. What ______ Ahmed ______ for breakfast every morning? (eat)\n\n2. Where ______ Sara ______ English after school? (study)\n\n3. When ______ your father ______ work every day? (start)\n\n4. ______ Ali ______ football on Fridays? (play)\n\n5. Why ______ the teacher ______ the lesson again? (explain)\n\n6. What time ______ your sister ______ up every morning? (get)\n\n7. How ______ Hassan ______ to school every day? (go)\n\n8. ______ the bus ______ near your house every morning? (stop)\n\n9. Where ______ Mary ______ her homework? (do)\n\n10. How often ______ your brother ______ his room? (clean)",
+        "answerKey": [
+          "1: What does Ahmed eat for breakfast every morning?",
+          "2: Where does Sara study English after school?",
+          "3: When does your father start work every day?",
+          "4: Does Ali play football on Fridays?",
+          "5: Why does the teacher explain the lesson again?",
+          "6: What time does your sister get up every morning?",
+          "7: How does Hassan go to school every day?",
+          "8: Does the bus stop near your house every morning?",
+          "9: Where does Mary do her homework?",
+          "10: How often does your brother clean his room?"
+        ]
+      },
+      {
+        "id": "lesson_7",
+        "title": "الحصة السابعة: Gerunds and Bare Infinitives",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_7.mp4",
+        "caption": "🎬 فيديو الحصة السابعة - الصف الثالث ثانوي | مستر مازن (eShool)",
+        "introMessage": "في الحصة السابعة حنتمرن على الأفعال البتجي بعدها صيغة ing، والأفعال البتجي بعدها الفعل الأساسي من غير to.",
+        "taskMessage": "📝 *تمرين الحصة السابعة (Task 7):*\n\n*Instructions: Complete each sentence with the correct form of the verb in brackets.*\n\n1. She enjoys __________ English with her classmates. (practice)\n\n2. The teacher made the students __________ the exercise again. (do)\n\n3. My parents let me __________ my friends after school. (visit)\n\n4. Ahmed avoids __________ computer games late at night. (play)\n\n5. We look forward to __________ our new teacher. (meet)\n\n6. The manager made the workers __________ the office before leaving. (clean)\n\n7. He finished __________ his homework before dinner. (do)\n\n8. My father lets me __________ his car on weekends. (use)\n\n9. She suggested __________ the meeting until Monday. (postpone)\n\n10. The coach made the players __________ for another thirty minutes. (run)\n\n11. I can't stand __________ in long queues. (wait)\n\n12. They let the children __________ outside after lunch. (play)",
+        "answerKey": [
+          "1: practicing",
+          "2: do",
+          "3: visit",
+          "4: playing",
+          "5: meeting",
+          "6: clean",
+          "7: doing",
+          "8: use",
+          "9: postponing",
+          "10: run",
+          "11: waiting",
+          "12: play"
         ]
       }
     ],
