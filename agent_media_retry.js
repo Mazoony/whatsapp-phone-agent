@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data');
 export const AGENT_MEDIA_RETRY_REQUESTS_FILE = path.join(DATA_DIR, 'agent_media_retry_requests.json');
+export const TELEGRAM_AGENT_MEDIA_RETRY_REQUESTS_FILE = path.join(DATA_DIR, 'telegram_agent_media_retry_requests.json');
 
 function readRequests(filePath) {
   try {

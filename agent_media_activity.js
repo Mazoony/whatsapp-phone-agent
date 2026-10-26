@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data');
 export const AGENT_MEDIA_ACTIVITY_FILE = path.join(DATA_DIR, 'agent_media_activity.json');
+export const TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE = path.join(DATA_DIR, 'telegram_agent_media_activity.json');
 const MAX_ACTIVITIES = 20;
 
 function readStoredActivities(filePath) {

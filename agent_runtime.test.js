@@ -3,7 +3,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { appendAgentLog, readRecentAgentLogs } from './agent_runtime.js';
+import {
+  appendAgentLog,
+  installAgentLogCapture,
+  readRecentAgentLogs
+} from './agent_runtime.js';
 
 test('agent log records formatted terminal output and returns the latest bounded lines', () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-log-test-'));
@@ -36,6 +40,23 @@ test('agent log trims oversized files after closing the source file', () => {
     assert.ok(fs.statSync(logFile).size < 600 * 1024);
     assert.match(readRecentAgentLogs(logFile, 1).lines[0], /\[info\] New log entry$/);
   } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('agent log capture can write a separate process log file', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-log-capture-test-'));
+  const logFile = path.join(temporaryDirectory, 'telegram_agent.log');
+  const levels = ['log', 'info', 'warn', 'error', 'debug'];
+  const originalMethods = Object.fromEntries(levels.map(level => [level, console[level]]));
+
+  try {
+    for (const level of levels) console[level] = () => {};
+    installAgentLogCapture(logFile);
+    console.info('[Telegram] Polling started');
+    assert.match(readRecentAgentLogs(logFile, 1).lines[0], /\[info\] \[Telegram\] Polling started$/);
+  } finally {
+    for (const level of levels) console[level] = originalMethods[level];
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });

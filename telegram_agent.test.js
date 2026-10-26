@@ -12,6 +12,13 @@ import {
 } from './telegram_agent.js';
 import { LessonSkipQueue } from './lesson_skip_queue.js';
 import { createStudentPaymentLedger } from './student_payment_ledger.js';
+import { readAgentMediaActivities, writeAgentMediaActivity } from './agent_media_activity.js';
+import { enqueueAgentMediaRetry } from './agent_media_retry.js';
+import {
+  readTelegramUpdateQueue,
+  TelegramUpdateQueue,
+  setTelegramUpdateQueuePaused
+} from './telegram_update_queue.js';
 import {
   readTelegramAgentStatus,
   writeTelegramAgentStatus
@@ -58,6 +65,8 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
   };
   const sent = [];
   const paymentLedger = createStudentPaymentLedger(path.join(directory, 'student_payment_ledger.json'));
+  const mediaActivityFile = path.join(directory, 'telegram_agent_media_activity.json');
+  const mediaRetryRequestsFile = path.join(directory, 'telegram_agent_media_retry_requests.json');
   let currentPrivateChatError = privateChatError;
   const bot = {
     sendMessage: async (chatId, text, replyToMessageId) => {
@@ -89,6 +98,8 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
     videoPathResolver: videoFile => path.join(directory, videoFile),
     progressFile: path.join(directory, 'telegram_progress.json'),
     lessonSkipQueue,
+    mediaActivityFile,
+    mediaRetryRequestsFile,
     paymentLedger,
     ...(scanReceipt ? { scanReceipt } : {}),
     logger: { info() {}, error() {} }
@@ -99,6 +110,8 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
     directory,
     lessonManager,
     lessonSkipQueue,
+    mediaActivityFile,
+    mediaRetryRequestsFile,
     paymentLedger,
     sent,
     setPrivateChatError: error => {
@@ -161,6 +174,25 @@ test('Telegram /lesson sends the lesson privately and confirms in the group', as
   assert.equal(progress.status, 'awaiting_task');
   assert.ok(progress.joinedAt);
   assert.equal(progress.name, 'Student 44');
+});
+
+test('Telegram tracks failed lesson video delivery and retries it from the media queue', async t => {
+  const { agent, mediaActivityFile, mediaRetryRequestsFile, sent, setPrivateChatError } = createFixture(t, {
+    privateChatError: new Error('temporary Telegram send failure')
+  });
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  const failedActivity = readAgentMediaActivities(mediaActivityFile)[0];
+  assert.equal(failedActivity.platform, 'Telegram');
+  assert.equal(failedActivity.status, 'failed');
+  assert.equal(failedActivity.lessonId, 'lesson_1');
+
+  setPrivateChatError(null);
+  enqueueAgentMediaRetry(failedActivity.id, mediaRetryRequestsFile);
+  writeAgentMediaActivity({ ...failedActivity, status: 'retrying' }, mediaActivityFile);
+  await agent.processPendingMediaRetries();
+
+  assert.equal(readAgentMediaActivities(mediaActivityFile)[0].status, 'sent');
+  assert.equal(sent.filter(message => message.type === 'video').length, 1);
 });
 
 test('Telegram records group member names and join dates from service messages', async t => {
@@ -348,7 +380,7 @@ test('Telegram clears previously accepted answers when an active lesson task cha
 
   assert.deepEqual(gradedQuestions, [1, 2]);
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_2');
-  assert.match(sent.at(-3).text, /صحيح، ممتاز/);
+  assert.match(sent.at(-3).text, /كل الإجابات صحيحة/);
 });
 
 test('Telegram keeps lesson answers and grading feedback out of the group', async t => {
@@ -626,7 +658,7 @@ test('Telegram agent ignores unrelated messages, bots, and other groups', async 
   await agent.handleUpdate(groupUpdate({ text: '/lesson', isBot: true }));
   await agent.handleUpdate(groupUpdate({ text: '/lesson', chatType: 'private' }));
   assert.equal(sent.length, 1);
-  assert.match(sent[0].text, /ما لقيت حسابك في مجموعة الدروس/);
+  assert.match(sent[0].text, /ما لقيت حسابك مسجل في مجموعة الدروس/);
 });
 
 test('Telegram payment claims remain pending until an administrator reviews them', async t => {
@@ -876,6 +908,9 @@ test('Telegram polling persists the next offset after processing updates', async
   const directory = makeTemporaryDirectory();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const offsetFile = path.join(directory, 'offset.json');
+  const queueFile = path.join(directory, 'telegram_update_queue.json');
+  const controlFile = path.join(directory, 'telegram_agent_control.json');
+  const updateQueue = new TelegramUpdateQueue({ queueFile, controlFile });
   const controller = new AbortController();
   const received = [];
   const logs = [];
@@ -885,12 +920,16 @@ test('Telegram polling persists the next offset after processing updates', async
       getUpdates: async () => {
         pollCount += 1;
         if (pollCount === 1) return [{ update_id: 21 }, { update_id: 22 }];
+        for (let attempt = 0; attempt < 100 && received.length < 2; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
         controller.abort();
         return [];
       }
     },
     agent: { handleUpdate: async update => received.push(update.update_id) },
     offsetFile,
+    updateQueue,
     signal: controller.signal,
     logger: { info: message => logs.push(message), error() {} }
   });
@@ -900,6 +939,49 @@ test('Telegram polling persists the next offset after processing updates', async
   assert.ok(logs.some(message => /shutdown signal received: yes/.test(message)));
   assert.equal(loadTelegramUpdateOffset(offsetFile), 23);
   assert.throws(() => saveTelegramUpdateOffset(-1, offsetFile), /non-negative safe integer/);
+});
+
+test('Telegram update queue persists order, pause state, and safe dashboard details', t => {
+  const directory = makeTemporaryDirectory();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const queueFile = path.join(directory, 'telegram_update_queue.json');
+  const controlFile = path.join(directory, 'telegram_agent_control.json');
+  const queue = new TelegramUpdateQueue({ queueFile, controlFile });
+  queue.enqueue({
+    update_id: 51,
+    message: {
+      text: 'student private answer should not appear',
+      chat: { id: -100123, type: 'supergroup', title: 'Lessons' },
+      from: { id: 44, first_name: 'Ali' }
+    }
+  });
+  setTelegramUpdateQueuePaused(true, controlFile);
+
+  const snapshot = readTelegramUpdateQueue(queueFile, controlFile);
+  assert.equal(snapshot.paused, true);
+  assert.equal(snapshot.waiting.length, 1);
+  assert.equal(snapshot.waiting[0].name, 'Ali');
+  assert.equal(snapshot.waiting[0].chat, 'Lessons');
+  assert.equal(snapshot.waiting[0].messageType, 'Text');
+  assert.equal(JSON.stringify(snapshot).includes('student private answer'), false);
+  assert.equal(queue.takeNext(), null);
+
+  setTelegramUpdateQueuePaused(false, controlFile);
+  const entry = queue.takeNext();
+  assert.equal(entry.update.update_id, 51);
+  queue.enqueue({
+    update_id: 52,
+    message: {
+      text: 'another answer',
+      chat: { id: -100123, type: 'supergroup', title: 'Lessons' },
+      from: { id: 45, first_name: 'Sara' }
+    }
+  });
+  const liveSnapshot = readTelegramUpdateQueue(queueFile, controlFile);
+  assert.equal(liveSnapshot.active.id, '51');
+  assert.equal(liveSnapshot.waiting[0].id, '52');
+  queue.finish(entry);
+  assert.equal(readTelegramUpdateQueue(queueFile, controlFile).waiting.length, 1);
 });
 
 test('Telegram agent status persists connection, heartbeat, and last-connected time', t => {
@@ -959,6 +1041,10 @@ test('Telegram polling reports connecting, retrying, connected, and disconnected
     },
     agent: { handleUpdate: async () => {} },
     offsetFile: path.join(directory, 'offset.json'),
+    updateQueue: new TelegramUpdateQueue({
+      queueFile: path.join(directory, 'telegram_update_queue.json'),
+      controlFile: path.join(directory, 'telegram_agent_control.json')
+    }),
     signal: controller.signal,
     retryDelayMs: 0,
     onStatus: state => states.push(state),

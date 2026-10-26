@@ -1,8 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { config } from './config.js';
+import { installAgentLogCapture, TELEGRAM_AGENT_LOG_FILE } from './agent_runtime.js';
+import {
+  readAgentMediaActivities,
+  TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE,
+  writeAgentMediaActivity
+} from './agent_media_activity.js';
+import {
+  consumeAgentMediaRetryRequests,
+  TELEGRAM_AGENT_MEDIA_RETRY_REQUESTS_FILE
+} from './agent_media_retry.js';
 import { evaluateStudentTask } from './task_evaluator.js';
 import { lessonManager, resolveLessonVideoPath } from './lesson_manager.js';
 import {
@@ -19,6 +29,11 @@ import {
   TELEGRAM_AGENT_STATUS_FILE,
   writeTelegramAgentStatus
 } from './telegram_agent_status.js';
+import {
+  TELEGRAM_AGENT_CONTROL_FILE,
+  TELEGRAM_UPDATE_QUEUE_FILE,
+  TelegramUpdateQueue
+} from './telegram_update_queue.js';
 import { isExplicitPaidClaim } from './contact_payment_labels.js';
 import {
   getDueLessonAnswerReminders,
@@ -233,6 +248,8 @@ export class TelegramLessonAgent {
     defaultGrade = config.defaultStudentGrade,
     maxVideoBytes = TELEGRAM_MAX_VIDEO_BYTES,
     lessonSkipQueue = new LessonSkipQueue(TELEGRAM_LESSON_SKIP_REQUESTS_FILE),
+    mediaActivityFile = TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE,
+    mediaRetryRequestsFile = TELEGRAM_AGENT_MEDIA_RETRY_REQUESTS_FILE,
     paymentLedger = createStudentPaymentLedger(STUDENT_PAYMENT_LEDGER_FILE),
     scanReceipt = scanPaymentReceipt,
     logger = console
@@ -249,11 +266,14 @@ export class TelegramLessonAgent {
     this.defaultGrade = defaultGrade;
     this.maxVideoBytes = maxVideoBytes;
     this.lessonSkipQueue = lessonSkipQueue;
+    this.mediaActivityFile = mediaActivityFile;
+    this.mediaRetryRequestsFile = mediaRetryRequestsFile;
     this.paymentLedger = paymentLedger;
     this.scanReceipt = scanReceipt;
     this.logger = logger;
     this.processingLessonSkips = false;
     this.processingAnswerReminders = false;
+    this.processingMediaRetries = false;
     this.progress = readJsonFile(progressFile, {});
     if (!this.progress || typeof this.progress !== 'object' || Array.isArray(this.progress)) {
       throw new Error(`Invalid Telegram lesson progress in ${progressFile}.`);
@@ -881,12 +901,15 @@ export class TelegramLessonAgent {
     }
     const video = fs.readFileSync(videoPath);
     const deliveryChatId = this.progress[studentKey]?.telegramPrivateChatId || chatId;
-    await this.bot.sendVideo(
-      deliveryChatId,
+    await this.sendLessonVideo({
+      chatId: deliveryChatId,
       video,
-      lesson.caption || lesson.title || '',
+      lesson,
+      studentKey,
+      grade,
+      lessonIndex,
       replyToMessageId
-    );
+    });
     await this.bot.sendMessage(deliveryChatId, lesson.taskMessage, replyToMessageId);
 
     const previous = this.progress[studentKey] || {};
@@ -903,6 +926,119 @@ export class TelegramLessonAgent {
       correctQuestionNumbers: []
     };
     this.saveProgress();
+  }
+
+  async sendLessonVideo({
+    chatId,
+    video,
+    lesson,
+    studentKey,
+    grade,
+    lessonIndex,
+    replyToMessageId,
+    existingActivity
+  }) {
+    const activity = {
+      ...(existingActivity || {}),
+      id: existingActivity?.id || randomUUID(),
+      platform: 'Telegram',
+      mediaType: 'video',
+      recipientJid: String(chatId),
+      studentName: this.progress[studentKey]?.name || studentKey,
+      description: lesson.title || lesson.id,
+      lessonId: lesson.id,
+      videoFile: lesson.videoFile,
+      studentKey,
+      grade,
+      lessonIndex,
+      caption: lesson.caption || lesson.title || '',
+      total: video.length,
+      loaded: 0,
+      percent: undefined,
+      status: 'queued',
+      retryError: undefined,
+      updatedAt: new Date().toISOString()
+    };
+    writeAgentMediaActivity(activity, this.mediaActivityFile);
+    try {
+      activity.status = 'uploading';
+      activity.updatedAt = new Date().toISOString();
+      writeAgentMediaActivity(activity, this.mediaActivityFile);
+      await this.bot.sendVideo(
+        chatId,
+        video,
+        activity.caption,
+        replyToMessageId
+      );
+      activity.status = 'sent';
+      activity.loaded = video.length;
+      activity.percent = 100;
+      activity.updatedAt = new Date().toISOString();
+      writeAgentMediaActivity(activity, this.mediaActivityFile);
+      this.logger.info(`[Telegram] Delivered lesson video ${lesson.id} to ${studentKey}.`);
+      return activity;
+    } catch (error) {
+      activity.status = 'failed';
+      activity.retryError = error.message;
+      activity.updatedAt = new Date().toISOString();
+      writeAgentMediaActivity(activity, this.mediaActivityFile);
+      throw error;
+    }
+  }
+
+  async processPendingMediaRetries() {
+    if (this.processingMediaRetries) return;
+    this.processingMediaRetries = true;
+    try {
+      const requests = consumeAgentMediaRetryRequests(this.mediaRetryRequestsFile);
+      for (const request of requests) {
+        const activity = readAgentMediaActivities(this.mediaActivityFile)
+          .find(item => item.id === request.activityId);
+        if (!activity || activity.status !== 'retrying') continue;
+        try {
+          this.lessonManager.refreshLessonsConfig?.();
+          const gradeLessons = this.lessonManager.lessonsConfig[activity.grade]?.lessons;
+          const lessonIndex = Array.isArray(gradeLessons)
+            ? gradeLessons.findIndex(lesson => lesson?.id === activity.lessonId)
+            : -1;
+          const lesson = gradeLessons?.[lessonIndex];
+          if (!isReadyLesson(lesson) || lesson.videoFile !== activity.videoFile) {
+            throw new Error('The Telegram lesson video source is no longer available.');
+          }
+          const videoPath = this.videoPathResolver(lesson.videoFile);
+          const videoStats = fs.statSync(videoPath);
+          if (!videoStats.isFile() || videoStats.size === 0) {
+            throw new Error(`Telegram lesson video is missing or empty: ${videoPath}`);
+          }
+          if (videoStats.size > this.maxVideoBytes) {
+            throw new Error(
+              `Telegram lesson video exceeds the ${Math.ceil(this.maxVideoBytes / (1024 * 1024))} MB Bot API upload limit.`
+            );
+          }
+          await this.sendLessonVideo({
+            chatId: activity.recipientJid,
+            video: fs.readFileSync(videoPath),
+            lesson,
+            studentKey: activity.studentKey,
+            grade: activity.grade,
+            lessonIndex,
+            existingActivity: activity
+          });
+        } catch (error) {
+          this.logger.error(
+            `[Telegram] Could not retry video delivery ${activity.id}: ${error.message}`
+          );
+          writeAgentMediaActivity({
+            ...activity,
+            status: 'failed',
+            retryError: error.message,
+            updatedAt: new Date().toISOString()
+          }, this.mediaActivityFile);
+        }
+      }
+    } finally {
+      this.processingMediaRetries = false;
+    }
   }
 
   async processDueLessonAnswerReminders(now = Date.now()) {
@@ -1068,6 +1204,7 @@ export async function startTelegramPolling({
   api,
   agent,
   offsetFile = DEFAULT_OFFSET_FILE,
+  updateQueue = new TelegramUpdateQueue(),
   signal,
   logger = console,
   retryDelayMs = POLL_RETRY_DELAY_MS,
@@ -1098,8 +1235,36 @@ export async function startTelegramPolling({
   }, LESSON_ANSWER_REMINDER_CHECK_INTERVAL_MS);
   agent.processDueLessonAnswerReminders?.().catch(error =>
     logger.error(`[Telegram] Lesson answer reminder processing failed: ${error.message}`));
+  const mediaRetryTimer = setInterval(() => {
+    agent.processPendingMediaRetries?.().catch(error =>
+      logger.error(`[Telegram] Media retry processing failed: ${error.message}`));
+  }, 1000);
+  agent.processPendingMediaRetries?.().catch(error =>
+    logger.error(`[Telegram] Media retry processing failed: ${error.message}`));
+  let updateWorkerError = null;
+  const updateWorker = (async () => {
+    try {
+      while (!signal?.aborted) {
+        const entry = updateQueue.takeNext();
+        if (!entry) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          continue;
+        }
+        try {
+          await agent.handleUpdate(entry.update);
+        } catch (error) {
+          logger.error(`[Telegram] Could not process update ${entry.update.update_id}: ${error.message}`);
+        } finally {
+          updateQueue.finish(entry);
+        }
+      }
+    } catch (error) {
+      updateWorkerError = error;
+      logger.error(`[Telegram] Update queue worker failed: ${error.message}`);
+    }
+  })();
   try {
-    while (!signal?.aborted) {
+    while (!signal?.aborted && !updateWorkerError) {
       let updates;
       try {
         updates = await api.getUpdates(offset);
@@ -1117,18 +1282,17 @@ export async function startTelegramPolling({
       onStatus('connected');
       logger.info(`[Telegram] Poll request completed; Telegram returned ${updates.length} update(s).`);
       for (const update of updates) {
-        try {
-          await agent.handleUpdate(update);
-        } catch (error) {
-          logger.error(`[Telegram] Could not process update ${update.update_id}: ${error.message}`);
-        }
+        updateQueue.enqueue(update);
         offset = update.update_id + 1;
         saveTelegramUpdateOffset(offset, offsetFile);
       }
     }
+    if (updateWorkerError) throw updateWorkerError;
   } finally {
     clearInterval(lessonSkipTimer);
     clearInterval(answerReminderTimer);
+    clearInterval(mediaRetryTimer);
+    await updateWorker;
     onStatus('disconnected');
   }
   logger.info(
@@ -1137,6 +1301,7 @@ export async function startTelegramPolling({
 }
 
 async function runTelegramAgent() {
+  installAgentLogCapture(TELEGRAM_AGENT_LOG_FILE);
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
   if (!token) throw new Error('Set TELEGRAM_BOT_TOKEN in .env before starting the Telegram agent.');
 

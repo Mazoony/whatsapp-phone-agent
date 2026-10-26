@@ -1,0 +1,16 @@
+- region [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: e
+      - generic [ref=e6]:
+        - strong [ref=e7]: eShool Admin
+        - generic [ref=e8]: Private local dashboard
+    - heading "Unlock your dashboard" [level=1] [ref=e9]
+    - paragraph [ref=e10]: Enter your dashboard password to view student and contact information.
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - text: Password
+        - textbox "Password" [active] [ref=e13]
+      - paragraph [ref=e14]
+      - button "Unlock dashboard" [ref=e15] [cursor=pointer]
+    - paragraph [ref=e16]: Your session expires after 12 hours or when the dashboard restarts.

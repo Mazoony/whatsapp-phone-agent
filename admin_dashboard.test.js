@@ -5,8 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { writeAgentMediaActivity } from './agent_media_activity.js';
+import { consumeAgentMediaRetryRequests } from './agent_media_retry.js';
 import { appendAgentLog } from './agent_runtime.js';
 import { writeAgentQr, writeAgentStatus } from './agent_status.js';
+import { setTelegramUpdateQueuePaused } from './telegram_update_queue.js';
 import {
   createDashboardDataCache,
   createAdminDashboardServer as createAuthenticatedDashboardServer,
@@ -457,13 +459,13 @@ test('weekly dashboard activity counts distinct direct chats for the local calen
   assert.deepEqual(activity, {
     timeZone: 'UTC',
     days: [
-      { date: '2026-10-10', day: 'Sat', chats: 2, newChats: 2, telegramActiveStudents: 0 },
-      { date: '2026-10-11', day: 'Sun', chats: 0, newChats: 0, telegramActiveStudents: 0 },
-      { date: '2026-10-12', day: 'Mon', chats: 1, newChats: 0, telegramActiveStudents: 0 },
-      { date: '2026-10-13', day: 'Tue', chats: 0, newChats: 0, telegramActiveStudents: 0 },
-      { date: '2026-10-14', day: 'Wed', chats: 0, newChats: 0, telegramActiveStudents: 0 },
-      { date: '2026-10-15', day: 'Thu', chats: 0, newChats: 0, telegramActiveStudents: 0 },
-      { date: '2026-10-16', day: 'Fri', chats: 1, newChats: 0, telegramActiveStudents: 0 }
+      { date: '2026-10-10', day: 'Sat', chats: 2, newChats: 2, telegramActiveStudents: 0, telegramJoins: 0 },
+      { date: '2026-10-11', day: 'Sun', chats: 0, newChats: 0, telegramActiveStudents: 0, telegramJoins: 0 },
+      { date: '2026-10-12', day: 'Mon', chats: 1, newChats: 0, telegramActiveStudents: 0, telegramJoins: 0 },
+      { date: '2026-10-13', day: 'Tue', chats: 0, newChats: 0, telegramActiveStudents: 0, telegramJoins: 0 },
+      { date: '2026-10-14', day: 'Wed', chats: 0, newChats: 0, telegramActiveStudents: 0, telegramJoins: 0 },
+      { date: '2026-10-15', day: 'Thu', chats: 0, newChats: 0, telegramActiveStudents: 0, telegramJoins: 0 },
+      { date: '2026-10-16', day: 'Fri', chats: 1, newChats: 0, telegramActiveStudents: 0, telegramJoins: 0 }
     ]
   });
 });
@@ -488,6 +490,15 @@ test('weekly dashboard activity counts distinct Telegram learners per local cale
       },
       'telegram:-100123:44': {
         deliveredAt: '2026-10-09T12:00:00.000Z'
+      },
+      'telegram:-100123:45': {
+        groupJoinedAt: '2026-10-10T09:00:00.000Z'
+      },
+      'telegram:-100123:46': {
+        groupJoinedAt: '2026-10-10T23:30:00.000Z'
+      },
+      'telegram:-100123:47': {
+        groupJoinedAt: '2026-10-11T00:30:00.000Z'
       }
     }
   }, 'UTC', now);
@@ -495,6 +506,30 @@ test('weekly dashboard activity counts distinct Telegram learners per local cale
   assert.deepEqual(
     activity.days.map(day => day.telegramActiveStudents),
     [2, 0, 1, 0, 0, 1, 0]
+  );
+  assert.deepEqual(
+    activity.days.map(day => day.telegramJoins),
+    [2, 1, 0, 0, 0, 0, 0]
+  );
+});
+
+test('weekly dashboard activity assigns Telegram joins to the requested local calendar day', () => {
+  const activity = getDashboardWeeklyChatActivity({
+    ...sampleData,
+    telegramProgress: {
+      'telegram:-100123:45': {
+        groupJoinedAt: '2026-10-11T06:30:00.000Z'
+      }
+    }
+  }, 'America/Los_Angeles', Date.parse('2026-10-16T12:00:00.000Z'));
+
+  assert.equal(
+    activity.days.find(day => day.date === '2026-10-10').telegramJoins,
+    1
+  );
+  assert.equal(
+    activity.days.find(day => day.date === '2026-10-11').telegramJoins,
+    0
   );
 });
 
@@ -2165,12 +2200,15 @@ test('dashboard requests contact sync only when the agent is connected', async (
 test('agent logs API serves recent output and pairing QR only while fresh', async () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-agent-runtime-test-'));
   const agentLogFile = path.join(temporaryDirectory, 'agent.log');
+  const telegramAgentLogFile = path.join(temporaryDirectory, 'telegram_agent.log');
   const agentQrFile = path.join(temporaryDirectory, 'agent_qr.json');
   appendAgentLog('info', ['Agent is listening'], agentLogFile);
+  appendAgentLog('info', ['Telegram polling started'], telegramAgentLogFile);
   writeAgentQr('test-pairing-token', agentQrFile);
   const server = createAdminDashboardServer({
     readData: () => sampleData,
     agentLogFile,
+    telegramAgentLogFile,
     agentQrFile
   });
 
@@ -2181,8 +2219,14 @@ test('agent logs API serves recent output and pairing QR only while fresh', asyn
     assert.equal(logsResponse.status, 200);
     assert.match((await logsResponse.json()).lines[0], /\[info\] Agent is listening/);
 
+    const telegramLogsResponse = await fetch(`${baseUrl}/telegram-agent-logs?limit=10`);
+    assert.equal(telegramLogsResponse.status, 200);
+    assert.match((await telegramLogsResponse.json()).lines[0], /\[info\] Telegram polling started/);
+
     const invalidLimit = await fetch(`${baseUrl}/agent-logs?limit=501`);
     assert.equal(invalidLimit.status, 400);
+    const invalidTelegramLimit = await fetch(`${baseUrl}/telegram-agent-logs?limit=501`);
+    assert.equal(invalidTelegramLimit.status, 400);
 
     const qrResponse = await fetch(`${baseUrl}/agent-qr`);
     const qr = await qrResponse.json();
@@ -2316,6 +2360,104 @@ test('failed lesson videos expose a retry action and queue the exact activity', 
   } finally {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('Telegram queue and video panels expose pause, update state, and retry controls', async t => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-telegram-runtime-test-'));
+  t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
+  const telegramAgentStatusFile = path.join(temporaryDirectory, 'telegram_agent_status.json');
+  const telegramUpdateQueueFile = path.join(temporaryDirectory, 'telegram_update_queue.json');
+  const telegramAgentControlFile = path.join(temporaryDirectory, 'telegram_agent_control.json');
+  const telegramAgentMediaActivityFile = path.join(temporaryDirectory, 'telegram_agent_media_activity.json');
+  const telegramAgentMediaRetryRequestsFile = path.join(temporaryDirectory, 'telegram_media_retry_requests.json');
+  const lessonsFile = path.join(temporaryDirectory, 'lessons.json');
+  fs.writeFileSync(telegramAgentStatusFile, JSON.stringify({ connectionState: 'connected' }));
+  fs.writeFileSync(lessonsFile, JSON.stringify({
+    grade_3_secondary: {
+      lessons: [{ id: 'lesson_1', videoFile: 'media/lesson_1.mp4' }]
+    }
+  }));
+  fs.writeFileSync(telegramUpdateQueueFile, JSON.stringify({
+    active: null,
+    waiting: [{
+      update: {
+        update_id: 1,
+        message: {
+          text: 'private student answer',
+          chat: { id: -100123, type: 'supergroup', title: 'Lessons' },
+          from: { id: 44, first_name: 'Ali' }
+        }
+      },
+      queuedAt: new Date().toISOString()
+    }],
+    updatedAt: new Date().toISOString()
+  }));
+  writeAgentMediaActivity({
+    id: 'telegram-failed-video-1',
+    platform: 'Telegram',
+    mediaType: 'video',
+    recipientJid: '44',
+    studentName: 'Ali',
+    description: 'Lesson 1',
+    lessonId: 'lesson_1',
+    videoFile: 'media/lesson_1.mp4',
+    grade: 'grade_3_secondary',
+    lessonIndex: 0,
+    studentKey: 'telegram:-100123:44',
+    status: 'failed',
+    total: 1024,
+    updatedAt: new Date().toISOString()
+  }, telegramAgentMediaActivityFile);
+  const server = createAdminDashboardServer({
+    readData: () => sampleData,
+    telegramAgentStatusFile,
+    telegramUpdateQueueFile,
+    telegramAgentControlFile,
+    telegramAgentMediaActivityFile,
+    telegramAgentMediaRetryRequestsFile,
+    lessonsFile
+  });
+
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const queueResponse = await fetch(`${origin}/api/admin/telegram-chat-queue`);
+    const queue = await queueResponse.json();
+    assert.equal(queueResponse.status, 200);
+    assert.equal(queue.waiting[0].name, 'Ali');
+    assert.equal(JSON.stringify(queue).includes('private student answer'), false);
+
+    const pauseResponse = await fetch(`${origin}/api/admin/telegram-chat-queue-mode`, {
+      method: 'POST',
+      headers: { origin, 'content-type': 'application/json' },
+      body: JSON.stringify({ paused: true })
+    });
+    assert.equal(pauseResponse.status, 202);
+    assert.equal(JSON.parse(fs.readFileSync(telegramAgentControlFile, 'utf8')).paused, true);
+
+    const mediaResponse = await fetch(`${origin}/api/admin/telegram-agent-media`);
+    const media = await mediaResponse.json();
+    assert.equal(mediaResponse.status, 200);
+    assert.equal(media.activities[0].retryAvailable, true);
+
+    const retryResponse = await fetch(
+      `${origin}/api/admin/telegram-agent-media/telegram-failed-video-1/retry`,
+      {
+        method: 'POST',
+        headers: { origin, 'content-type': 'application/json' },
+        body: '{}'
+      }
+    );
+    assert.equal(retryResponse.status, 202);
+    assert.equal(
+      JSON.parse(fs.readFileSync(telegramAgentMediaActivityFile, 'utf8')).activities[0].status,
+      'retrying'
+    );
+    assert.equal(consumeAgentMediaRetryRequests(telegramAgentMediaRetryRequestsFile)[0].activityId,
+      'telegram-failed-video-1');
+  } finally {
+    await new Promise(resolve => server.close(resolve));
   }
 });
 

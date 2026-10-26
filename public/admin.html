@@ -104,6 +104,8 @@
     .agent-media-item.failed .agent-media-progress > span { background: #b94747; }
     .agent-media-item.failed .agent-media-status { color: #b94747; }
     .agent-media-item.sent .agent-media-status { color: #208453; }
+    .telegram-media-item.uploading .agent-media-progress > span { width: 35% !important; animation: telegram-upload-indeterminate 1.2s ease-in-out infinite alternate; }
+    @keyframes telegram-upload-indeterminate { from { transform: translateX(0); } to { transform: translateX(175%); } }
     .agent-media-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
     .agent-media-retry { border: 1px solid #b94747; border-radius: 7px; padding: 5px 9px; color: #a13535; background: #fff8f7; font: inherit; font-size: 10px; font-weight: 700; }
     .agent-media-retry:disabled { cursor: wait; opacity: .6; }
@@ -194,6 +196,8 @@
     .weekly-chat-chart .weekly-chat-new-point { fill: white; stroke: #5278c7; stroke-width: 3; }
     .weekly-chat-chart .weekly-chat-telegram-line { fill: none; stroke: #8e55b9; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
     .weekly-chat-chart .weekly-chat-telegram-point { fill: white; stroke: #8e55b9; stroke-width: 3; }
+    .weekly-chat-chart .weekly-chat-joins-line { fill: none; stroke: #d47b2d; stroke-width: 2; stroke-dasharray: 5 4; stroke-linejoin: round; stroke-linecap: round; }
+    .weekly-chat-chart .weekly-chat-joins-point { fill: white; stroke: #d47b2d; stroke-width: 2; }
     .weekly-chat-chart .weekly-chat-telegram-hit-line { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; }
     .weekly-chat-chart .weekly-chat-telegram-hit-point { fill: transparent; stroke: transparent; stroke-width: 12; pointer-events: all; cursor: crosshair; }
     .weekly-chat-chart .weekly-chat-telegram-hit-line:focus-visible { stroke: #8e55b955; outline: none; }
@@ -203,11 +207,13 @@
     .weekly-chat-chart .weekly-chat-count { font-size: 10px; font-weight: 750; paint-order: stroke; stroke: white; stroke-width: 3px; stroke-linejoin: round; }
     .weekly-chat-chart .weekly-chat-count-all { fill: #17633f; }
     .weekly-chat-chart .weekly-chat-count-new { fill: #385ba1; }
+    .weekly-chat-chart .weekly-chat-count-joins { fill: #a85815; font-weight: 750; }
     .weekly-chat-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; color: var(--muted); font-size: 10px; }
     .weekly-chat-legend span { display: inline-flex; align-items: center; gap: 5px; }
     .weekly-chat-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: #23875a; }
     .weekly-chat-legend .weekly-chat-new-key { background: #5278c7; }
     .weekly-chat-legend .weekly-chat-telegram-key { background: #8e55b9; }
+    .weekly-chat-legend .weekly-chat-joins-key { background: #d47b2d; }
     .weekly-chat-summary { margin-top: 3px !important; }
     .payment-calendar-panel { padding: 16px; }
     .payment-calendar-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -632,6 +638,22 @@
             <div class="metric-foot" id="telegram-agent-status-detail">Connection status updates automatically</div>
           </article>
         </div>
+        <article class="panel agent-log-panel">
+          <h3>Telegram agent terminal log</h3>
+          <p>Recent output from the running Telegram bot. Refreshes automatically; log entries may include student names or IDs.</p>
+          <pre class="agent-log" id="telegram-agent-log" aria-live="polite">Waiting for Telegram agent output…</pre>
+        </article>
+        <article class="panel agent-queue-panel" id="telegram-chat-queue-panel">
+          <div class="agent-media-top"><h3>Live Telegram update queue</h3><div class="agent-queue-controls"><span class="agent-queue-state">FIFO · updates live</span><button class="agent-queue-control" id="telegram-queue-toggle" type="button" disabled>Pause handling</button></div></div>
+          <div class="agent-queue-paused" id="telegram-queue-paused" hidden>Telegram update handling is paused. The bot will keep receiving updates; queued updates wait until handling resumes.</div>
+          <div class="agent-queue-list" id="telegram-queue-list" aria-live="polite"><div class="agent-queue-empty">No Telegram updates are waiting.</div></div>
+        </article>
+        <article class="panel agent-media-panel" id="telegram-media-panel">
+          <h3>Telegram video delivery</h3>
+          <p>Lesson video uploads, delivery status, and retry controls for failed sends.</p>
+          <div class="agent-media-list" id="telegram-media-list" aria-live="polite"><div class="agent-media-empty">Waiting for Telegram video activity…</div></div>
+          <button class="agent-media-more" id="telegram-media-more" type="button" aria-expanded="false" hidden></button>
+        </article>
 
         <div class="section-heading"><div><h2>Other dashboard activity</h2><p>WhatsApp chats and contact-management statistics.</p></div></div>
         <div class="metrics">
@@ -681,6 +703,7 @@
             <span><i></i>All active chats</span>
             <span><i class="weekly-chat-new-key"></i>New chats</span>
             <span><i class="weekly-chat-telegram-key"></i>Telegram active learners · scaled separately</span>
+            <span><i class="weekly-chat-joins-key"></i>Telegram group joins · scaled with active learners</span>
           </div>
         </article>
 
@@ -1375,14 +1398,17 @@
     let dashboardEvents = null;
     let dashboardPollTimer = null;
     let agentPollTimer = null;
+    let telegramAgentPollTimer = null;
     let pendingAgentReplyMode = null;
     let pendingAgentQueuePause = null;
+    let pendingTelegramQueuePause = null;
     let conversationOffset = 0;
     let conversationHasMoreLocally = false;
     let conversationHistoryCursor = null;
     let pendingHistoryCursor = null;
     const pendingQueueCancellations = new Set();
     let showAllAgentMediaActivities = false;
+    let showAllTelegramMediaActivities = false;
     const AGENT_MEDIA_PREVIEW_COUNT = 3;
     const DASHBOARD_CACHE_PREFIX = 'eshool-dashboard-cache:v1:';
     const DASHBOARD_CACHE_TTL_MS = 60_000;
@@ -1562,8 +1588,10 @@
       dashboardEvents = null;
       if (dashboardPollTimer) clearInterval(dashboardPollTimer);
       if (agentPollTimer) clearInterval(agentPollTimer);
+      if (telegramAgentPollTimer) clearInterval(telegramAgentPollTimer);
       dashboardPollTimer = null;
       agentPollTimer = null;
+      telegramAgentPollTimer = null;
       dashboardStarted = false;
       authSetupRequired = setupRequired;
       document.body.classList.add('auth-locked');
@@ -1604,6 +1632,13 @@
         }
       });
       dashboardPollTimer = setInterval(() => refreshAll({ clearCache: true }), 15000);
+      telegramAgentPollTimer = setInterval(() => {
+        if (document.querySelector('#section-overview').classList.contains('active')) {
+          loadTelegramAgentLogs().catch(error => showError(`Could not refresh Telegram agent log: ${error.message}`));
+          loadTelegramUpdateQueue().catch(error => showError(`Could not refresh Telegram update queue: ${error.message}`));
+          loadTelegramAgentMediaActivity().catch(error => showError(`Could not refresh Telegram video activity: ${error.message}`));
+        }
+      }, 5000);
       agentPollTimer = setInterval(() => {
         if (handledChatsOnly && !$('#agent-media-panel').hidden) {
           loadAgentLogs().catch(error => showError(`Could not refresh WhatsApp agent log: ${error.message}`));
@@ -2043,16 +2078,42 @@
         }
         for (const day of days) day.telegramActiveStudents = telegramCounts.get(day.date) || 0;
       }
+      if (days.every(day => day.telegramJoins === undefined)) {
+        const telegramJoins = new Map();
+        const dateFormatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: activity.timeZone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        for (const student of telegramStudents.filter(item =>
+          item.platform === 'Telegram' && item.joinedAt)) {
+          const timestamp = Date.parse(student.joinedAt);
+          if (!Number.isFinite(timestamp)) continue;
+          const parts = Object.fromEntries(
+            dateFormatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
+          );
+          const date = `${parts.year}-${parts.month}-${parts.day}`;
+          telegramJoins.set(date, (telegramJoins.get(date) || 0) + 1);
+        }
+        for (const day of days) day.telegramJoins = telegramJoins.get(day.date) || 0;
+      }
+      for (const day of days) {
+        if (!Number.isFinite(day.telegramJoins)) day.telegramJoins = 0;
+      }
       const width = 760;
-      const height = 250;
+      const height = 270;
       const left = 42;
       const right = 18;
       const top = 30;
-      const bottom = 56;
+      const bottom = 70;
       const plotWidth = width - left - right;
       const plotHeight = height - top - bottom;
       const maximum = Math.max(1, ...days.flatMap(day => [day.chats, day.newChats]));
-      const maximumTelegram = Math.max(1, ...days.map(day => day.telegramActiveStudents || 0));
+      const maximumTelegram = Math.max(1, ...days.flatMap(day => [
+        day.telegramActiveStudents || 0,
+        day.telegramJoins || 0
+      ]));
       const ticks = [...new Set([0, Math.ceil(maximum / 2), maximum])];
       const grid = ticks.map(value => {
         const y = top + plotHeight - (value / maximum) * plotHeight;
@@ -2063,15 +2124,17 @@
         const y = top + plotHeight - (day.chats / maximum) * plotHeight;
         const newY = top + plotHeight - (day.newChats / maximum) * plotHeight;
         const telegramY = top + plotHeight - (day.telegramActiveStudents / maximumTelegram) * plotHeight;
-        return { ...day, x, y, newY, telegramY };
+        const joinsY = top + plotHeight - (day.telegramJoins / maximumTelegram) * plotHeight;
+        return { ...day, x, y, newY, telegramY, joinsY };
       });
       const line = points.map(point => `${point.x},${point.y}`).join(' ');
       const newLine = points.map(point => `${point.x},${point.newY}`).join(' ');
       const telegramLine = points.map(point => `${point.x},${point.telegramY}`).join(' ');
+      const telegramJoinsLine = points.map(point => `${point.x},${point.joinsY}`).join(' ');
       const telegramHitLines = points.slice(1).map((point, index) => {
         const previous = points[index];
         const describe = day =>
-          `${day.day}, ${day.date}: ${day.chats} active ${day.chats === 1 ? 'WhatsApp chat' : 'WhatsApp chats'}, ${day.newChats} new ${day.newChats === 1 ? 'chat' : 'chats'}, ${day.telegramActiveStudents} Telegram active ${day.telegramActiveStudents === 1 ? 'learner' : 'learners'}`;
+          `${day.day}, ${day.date}: ${day.chats} active ${day.chats === 1 ? 'WhatsApp chat' : 'WhatsApp chats'}, ${day.newChats} new ${day.newChats === 1 ? 'chat' : 'chats'}, ${day.telegramActiveStudents} Telegram active ${day.telegramActiveStudents === 1 ? 'learner' : 'learners'}, ${day.telegramJoins} Telegram group ${day.telegramJoins === 1 ? 'join' : 'joins'}`;
         const description = `${describe(previous)}; ${describe(point)}`;
         return `<line class="weekly-chat-telegram-hit-line" x1="${previous.x}" y1="${previous.telegramY}" x2="${point.x}" y2="${point.telegramY}" tabindex="0" role="img" aria-label="${escapeHtml(description)}" aria-describedby="weekly-chat-tooltip" data-weekly-tooltip="${escapeHtml(description)}"><title>${escapeHtml(description)}</title></line>`;
       }).join('');
@@ -2082,15 +2145,16 @@
           timeZone: 'UTC'
         }).format(new Date(`${point.date}T00:00:00Z`));
         const description = `${point.day}, ${labelDate}: ${point.chats} active ${point.chats === 1 ? 'chat' : 'chats'}, ${point.newChats} new`;
-        const telegramDescription = `${point.day}, ${point.date}: ${point.chats} active ${point.chats === 1 ? 'WhatsApp chat' : 'WhatsApp chats'}, ${point.newChats} new ${point.newChats === 1 ? 'chat' : 'chats'}, ${point.telegramActiveStudents} Telegram active ${point.telegramActiveStudents === 1 ? 'learner' : 'learners'}`;
-        return `<circle class="weekly-chat-point" cx="${point.x}" cy="${point.y}" r="5"><title>${escapeHtml(description)}</title></circle><circle class="weekly-chat-new-point" cx="${point.x}" cy="${point.newY}" r="4"><title>${escapeHtml(description)}</title></circle>${point.telegramActiveStudents ? `<circle class="weekly-chat-telegram-point" cx="${point.x}" cy="${point.telegramY}" r="4"></circle>` : ''}<text class="weekly-chat-count weekly-chat-count-all" x="${point.x}" y="${point.y - 10}" text-anchor="middle">${point.chats}</text><text class="weekly-chat-count weekly-chat-count-new" x="${point.x}" y="${point.newY + 16}" text-anchor="middle">${point.newChats}</text><text x="${point.x}" y="${height - 23}" text-anchor="middle">${escapeHtml(point.day)}</text><text x="${point.x}" y="${height - 9}" text-anchor="middle">${escapeHtml(labelDate)}</text><circle class="weekly-chat-telegram-hit-point" cx="${point.x}" cy="${point.telegramY}" r="8" tabindex="0" role="img" aria-label="${escapeHtml(telegramDescription)}" aria-describedby="weekly-chat-tooltip" data-weekly-tooltip="${escapeHtml(telegramDescription)}"><title>${escapeHtml(telegramDescription)}</title></circle>`;
+        const telegramDescription = `${point.day}, ${point.date}: ${point.chats} active ${point.chats === 1 ? 'WhatsApp chat' : 'WhatsApp chats'}, ${point.newChats} new ${point.newChats === 1 ? 'chat' : 'chats'}, ${point.telegramActiveStudents} Telegram active ${point.telegramActiveStudents === 1 ? 'learner' : 'learners'}, ${point.telegramJoins} Telegram group ${point.telegramJoins === 1 ? 'join' : 'joins'}`;
+        return `<circle class="weekly-chat-point" cx="${point.x}" cy="${point.y}" r="5"><title>${escapeHtml(description)}</title></circle><circle class="weekly-chat-new-point" cx="${point.x}" cy="${point.newY}" r="4"><title>${escapeHtml(description)}</title></circle>${point.telegramActiveStudents ? `<circle class="weekly-chat-telegram-point" cx="${point.x}" cy="${point.telegramY}" r="4"></circle>` : ''}<circle class="weekly-chat-joins-point" cx="${point.x}" cy="${point.joinsY}" r="3"><title>${escapeHtml(telegramDescription)}</title></circle><text class="weekly-chat-count weekly-chat-count-all" x="${point.x}" y="${point.y - 10}" text-anchor="middle">${point.chats}</text><text class="weekly-chat-count weekly-chat-count-new" x="${point.x}" y="${point.newY + 16}" text-anchor="middle">${point.newChats}</text><text x="${point.x}" y="${height - 37}" text-anchor="middle">${escapeHtml(point.day)}</text><text x="${point.x}" y="${height - 23}" text-anchor="middle">${escapeHtml(labelDate)}</text><text class="weekly-chat-count weekly-chat-count-joins" x="${point.x}" y="${point.joinsY - 10}" text-anchor="middle" aria-label="${point.telegramJoins} Telegram group joins">${point.telegramJoins}</text><circle class="weekly-chat-telegram-hit-point" cx="${point.x}" cy="${point.telegramY}" r="8" tabindex="0" role="img" aria-label="${escapeHtml(telegramDescription)}" aria-describedby="weekly-chat-tooltip" data-weekly-tooltip="${escapeHtml(telegramDescription)}"><title>${escapeHtml(telegramDescription)}</title></circle>`;
       }).join('');
       container.innerHTML = `
-        <svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Daily active WhatsApp chats and new conversations, with Telegram active learners shown on a separate scale, for the last seven days">
+        <svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Daily active WhatsApp chats and new conversations, plus Telegram active learners and group joins shown on a shared separate scale, for the last seven days">
           ${grid}
           <polyline class="weekly-chat-line" points="${line}"></polyline>
           <polyline class="weekly-chat-new-line" points="${newLine}"></polyline>
           <polyline class="weekly-chat-telegram-line" points="${telegramLine}"></polyline>
+          <polyline class="weekly-chat-joins-line" points="${telegramJoinsLine}"></polyline>
           ${telegramHitLines}
           ${marks}
         </svg>
@@ -2126,8 +2190,9 @@
       const total = days.reduce((sum, day) => sum + day.chats, 0);
       const newTotal = days.reduce((sum, day) => sum + day.newChats, 0);
       const telegramTotal = days.reduce((sum, day) => sum + day.telegramActiveStudents, 0);
+      const telegramJoinTotal = days.reduce((sum, day) => sum + day.telegramJoins, 0);
       $('#weekly-chat-summary').textContent =
-        `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats · ${telegramTotal.toLocaleString()} Telegram active learner-days over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
+        `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats · ${telegramTotal.toLocaleString()} Telegram active learner-days · ${telegramJoinTotal.toLocaleString()} Telegram group joins over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
     }
 
     async function loadOverview() {
@@ -2136,7 +2201,8 @@
       let telegramStudents = [];
       if (Array.isArray(data.weeklyChatActivity?.days) &&
         data.weeklyChatActivity.days.length === 7 &&
-        data.weeklyChatActivity.days.every(day => day.telegramActiveStudents === undefined)) {
+        data.weeklyChatActivity.days.some(day =>
+          day.telegramActiveStudents === undefined || day.telegramJoins === undefined)) {
         const progress = await api(`/api/admin/progress?${new URLSearchParams({ timeZone })}`);
         telegramStudents = progress.students || [];
       }
@@ -2852,6 +2918,102 @@
       $('#telegram-agent-status-detail').textContent = detail;
     }
 
+    async function loadTelegramAgentLogs() {
+      const log = await api('/api/admin/telegram-agent-logs?limit=250');
+      const container = $('#telegram-agent-log');
+      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+      container.textContent = log.lines.length
+        ? log.lines.join('\n')
+        : 'No Telegram agent output has been recorded yet. Start the bot with npm run telegram to see its terminal output here.';
+      if (nearBottom) container.scrollTop = container.scrollHeight;
+    }
+
+    async function loadTelegramUpdateQueue() {
+      const queue = await api('/api/admin/telegram-chat-queue');
+      const container = $('#telegram-queue-list');
+      const rows = [
+        ...(queue.active ? [{ ...queue.active, active: true }] : []),
+        ...(queue.waiting || []).map(entry => ({ ...entry, active: false }))
+      ];
+      if (!rows.length) {
+        container.innerHTML = '<div class="agent-queue-empty">No Telegram updates are waiting.</div>';
+      } else {
+        container.innerHTML = rows.map(row => `
+          <div class="agent-queue-item ${row.active ? 'active' : ''}">
+            <span class="agent-queue-position">#${row.position}</span>
+            <div><div class="agent-queue-name">${escapeHtml(row.name)} · ${escapeHtml(row.chat)}</div>
+            <div class="agent-queue-detail">${escapeHtml(row.messageType)} · ${row.active
+              ? `Started ${formatDate(row.startedAt || row.queuedAt)} · handling ${formatQueueDuration(row.startedAt || row.queuedAt)}`
+              : `Received ${formatDate(row.queuedAt)} · waiting ${formatQueueDuration(row.queuedAt)}`}</div></div>
+            <span class="agent-queue-state">${row.active ? 'Handling now' : 'Waiting'}</span>
+          </div>`).join('');
+      }
+      $('#telegram-queue-paused').hidden = !queue.paused;
+      const button = $('#telegram-queue-toggle');
+      if (pendingTelegramQueuePause !== null && queue.paused === pendingTelegramQueuePause) {
+        pendingTelegramQueuePause = null;
+      }
+      button.disabled = pendingTelegramQueuePause !== null;
+      button.textContent = pendingTelegramQueuePause !== null
+        ? pendingTelegramQueuePause ? 'Pausing…' : 'Resuming…'
+        : queue.paused ? 'Resume handling' : 'Pause handling';
+    }
+
+    async function loadTelegramAgentMediaActivity() {
+      const { activities } = await api('/api/admin/telegram-agent-media');
+      const container = $('#telegram-media-list');
+      const moreButton = $('#telegram-media-more');
+      if (!activities.length) {
+        container.innerHTML = '<div class="agent-media-empty">No Telegram lesson videos have been sent yet.</div>';
+        moreButton.hidden = true;
+        moreButton.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      const statuses = {
+        queued: 'Queued',
+        uploading: 'Uploading',
+        sent: 'Sent',
+        failed: 'Failed',
+        retrying: 'Retrying'
+      };
+      const visibleActivities = showAllTelegramMediaActivities
+        ? activities
+        : activities.slice(0, AGENT_MEDIA_PREVIEW_COUNT);
+      container.innerHTML = visibleActivities.map(activity => {
+        const percent = Number.isFinite(activity.percent)
+          ? Math.max(0, Math.min(100, activity.percent))
+          : null;
+        const size = Number.isFinite(activity.total)
+          ? `${(activity.total / (1024 * 1024)).toFixed(1)} MB`
+          : 'Size unknown';
+        const progressLabel = activity.status === 'sent'
+          ? `Sent · ${size}`
+          : activity.status === 'failed'
+            ? `Failed · ${size}`
+            : activity.status === 'retrying'
+              ? `Retry queued · ${size}`
+              : activity.status === 'uploading'
+                ? `Sending to Telegram · ${size}`
+                : `Queued · ${size}`;
+        const studentName = activity.studentName || 'Telegram learner';
+        const retryError = activity.retryError
+          ? `<span class="agent-media-error">${escapeHtml(activity.retryError)}</span>`
+          : '';
+        const canRetry = activity.status === 'failed' && activity.retryAvailable;
+        return `<div class="agent-media-item telegram-media-item ${escapeHtml(activity.status)}">
+          <div class="agent-media-top"><span>${escapeHtml(studentName)} · Video · ${escapeHtml(activity.description || 'Telegram lesson')}</span><span class="agent-media-status">${escapeHtml(statuses[activity.status] || activity.status)}</span></div>
+          <div class="agent-media-progress" role="progressbar" aria-label="${escapeHtml(studentName)} video delivery status" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div>
+          <div class="agent-media-meta"><span>Telegram chat ${escapeHtml(activity.recipientJid || 'unavailable')}</span><span>${escapeHtml(progressLabel)} · ${formatDate(activity.updatedAt)}</span></div>
+          ${canRetry || retryError ? `<div class="agent-media-actions">${canRetry ? `<button class="agent-media-retry" type="button" data-telegram-retry-id="${escapeHtml(activity.id)}">Resend video</button>` : '<span></span>'}${retryError}</div>` : ''}
+        </div>`;
+      }).join('');
+      moreButton.hidden = activities.length <= AGENT_MEDIA_PREVIEW_COUNT;
+      moreButton.setAttribute('aria-expanded', String(showAllTelegramMediaActivities));
+      moreButton.textContent = showAllTelegramMediaActivities
+        ? 'Show less'
+        : `Show more (${activities.length - AGENT_MEDIA_PREVIEW_COUNT})`;
+    }
+
     async function loadAgentLogs() {
       if (!handledChatsOnly) return;
       const log = await api('/api/admin/agent-logs?limit=250');
@@ -3533,6 +3695,9 @@
           loadManualScheduleOptions(),
           loadAgentStatus(),
           loadTelegramAgentStatus(),
+          loadTelegramAgentLogs(),
+          loadTelegramUpdateQueue(),
+          loadTelegramAgentMediaActivity(),
           loadWorkbookStatus(),
           loadCurriculumOverview().catch(() => {})
         ]);
@@ -3581,6 +3746,11 @@
           if (has('contacts.json', 'chat_history.json', 'students.xlsx')) tasks.push(loadWorkbookStatus());
         if (has('agent_status.json')) tasks.push(loadAgentStatus());
         if (has('telegram_agent_status.json')) tasks.push(loadTelegramAgentStatus());
+        if (has('telegram_agent.log')) tasks.push(loadTelegramAgentLogs());
+        if (has('telegram_update_queue.json', 'telegram_agent_control.json')) {
+          tasks.push(loadTelegramUpdateQueue());
+        }
+        if (has('telegram_agent_media_activity.json')) tasks.push(loadTelegramAgentMediaActivity());
         if (has('agent_qr.json') && handledChatsOnly) tasks.push(loadAgentQr());
         if (has('agent_media_activity.json') &&
             handledChatsOnly &&
@@ -4451,6 +4621,25 @@
         ]);
       }
     });
+    $('#telegram-queue-toggle').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const paused = button.textContent === 'Pause handling';
+      pendingTelegramQueuePause = paused;
+      button.disabled = true;
+      button.textContent = paused ? 'Pausing…' : 'Resuming…';
+      try {
+        await api('/api/admin/telegram-chat-queue-mode', {
+          method: 'POST',
+          body: JSON.stringify({ paused })
+        });
+        await loadTelegramUpdateQueue();
+      } catch (error) {
+        pendingTelegramQueuePause = null;
+        button.disabled = false;
+        showError(`Could not ${paused ? 'pause' : 'resume'} Telegram handling: ${error.message}`);
+        await loadTelegramUpdateQueue().catch(() => {});
+      }
+    });
     $('#agent-queue-list').addEventListener('click', async event => {
       const button = event.target.closest('[data-cancel-queue-jid]');
       if (!button || !button.dataset.cancelQueueJid) return;
@@ -4482,6 +4671,38 @@
       showAllAgentMediaActivities = !showAllAgentMediaActivities;
       loadAgentMediaActivity().catch(error =>
         showError(`Could not update media delivery history: ${error.message}`));
+    });
+    $('#telegram-media-more').addEventListener('click', () => {
+      showAllTelegramMediaActivities = !showAllTelegramMediaActivities;
+      loadTelegramAgentMediaActivity().catch(error =>
+        showError(`Could not update Telegram video delivery history: ${error.message}`));
+    });
+    $('#telegram-media-list').addEventListener('click', async event => {
+      const button = event.target.closest('[data-telegram-retry-id]');
+      if (!button) return;
+      const activityId = button.dataset.telegramRetryId;
+      button.disabled = true;
+      button.textContent = 'Queuing…';
+      try {
+        await api(`/api/admin/telegram-agent-media/${encodeURIComponent(activityId)}/retry`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        await loadTelegramAgentMediaActivity();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Resend video';
+        const row = button.closest('.agent-media-item');
+        const actions = button.closest('.agent-media-actions');
+        let message = actions.querySelector('.agent-media-error');
+        if (!message) {
+          message = document.createElement('span');
+          message.className = 'agent-media-error';
+          actions.append(message);
+        }
+        message.textContent = error.message;
+        row?.classList.add('failed');
+      }
     });
     /* ====================================================================
        CURRICULUM & LESSONS MANAGEMENT CLIENT LOGIC

@@ -5,6 +5,7 @@ import { format } from 'node:util';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data');
 export const AGENT_LOG_FILE = path.join(DATA_DIR, 'agent.log');
+export const TELEGRAM_AGENT_LOG_FILE = path.join(DATA_DIR, 'telegram_agent.log');
 const MAX_LOG_BYTES = 1024 * 1024;
 const LOG_RETAIN_BYTES = MAX_LOG_BYTES / 2;
 const LOG_READ_BYTES = 256 * 1024;
@@ -71,14 +72,14 @@ export function readRecentAgentLogs(filePath = AGENT_LOG_FILE, requestedLimit = 
   }
 }
 
-export function installAgentLogCapture() {
+export function installAgentLogCapture(filePath = AGENT_LOG_FILE) {
   const originalError = console.error.bind(console);
   for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
     const original = console[level].bind(console);
     console[level] = (...values) => {
       original(...values);
       try {
-        appendAgentLog(level, values);
+        appendAgentLog(level, values, filePath);
       } catch (error) {
         originalError('[Agent Log] Could not persist output:', error.message);
       }

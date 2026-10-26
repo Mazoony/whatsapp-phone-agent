@@ -33,13 +33,21 @@ import {
 } from './blocked_contacts.js';
 import {
   AGENT_MEDIA_ACTIVITY_FILE,
+  TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE,
   readAgentMediaActivities,
   writeAgentMediaActivity
 } from './agent_media_activity.js';
 import {
   AGENT_MEDIA_RETRY_REQUESTS_FILE,
+  TELEGRAM_AGENT_MEDIA_RETRY_REQUESTS_FILE,
   enqueueAgentMediaRetry
 } from './agent_media_retry.js';
+import {
+  readTelegramUpdateQueue,
+  setTelegramUpdateQueuePaused,
+  TELEGRAM_AGENT_CONTROL_FILE,
+  TELEGRAM_UPDATE_QUEUE_FILE
+} from './telegram_update_queue.js';
 import { findLessonForMediaActivity } from './lesson_media_retry.js';
 import { getInactiveEligibleEsContacts } from './broadcast_utils.js';
 import {
@@ -70,7 +78,11 @@ import {
   requestAgentQueueMode,
   requestAgentResponseMode
 } from './agent_status.js';
-import { AGENT_LOG_FILE, readRecentAgentLogs } from './agent_runtime.js';
+import {
+  AGENT_LOG_FILE,
+  TELEGRAM_AGENT_LOG_FILE,
+  readRecentAgentLogs
+} from './agent_runtime.js';
 import {
   getEligibleBroadcastContacts,
   listEligibleBroadcastContacts,
@@ -131,6 +143,9 @@ const DASHBOARD_WATCHED_FILES = new Set([
   AGENT_STATUS_FILE,
   AGENT_QR_FILE,
   AGENT_MEDIA_ACTIVITY_FILE,
+  TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE,
+  TELEGRAM_UPDATE_QUEUE_FILE,
+  TELEGRAM_AGENT_CONTROL_FILE,
   WHATSAPP_PRESENCE_FILE,
   BLOCKED_NUMBERS_FILE,
   CONTACT_PAYMENT_LABELS_FILE
@@ -1014,6 +1029,7 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
       }).format(date),
       conversations: new Set(),
       telegramStudents: new Set(),
+      telegramJoins: new Set(),
       newConversations: 0
     });
   }
@@ -1059,16 +1075,25 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
       daysByDate.get(`${parts.year}-${parts.month}-${parts.day}`)
         ?.telegramStudents.add(studentKey);
     }
+    const joinedAt = Date.parse(student.groupJoinedAt || '');
+    if (Number.isFinite(joinedAt) && joinedAt <= nowTimestamp) {
+      const parts = Object.fromEntries(
+        formatter.formatToParts(new Date(joinedAt)).map(part => [part.type, part.value])
+      );
+      daysByDate.get(`${parts.year}-${parts.month}-${parts.day}`)
+        ?.telegramJoins.add(studentKey);
+    }
   }
 
   return {
     timeZone,
-    days: [...daysByDate.values()].map(({ date, day, conversations, telegramStudents, newConversations }) => ({
+    days: [...daysByDate.values()].map(({ date, day, conversations, telegramStudents, telegramJoins, newConversations }) => ({
       date,
       day,
       chats: conversations.size,
       newChats: newConversations,
-      telegramActiveStudents: telegramStudents.size
+      telegramActiveStudents: telegramStudents.size,
+      telegramJoins: telegramJoins.size
     }))
   };
 }
@@ -1705,8 +1730,11 @@ export function createAdminDashboardServer({
     windowsHide: true
   }),
   agentLogFile = AGENT_LOG_FILE,
+  telegramAgentLogFile = TELEGRAM_AGENT_LOG_FILE,
   agentMediaActivityFile = AGENT_MEDIA_ACTIVITY_FILE,
+  telegramAgentMediaActivityFile = TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE,
   agentMediaRetryRequestsFile = AGENT_MEDIA_RETRY_REQUESTS_FILE,
+  telegramAgentMediaRetryRequestsFile = TELEGRAM_AGENT_MEDIA_RETRY_REQUESTS_FILE,
   chatReadStateFile = CHAT_READ_STATE_FILE,
   incomingChatQueueFile = INCOMING_CHAT_QUEUE_FILE,
   whatsappChatActivityFile = WHATSAPP_CHAT_ACTIVITY_FILE,
@@ -1730,6 +1758,8 @@ export function createAdminDashboardServer({
   progressFile = PROGRESS_FILE,
   paymentLedgerFile = STUDENT_PAYMENT_LEDGER_FILE,
   telegramAgentStatusFile = TELEGRAM_AGENT_STATUS_FILE,
+  telegramUpdateQueueFile = TELEGRAM_UPDATE_QUEUE_FILE,
+  telegramAgentControlFile = TELEGRAM_AGENT_CONTROL_FILE,
   whatsappLessonSkipRequestsFile = WHATSAPP_LESSON_SKIP_REQUESTS_FILE,
   telegramLessonSkipRequestsFile = TELEGRAM_LESSON_SKIP_REQUESTS_FILE
 } = {}) {
@@ -1893,8 +1923,12 @@ export function createAdminDashboardServer({
     agentStatusFile,
     agentQrFile,
     agentLogFile,
+    telegramAgentLogFile,
     agentMediaActivityFile,
+    telegramAgentMediaActivityFile,
     incomingChatQueueFile,
+    telegramUpdateQueueFile,
+    telegramAgentControlFile,
     chatReadStateFile,
     whatsappChatActivityFile,
     contactSyncRequestsFile,
@@ -2071,6 +2105,43 @@ export function createAdminDashboardServer({
         console.error('[Admin Dashboard] Could not read the incoming chat queue:', error.message);
         sendJson(res, 500, { error: 'Could not read the incoming chat queue.' });
       }
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-chat-queue') {
+      try {
+        sendJson(res, 200, readTelegramUpdateQueue(
+          telegramUpdateQueueFile,
+          telegramAgentControlFile
+        ));
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not read the Telegram update queue:', error.message);
+        sendJson(res, 500, { error: 'Could not read the Telegram update queue.' });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/telegram-chat-queue-mode') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Telegram queue controls must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (typeof body?.paused !== 'boolean') {
+          sendJson(res, 400, { error: 'A boolean paused value is required.' });
+          return;
+        }
+        const status = readJsonFileOr(telegramAgentStatusFile, null);
+        if (status?.connectionState !== 'connected') {
+          sendJson(res, 409, { error: 'Connect the Telegram bot before changing queue handling.' });
+          return;
+        }
+        const control = setTelegramUpdateQueuePaused(body.paused, telegramAgentControlFile);
+        sendJson(res, 202, { status: body.paused ? 'pausing_queue' : 'resuming_queue', ...control });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not change Telegram queue handling:', error.message);
+        sendJson(res, 500, { error: 'Could not change Telegram queue handling.' });
+      });
       return;
     }
 
@@ -2970,6 +3041,21 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-agent-logs') {
+      try {
+        const limitValue = requestUrl.searchParams.get('limit') || '250';
+        if (!/^\d+$/.test(limitValue) || Number(limitValue) < 1 || Number(limitValue) > 500) {
+          sendJson(res, 400, { error: 'Log line limit must be between 1 and 500.' });
+          return;
+        }
+        sendJson(res, 200, readRecentAgentLogs(telegramAgentLogFile, Number(limitValue)));
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load Telegram agent logs:', error.message);
+        sendJson(res, 500, { error: 'Could not read Telegram agent logs.' });
+      }
+      return;
+    }
+
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/agent-media') {
       try {
         const contacts = readContactsFile();
@@ -3000,6 +3086,76 @@ export function createAdminDashboardServer({
       } catch (error) {
         console.error('[Admin Dashboard] Could not load WhatsApp media activity:', error.message);
         sendJson(res, 500, { error: 'Could not read WhatsApp media activity.' });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-agent-media') {
+      try {
+        const lessonsConfig = readJsonFile(lessonsFile);
+        const activities = readAgentMediaActivities(telegramAgentMediaActivityFile).map(activity => {
+          const lesson = lessonsConfig?.[activity.grade]?.lessons?.find(item =>
+            item?.id === activity.lessonId);
+          return {
+            ...activity,
+            retryAvailable: activity.platform === 'Telegram' &&
+              typeof activity.studentKey === 'string' &&
+              typeof activity.videoFile === 'string' &&
+              lesson?.videoFile === activity.videoFile
+          };
+        });
+        sendJson(res, 200, { activities });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load Telegram media activity:', error.message);
+        sendJson(res, 500, { error: 'Could not read Telegram media activity.' });
+      }
+      return;
+    }
+
+    const retryTelegramMediaMatch =
+      /^\/api\/admin\/telegram-agent-media\/([\w-]+)\/retry$/.exec(requestUrl.pathname);
+    if (req.method === 'POST' && retryTelegramMediaMatch) {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Telegram media retries must come from this local dashboard.' });
+        return;
+      }
+      try {
+        const status = readJsonFileOr(telegramAgentStatusFile, null);
+        if (status?.connectionState !== 'connected') {
+          sendJson(res, 409, { error: 'Connect the Telegram bot before retrying this video.' });
+          return;
+        }
+        const activityId = retryTelegramMediaMatch[1];
+        const activity = readAgentMediaActivities(telegramAgentMediaActivityFile)
+          .find(item => item.id === activityId);
+        if (!activity || activity.status !== 'failed' || activity.platform !== 'Telegram') {
+          sendJson(res, 409, { error: 'Only failed Telegram video uploads can be retried.' });
+          return;
+        }
+        if (typeof activity.lessonId !== 'string' ||
+            typeof activity.grade !== 'string' ||
+            typeof activity.studentKey !== 'string' ||
+            typeof activity.videoFile !== 'string') {
+          sendJson(res, 409, { error: 'The Telegram lesson video source could not be identified for retry.' });
+          return;
+        }
+        const lesson = readJsonFile(lessonsFile)?.[activity.grade]?.lessons?.find(item =>
+          item?.id === activity.lessonId);
+        if (lesson?.videoFile !== activity.videoFile) {
+          sendJson(res, 409, { error: 'The Telegram lesson video source could not be identified for retry.' });
+          return;
+        }
+        enqueueAgentMediaRetry(activityId, telegramAgentMediaRetryRequestsFile);
+        writeAgentMediaActivity({
+          ...activity,
+          status: 'retrying',
+          retryError: undefined,
+          updatedAt: new Date().toISOString()
+        }, telegramAgentMediaActivityFile);
+        sendJson(res, 202, { status: 'retrying', activityId });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not queue Telegram video retry:', error.message);
+        sendJson(res, 500, { error: 'Could not queue the Telegram video retry.' });
       }
       return;
     }
