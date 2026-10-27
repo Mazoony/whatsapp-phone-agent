@@ -251,18 +251,56 @@ test('Telegram records group member names and join dates from service messages',
   assert.equal(sent.length, 0);
 });
 
-test('Telegram introduces the lessons and payment details to unregistered private contacts', async t => {
+test('Telegram directs unregistered private contacts to the lessons group without mentioning payment', async t => {
   const { agent, sent } = createFixture(t);
 
   await agent.handleUpdate(privateUpdate({ userId: 77, text: '/start' }));
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].chatId, '77');
-  assert.match(sent[0].text, /أدخل مجموعة الدروس وأرسل \/lesson/);
-  assert.match(sent[0].text, /17 ألف جنيه سوداني/);
-  assert.match(sent[0].text, /رقم الحساب: 2865022/);
-  assert.match(sent[0].text, /مازن محمد أحمد الصديق صالح/);
-  assert.match(sent[0].text, /أرسل إشعار الدفع هنا/);
+  assert.match(sent[0].text, /أدخل القروب وأرسل \/lesson/);
+  assert.doesNotMatch(sent[0].text, /17 ألف جنيه سوداني|رقم الحساب|بنكك|الدفع/);
+});
+
+test('Telegram /start confirms registered students and sends or resumes their lesson without payment details', async t => {
+  const { agent, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  agent.progress['telegram:-100123:44'].correctQuestionNumbers = [1];
+  sent.length = 0;
+
+  await agent.handleUpdate(privateUpdate({ text: '/start', messageId: 18 }));
+
+  assert.equal(sent[0].chatId, '44');
+  assert.match(sent[0].text, /اتسجلت معانا خلاص/);
+  assert.doesNotMatch(sent[0].text, /17 ألف|رقم الحساب|بنكك|الدفع/);
+  assert.deepEqual(sent.slice(1).map(message =>
+    message.type === 'video' ? 'video' : message.text), [
+    'video',
+    'Answer question 1.'
+  ]);
+  assert.ok(sent.slice(1).every(message => message.chatId === '44'));
+  assert.deepEqual(agent.progress['telegram:-100123:44'].correctQuestionNumbers, [1]);
+});
+
+test('Telegram mentions subscription payment once after the fifth completed lesson', async t => {
+  const { agent, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  const student = agent.progress['telegram:-100123:44'];
+  student.lessonsCompleted = 4;
+
+  await agent.handleUpdate(privateUpdate({ text: 'correct answer' }));
+
+  const paymentNotices = sent.filter(message => /كملت 5 دروس بنجاح/.test(message.text));
+  assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 5);
+  assert.equal(paymentNotices.length, 1);
+  assert.match(paymentNotices[0].text, /17 ألف جنيه سوداني/);
+  assert.match(paymentNotices[0].text, /رقم الحساب: 2865022/);
+
+  await agent.handleUpdate(privateUpdate({ text: 'correct answer' }));
+  assert.equal(
+    sent.filter(message => /كملت 5 دروس بنجاح/.test(message.text)).length,
+    1
+  );
 });
 
 test('Telegram asks students to start the private chat before sending lessons there', async t => {
@@ -799,7 +837,10 @@ test('Telegram payment status is sent privately and group replies do not disclos
       text: '/start'
     }
   });
-  assert.match(sent.at(-1).text, /تم تأكيد دفعك/);
+  assert.match(sent.at(-3).text, /اتسجلت معانا خلاص/);
+  assert.equal(sent.at(-2).type, 'video');
+  assert.equal(sent.at(-1).text, 'Answer question 1.');
+  assert.doesNotMatch(sent.at(-3).text, /دفع|اشتراك|بنكك/);
 
   await agent.handleUpdate({
     message: {
@@ -863,9 +904,6 @@ test('Telegram receipt scans are recorded as pending review', async t => {
 test('Telegram sends a due unanswered lesson reminder once and records it', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
-  const student = agent.progress['telegram:-100123:44'];
-  student.deliveredAt = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
-  agent.saveProgress();
   await agent.handleUpdate({
     message: {
       message_id: 50,
@@ -874,6 +912,9 @@ test('Telegram sends a due unanswered lesson reminder once and records it', asyn
       text: '/start'
     }
   });
+  const student = agent.progress['telegram:-100123:44'];
+  student.deliveredAt = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+  agent.saveProgress();
 
   await agent.processDueLessonAnswerReminders();
   await agent.processDueLessonAnswerReminders();
@@ -912,13 +953,16 @@ test('Telegram holds reminders privately until the student starts a private chat
       text: '/start'
     }
   });
+  const resumedStudent = agent.progress['telegram:-100123:44'];
+  resumedStudent.deliveredAt = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+  agent.saveProgress();
   await agent.processDueLessonAnswerReminders();
 
   const reminder = sent.find(message => /تمرين الحصة لسه منتظر إجابتك/.test(message.text));
   assert.ok(reminder);
   assert.equal(reminder.chatId, '44');
-  assert.equal(student.answerReminderSentForDeliveryAt, student.deliveredAt);
-  assert.equal(student.privateReminderUnavailableForDeliveryAt, undefined);
+  assert.equal(resumedStudent.answerReminderSentForDeliveryAt, resumedStudent.deliveredAt);
+  assert.equal(resumedStudent.privateReminderUnavailableForDeliveryAt, undefined);
 });
 
 test('Telegram does not remind students who submitted or received a newer lesson', async t => {

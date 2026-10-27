@@ -47,6 +47,7 @@ const DATA_DIR = path.join(APP_DIR, 'data');
 const DEFAULT_PROGRESS_FILE = path.join(DATA_DIR, 'telegram_progress.json');
 const DEFAULT_OFFSET_FILE = path.join(DATA_DIR, 'telegram_update_offset.json');
 const TELEGRAM_MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const TELEGRAM_PAYMENT_REMINDER_LESSONS = 5;
 const TELEGRAM_MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 const LONG_POLL_SECONDS = 25;
 const NETWORK_TIMEOUT_MS = 35_000;
@@ -560,7 +561,7 @@ export class TelegramLessonAgent {
     if (!found) {
       await this.bot.sendMessage(
         String(message.chat.id),
-        'ما لقيت حسابك مسجل في مجموعة الدروس لسه. أدخل مجموعة الدروس وأرسل /lesson، وبعدها ارجع هنا عشان تاخد الحصص في الخاص وترسل حلول التمارين؛ بتتصحح ليك طوالي، ولو في إجابة غلط بنبهك تصححها ونواصل الدرس البعده لحدي ما تجيب فوق التسعين بإذن الله.\n\nالرسوم الشهرية 17 ألف جنيه سوداني، تُدفع عن طريق بنكك.\n\nرقم الحساب: 2865022\nباسم: مازن محمد أحمد الصديق صالح\n\nبعد ما تدخل المجموعة، أرسل إشعار الدفع هنا.\n\nمستني أحتفل معاك بتفوقك!'
+        'أهلين بيك 😍 ما لقيت حسابك مسجل في مجموعة الدروس لسه. أدخل القروب وأرسل /lesson، وبعدها ارجع هنا واضغط Start عشان نأكد تسجيلك ونرسل ليك الدروس في الخاص.'
       );
       return;
     }
@@ -584,17 +585,31 @@ export class TelegramLessonAgent {
       );
       return;
     }
-    if (isPaymentStatusCommand(text) || /^\/start(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text)) {
+    if (isPaymentStatusCommand(text)) {
       const payment = this.paymentLedger.getCurrent(
         studentKey,
         state.enrolledAt || state.joinedAt || state.deliveredAt
       );
-      await this.bot.sendMessage(
-        String(message.chat.id),
-        isPaymentStatusCommand(text)
-          ? formatStudentPaymentStatus(payment)
-          : `أهلين بيك. ${formatStudentPaymentStatus(payment)} أرسل /payment عشان تعرف الحالة، أو /paid عشان تبلغ عن الدفع.`
-      );
+      await this.bot.sendMessage(String(message.chat.id), formatStudentPaymentStatus(payment));
+      return;
+    }
+
+    if (/^\/start(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text)) {
+      await this.runStudentOperation(studentKey, async () => {
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          'أهلين بيك 😍 اتسجلت معانا خلاص. حنرسل ليك الدرس في الخاص، وخليك معانا بالاستمرارية وإن شاء الله تحقق النتيجة البتتمناها!'
+        );
+        try {
+          await this.startOrResumeLesson(String(message.chat.id), studentKey, message.message_id);
+        } catch (error) {
+          this.logger.error(`[Telegram] Could not deliver a private lesson to ${studentKey}: ${error.message}`);
+          await this.sendPrivateNotice(
+            studentKey,
+            'واجهت مشكلة فنية في إرسال الدرس هسي. أرسل /lesson بعد شوية.'
+          );
+        }
+      });
       return;
     }
 
@@ -956,6 +971,8 @@ export class TelegramLessonAgent {
     await this.bot.sendMessage(deliveryChatId, lesson.taskMessage, replyToMessageId);
 
     const previous = this.progress[studentKey] || {};
+    const sameActiveLesson = previous.currentLessonId === lesson.id &&
+      previous.taskVersion === getLessonTaskVersion(lesson);
     this.progress[studentKey] = {
       ...previous,
       grade,
@@ -966,9 +983,15 @@ export class TelegramLessonAgent {
       joinedAt: previous.joinedAt || new Date().toISOString(),
       lessonsCompleted: previous.lessonsCompleted || 0,
       taskVersion: getLessonTaskVersion(lesson),
-      correctQuestionNumbers: [],
-      resolvedQuestionNumbers: [],
-      retryQuestionNumbers: []
+      correctQuestionNumbers: sameActiveLesson
+        ? previous.correctQuestionNumbers || []
+        : [],
+      resolvedQuestionNumbers: sameActiveLesson
+        ? previous.resolvedQuestionNumbers || []
+        : [],
+      retryQuestionNumbers: sameActiveLesson
+        ? previous.retryQuestionNumbers || []
+        : []
     };
     this.saveProgress();
   }
@@ -1273,6 +1296,12 @@ export class TelegramLessonAgent {
     state.lessonsCompleted = (state.lessonsCompleted || 0) + 1;
     state.status = 'awaiting_content';
     this.saveProgress();
+    if (state.lessonsCompleted === TELEGRAM_PAYMENT_REMINDER_LESSONS) {
+      await this.bot.sendMessage(
+        chatId,
+        'ما شاء الله، كملت 5 دروس بنجاح 😍 عشان تواصل معانا، رسوم الاشتراك الشهري 17 ألف جنيه سوداني، عن طريق بنكك.\n\nرقم الحساب: 2865022\nباسم: مازن محمد أحمد الصديق صالح\n\nبعد الدفع أرسل /paid عشان نراجع الإشعار.'
+      );
+    }
     const next = this.lessonManager.getNextSequentialLesson(state.grade, state.currentLessonId);
     if (next.status === 'ready') {
       const nextLesson = this.lessonManager.lessonsConfig[state.grade]?.lessons?.[next.lessonIndex];
