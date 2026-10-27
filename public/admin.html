@@ -604,6 +604,7 @@
       <nav aria-label="Dashboard sections">
         <button class="nav-item active" data-section="overview"><span class="nav-icon">▦</span>Overview</button>
         <button class="nav-item" data-section="progress"><span class="nav-icon">◷</span>Student progress</button>
+        <button class="nav-item" data-section="telegram-broadcast"><span class="nav-icon">✉</span>Telegram announcements</button>
         <button class="nav-item" data-section="curriculum"><span class="nav-icon">📚</span>Lessons &amp; curriculum</button>
         <button class="nav-item" data-section="payment-ledger"><span class="nav-icon">$</span>Payment ledger</button>
         <button class="nav-item" data-section="payment-calendar"><span class="nav-icon">▦</span>Payment calendar</button>
@@ -1070,6 +1071,34 @@
         <div class="panel table-wrap">
           <table><thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Action</th></tr></thead><tbody id="progress-rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
         </div>
+      </section>
+
+      <section class="section" id="section-telegram-broadcast">
+        <div class="section-heading">
+          <div>
+            <h2>Telegram announcements from your account</h2>
+            <p>Send a private message only to learners who explicitly opted in.</p>
+          </div>
+          <button class="pagination button" id="telegram-user-broadcast-refresh" type="button">Refresh</button>
+        </div>
+        <article class="panel composer">
+          <h3>Opt-in recipients</h3>
+          <p id="telegram-user-broadcast-recipients" aria-live="polite">Loading opt-in status…</p>
+          <p id="telegram-user-broadcast-worker" aria-live="polite">Checking account sender…</p>
+          <p>Students can opt in by privately messaging the Telegram bot <code>/announcements_on</code>, and opt out at any time with <code>/announcements_off</code>. Only opted-in members of the configured group who have started a private chat are eligible. Messages are sent individually from your Telegram account, with a 3-second pause between recipients. Telegram privacy settings or rate limits can still prevent delivery.</p>
+          <form id="telegram-user-broadcast-form">
+            <label for="telegram-user-broadcast-message">Message to send</label>
+            <textarea id="telegram-user-broadcast-message" maxlength="4096" required placeholder="Write the announcement…"></textarea>
+            <div class="composer-actions">
+              <span class="result-count" id="telegram-user-broadcast-length">0 / 4,096</span>
+              <button class="primary-button" id="telegram-user-broadcast-send" type="submit" disabled>Send to opted-in students</button>
+            </div>
+          </form>
+        </article>
+        <article class="panel broadcast-jobs">
+          <div class="panel-head"><h3>Recent Telegram announcements</h3><span>Refreshes automatically</span></div>
+          <div id="telegram-user-broadcast-jobs" aria-live="polite"><div class="empty">Loading announcements…</div></div>
+        </article>
       </section>
 
       <section class="section" id="section-scheduled-lessons">
@@ -1637,6 +1666,10 @@
           loadTelegramAgentLogs().catch(error => showError(`Could not refresh Telegram agent log: ${error.message}`));
           loadTelegramUpdateQueue().catch(error => showError(`Could not refresh Telegram update queue: ${error.message}`));
           loadTelegramAgentMediaActivity().catch(error => showError(`Could not refresh Telegram video activity: ${error.message}`));
+        }
+        if (document.querySelector('#section-telegram-broadcast').classList.contains('active')) {
+          loadTelegramUserBroadcasts().catch(error =>
+            showError(`Could not refresh Telegram announcements: ${error.message}`));
         }
       }, 5000);
       agentPollTimer = setInterval(() => {
@@ -2918,6 +2951,38 @@
       $('#telegram-agent-status-detail').textContent = detail;
     }
 
+    async function loadTelegramUserBroadcasts() {
+      const data = await api('/api/admin/telegram-user-broadcasts');
+      $('#telegram-user-broadcast-recipients').dataset.count = String(data.optedInCount);
+      $('#telegram-user-broadcast-recipients').textContent =
+        `${data.optedInCount.toLocaleString()} eligible learner${data.optedInCount === 1 ? '' : 's'} opted in.`;
+      $('#telegram-user-broadcast-worker').textContent = data.workerConnected
+        ? `Personal Telegram account sender is connected on this computer.${data.workerError ? ` Last error: ${data.workerError}` : ''}`
+        : `Sender is offline. Start it in a terminal on this computer with npm run telegram-broadcast.${data.workerError ? ` Last error: ${data.workerError}` : ''}`;
+      $('#telegram-user-broadcast-send').disabled =
+        !data.workerConnected || data.optedInCount === 0;
+      const statuses = {
+        queued: 'Queued',
+        running: 'Sending',
+        cancellation_requested: 'Cancelling',
+        cancelled: 'Cancelled',
+        completed: 'Completed',
+        failed: 'Stopped after an error'
+      };
+      const jobs = $('#telegram-user-broadcast-jobs');
+      jobs.innerHTML = data.jobs.length ? data.jobs.map(job => `
+        <div class="broadcast-job">
+          <div>
+            <strong>${escapeHtml(statuses[job.status] || job.status)}</strong>
+            <small>${job.sent.toLocaleString()} sent · ${job.skipped.toLocaleString()} skipped · ${job.uncertain.toLocaleString()} uncertain of ${job.total.toLocaleString()} · ${formatDate(job.createdAt)}</small>
+            ${job.error ? `<small>${escapeHtml(job.error)}</small>` : ''}
+          </div>
+          ${['queued', 'running', 'cancellation_requested'].includes(job.status)
+            ? `<button class="btn-action btn-danger" type="button" data-cancel-telegram-broadcast="${escapeHtml(job.id)}" ${job.status === 'cancellation_requested' ? 'disabled' : ''}>${job.status === 'cancellation_requested' ? 'Cancelling…' : 'Cancel'}</button>`
+            : ''}
+        </div>`).join('') : '<div class="empty">No Telegram announcements yet.</div>';
+    }
+
     async function loadTelegramAgentLogs() {
       const log = await api('/api/admin/telegram-agent-logs?limit=250');
       const container = $('#telegram-agent-log');
@@ -3698,6 +3763,7 @@
           loadTelegramAgentLogs(),
           loadTelegramUpdateQueue(),
           loadTelegramAgentMediaActivity(),
+          loadTelegramUserBroadcasts(),
           loadWorkbookStatus(),
           loadCurriculumOverview().catch(() => {})
         ]);
@@ -3751,6 +3817,9 @@
           tasks.push(loadTelegramUpdateQueue());
         }
         if (has('telegram_agent_media_activity.json')) tasks.push(loadTelegramAgentMediaActivity());
+        if (has('telegram_user_broadcasts.json', 'telegram_user_broadcast_state.json')) {
+          tasks.push(loadTelegramUserBroadcasts());
+        }
         if (has('agent_qr.json') && handledChatsOnly) tasks.push(loadAgentQr());
         if (has('agent_media_activity.json') &&
             handledChatsOnly &&
@@ -3793,12 +3862,17 @@
       if (name === 'scheduled-lessons') {
         loadScheduledLessons().catch(error => showError(`Could not load scheduled lessons: ${error.message}`));
       }
+      if (name === 'telegram-broadcast') {
+        loadTelegramUserBroadcasts().catch(error =>
+          showError(`Could not load Telegram announcement status: ${error.message}`));
+      }
       const titles = {
         overview: ['Telegram overview', 'Monitor bot status, learners, and lesson progress.'],
         chats: ['Chats', 'Search and review locally saved conversations.'],
         agent: ['WhatsApp agent', 'A readable live view of incoming messages and the agent’s replies, alongside its terminal log.'],
         'es-contacts': ['Es contacts', 'Review Es contacts synced from your phone book.'],
         progress: ['Student progress', 'Review students and their current lesson status.'],
+        'telegram-broadcast': ['Telegram announcements', 'Send private announcements from your account to learners who opted in.'],
         'payment-ledger': ['Payment ledger', 'Review student payment claims and confirm the current 30-day period.'],
         'payment-calendar': ['Payment calendar', 'Review historical payment dates and collected amounts.'],
         'scheduled-lessons': ['Scheduled WhatsApp lessons', 'Create and manage one-time WhatsApp lesson deliveries. Times use Sudan time.'],
@@ -3807,6 +3881,52 @@
       $('#page-title').textContent = titles[name][0];
       $('#page-subtitle').textContent = titles[name][1];
     }
+
+    $('#telegram-user-broadcast-message').addEventListener('input', event => {
+      $('#telegram-user-broadcast-length').textContent =
+        `${event.target.value.length.toLocaleString()} / 4,096`;
+    });
+    $('#telegram-user-broadcast-refresh').addEventListener('click', () => {
+      loadTelegramUserBroadcasts().catch(error =>
+        showError(`Could not refresh Telegram announcements: ${error.message}`));
+    });
+    $('#telegram-user-broadcast-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const text = $('#telegram-user-broadcast-message').value.trim();
+      if (!text) return;
+      const count = Number($('#telegram-user-broadcast-recipients').dataset.count || 0);
+      if (!window.confirm(
+        `Send this message from your Telegram account individually to ${count} opted-in learners, with a 3-second pause between messages?`
+      )) return;
+      const button = $('#telegram-user-broadcast-send');
+      button.disabled = true;
+      button.textContent = 'Queueing…';
+      try {
+        await api('/api/admin/telegram-user-broadcasts', {
+          method: 'POST',
+          body: JSON.stringify({ text })
+        });
+        $('#telegram-user-broadcast-message').value = '';
+        $('#telegram-user-broadcast-length').textContent = '0 / 4,096';
+        await loadTelegramUserBroadcasts();
+      } catch (error) {
+        showError(`Could not queue Telegram announcement: ${error.message}`);
+      } finally {
+        button.textContent = 'Send to opted-in students';
+      }
+    });
+    document.addEventListener('click', event => {
+      const button = event.target.closest('[data-cancel-telegram-broadcast]');
+      if (!button) return;
+      api('/api/admin/telegram-user-broadcasts', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'cancel',
+          id: button.dataset.cancelTelegramBroadcast
+        })
+      }).then(loadTelegramUserBroadcasts).catch(error =>
+        showError(`Could not cancel Telegram announcement: ${error.message}`));
+    });
 
     $('#payment-calendar-previous').addEventListener('click', () => {
       paymentCalendarMonth = new Date(

@@ -343,13 +343,27 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
         isTaskSubmission: { type: 'boolean' },
         allCorrect: { type: 'boolean' },
         answeredQuestionNumbers: { type: 'array', items: { type: 'integer' } },
-        correctQuestionNumbers: { type: 'array', items: { type: 'integer' } }
+        correctQuestionNumbers: { type: 'array', items: { type: 'integer' } },
+        incorrectAnswers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              questionNumber: { type: 'integer' },
+              studentAnswer: { type: 'string' },
+              explanation: { type: 'string' }
+            },
+            required: ['questionNumber', 'studentAnswer', 'explanation'],
+            additionalProperties: false
+          }
+        }
       },
       required: [
         'isTaskSubmission',
         'allCorrect',
         'answeredQuestionNumbers',
-        'correctQuestionNumbers'
+        'correctQuestionNumbers',
+        'incorrectAnswers'
       ],
       additionalProperties: false
     });
@@ -362,7 +376,12 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
             isTaskSubmission: true,
             allCorrect: false,
             answeredQuestionNumbers: [1],
-            correctQuestionNumbers: []
+            correctQuestionNumbers: [],
+            incorrectAnswers: [{
+              questionNumber: 1,
+              studentAnswer: 'He go to school.',
+              explanation: 'بعد he بنضيف s للفعل في المضارع البسيط.'
+            }]
           })
         }
       })
@@ -379,6 +398,11 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
       allCorrect: false,
       answeredQuestionNumbers: [1],
       correctQuestionNumbers: [],
+      incorrectAnswers: [{
+        questionNumber: 1,
+        studentAnswer: 'He go to school.',
+        explanation: 'بعد he بنضيف s للفعل في المضارع البسيط.'
+      }],
       feedback: 'في إجابة محتاجة تصحيح. حاول تاني.'
     });
   } finally {
@@ -404,7 +428,7 @@ test('task grading accepts a single-word answer as a complete submission', async
       message.content.includes('Accept correct paraphrases, synonyms, valid equivalent forms')));
     assert.ok(body.messages.some(message =>
       message.role === 'user' &&
-      message.content.includes("do not require students to number their answers")));
+      message.content.includes("Do not require students to number their answers")));
     assert.ok(body.messages.some(message =>
       message.role === 'user' && message.content.includes('interprets')));
     return {
@@ -415,7 +439,8 @@ test('task grading accepts a single-word answer as a complete submission', async
             isTaskSubmission: true,
             allCorrect: true,
             answeredQuestionNumbers: [1],
-            correctQuestionNumbers: [1]
+            correctQuestionNumbers: [1],
+            incorrectAnswers: []
           })
         }
       })
@@ -432,6 +457,7 @@ test('task grading accepts a single-word answer as a complete submission', async
       allCorrect: true,
       answeredQuestionNumbers: [1],
       correctQuestionNumbers: [1],
+      incorrectAnswers: [],
       feedback: 'صحيح، ممتاز.'
     });
   } finally {
@@ -452,7 +478,12 @@ test('task grading gives Sudanese Arabic feedback for English submissions', asyn
           isTaskSubmission: true,
           allCorrect: false,
           answeredQuestionNumbers: [1],
-          correctQuestionNumbers: []
+          correctQuestionNumbers: [],
+          incorrectAnswers: [{
+            questionNumber: 1,
+            studentAnswer: 'The answer is wrong.',
+            explanation: 'الإجابة ما مطابقة للسؤال.'
+          }]
         })
       }
     })

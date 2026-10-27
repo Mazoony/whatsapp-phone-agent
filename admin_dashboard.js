@@ -128,6 +128,8 @@ const LESSONS_FILE = path.join(ROOT_DIR, 'lessons.json');
 const FOLLOWUP_STATE_FILE = path.join(ROOT_DIR, 'data', 'followup_state.json');
 const BROADCAST_REQUESTS_FILE = path.join(ROOT_DIR, 'data', 'broadcast_requests.json');
 const BROADCAST_STATE_FILE = path.join(ROOT_DIR, 'data', 'broadcast_state.json');
+const TELEGRAM_USER_BROADCAST_REQUESTS_FILE = path.join(ROOT_DIR, 'data', 'telegram_user_broadcasts.json');
+const TELEGRAM_USER_BROADCAST_STATE_FILE = path.join(ROOT_DIR, 'data', 'telegram_user_broadcast_state.json');
 const MESSAGE_REQUESTS_FILE = path.join(ROOT_DIR, 'data', 'message_requests.json');
 const DASHBOARD_WATCHED_FILES = new Set([
   HISTORY_FILE,
@@ -138,6 +140,8 @@ const DASHBOARD_WATCHED_FILES = new Set([
   FOLLOWUP_STATE_FILE,
   BROADCAST_REQUESTS_FILE,
   BROADCAST_STATE_FILE,
+  TELEGRAM_USER_BROADCAST_REQUESTS_FILE,
+  TELEGRAM_USER_BROADCAST_STATE_FILE,
   MESSAGE_REQUESTS_FILE,
   SCHEDULED_LESSONS_FILE,
   AGENT_STATUS_FILE,
@@ -1713,6 +1717,88 @@ async function handleBroadcastPost(req, res, readData, broadcastFiles, mediaDire
   }
 }
 
+async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcastFiles, groupId) {
+  if (!isSameOriginLoopbackRequest(req)) {
+    sendJson(res, 403, { error: 'Telegram account broadcasts are only accepted from this local dashboard.' });
+    return;
+  }
+  try {
+    const body = await readRequestBody(req);
+    const requests = readJsonFileOr(broadcastFiles.requests, []);
+    const state = readJsonFileOr(broadcastFiles.state, { jobs: {} });
+    if (!Array.isArray(requests) || !state?.jobs || typeof state.jobs !== 'object') {
+      throw new Error('Invalid Telegram account broadcast data.');
+    }
+    if (body.action === 'cancel') {
+      const job = requests.find(request => request.id === body.id);
+      if (!job) {
+        sendJson(res, 404, { error: 'Telegram broadcast not found.' });
+        return;
+      }
+      const jobState = state.jobs[job.id];
+      if (jobState && !['queued', 'running'].includes(jobState.status)) {
+        sendJson(res, 409, { error: 'This Telegram broadcast can no longer be cancelled.' });
+        return;
+      }
+      job.cancelled = true;
+      writeJsonFile(broadcastFiles.requests, requests);
+      if (jobState?.status === 'running') {
+        writeJsonFile(broadcastFiles.state, {
+          ...state,
+          jobs: {
+            ...state.jobs,
+            [job.id]: { ...jobState, status: 'cancellation_requested' }
+          }
+        });
+      }
+      sendJson(res, 200, { id: job.id, status: 'cancellation_requested' });
+      return;
+    }
+
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (!text || text.length > 4096) {
+      sendJson(res, 400, { error: 'Enter a message between 1 and 4,096 characters.' });
+      return;
+    }
+    const progress = readJsonFileOr(progressFile, {});
+    const recipients = Object.values(progress)
+      .filter(student =>
+        student?.telegramAnnouncementsOptIn === true &&
+        Number.isSafeInteger(student.telegramUserId) &&
+        student.telegramPrivateChatId &&
+        String(student.telegramChatId) === String(groupId || ''))
+      .map(student => ({ userId: String(student.telegramUserId) }));
+    if (recipients.length === 0) {
+      sendJson(res, 409, { error: 'No students have opted in to private Telegram announcements.' });
+      return;
+    }
+    if (recipients.length > 500) {
+      sendJson(res, 409, { error: 'This broadcast exceeds the 500-recipient safety limit.' });
+      return;
+    }
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const job = {
+      id,
+      text,
+      recipients,
+      createdAt: new Date().toISOString(),
+      cancelled: false
+    };
+    requests.push(job);
+    fs.mkdirSync(path.dirname(broadcastFiles.requests), { recursive: true });
+    writeJsonFile(broadcastFiles.requests, requests);
+    sendJson(res, 202, {
+      id,
+      status: 'queued',
+      total: recipients.length,
+      createdAt: job.createdAt
+    });
+  } catch (error) {
+    console.error('[Admin Dashboard] Could not queue Telegram account broadcast:', error.message);
+    sendJson(res, 400, { error: error.message });
+  }
+}
+
 export function createAdminDashboardServer({
   readData = readDashboardData,
   broadcastFiles = {
@@ -1760,6 +1846,12 @@ export function createAdminDashboardServer({
   telegramAgentStatusFile = TELEGRAM_AGENT_STATUS_FILE,
   telegramUpdateQueueFile = TELEGRAM_UPDATE_QUEUE_FILE,
   telegramAgentControlFile = TELEGRAM_AGENT_CONTROL_FILE,
+  telegramProgressFile = TELEGRAM_PROGRESS_FILE,
+  telegramGroupId = process.env.TELEGRAM_GROUP_ID,
+  telegramUserBroadcastFiles = {
+    requests: TELEGRAM_USER_BROADCAST_REQUESTS_FILE,
+    state: TELEGRAM_USER_BROADCAST_STATE_FILE
+  },
   whatsappLessonSkipRequestsFile = WHATSAPP_LESSON_SKIP_REQUESTS_FILE,
   telegramLessonSkipRequestsFile = TELEGRAM_LESSON_SKIP_REQUESTS_FILE
 } = {}) {
@@ -1939,6 +2031,9 @@ export function createAdminDashboardServer({
     contactGenderFile,
     contactsFile,
     lessonsFile,
+    telegramProgressFile,
+    telegramUserBroadcastFiles.requests,
+    telegramUserBroadcastFiles.state,
     messageRequestsFile,
     scheduledLessonsFile,
     paymentLedgerFile,
@@ -2534,6 +2629,75 @@ export function createAdminDashboardServer({
         readDataWithBlockedContacts,
         broadcastFiles,
         broadcastMediaDirectory
+      );
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-user-broadcasts') {
+      try {
+        const progress = readJsonFileOr(telegramProgressFile, {});
+        const optedIn = Object.entries(progress)
+          .filter(([, student]) =>
+            student?.telegramAnnouncementsOptIn === true &&
+            Number.isSafeInteger(student.telegramUserId) &&
+            student.telegramPrivateChatId &&
+            String(student.telegramChatId) === String(telegramGroupId || ''))
+          .map(([, student]) => ({
+            name: student.name || student.telegramUsername || `Telegram user ${student.telegramUserId}`,
+            optedInAt: student.telegramAnnouncementsOptInAt || null
+          }));
+        const requests = readJsonFileOr(telegramUserBroadcastFiles.requests, []);
+        const state = readJsonFileOr(telegramUserBroadcastFiles.state, { jobs: {} });
+        if (!Array.isArray(requests) || !state?.jobs || typeof state.jobs !== 'object') {
+          throw new Error('Invalid Telegram account broadcast data.');
+        }
+        const heartbeat = Date.parse(state.worker?.lastHeartbeatAt || '');
+        const workerConnected = state.worker?.connected === true &&
+          Number.isFinite(heartbeat) && Date.now() - heartbeat < 30_000;
+        const jobs = requests.slice(-20).reverse().map(request => {
+          const jobState = state.jobs[request.id] || {
+            status: request.cancelled ? 'cancelled' : 'queued',
+            total: request.recipients.length,
+            sent: 0,
+            skipped: 0,
+            uncertain: 0
+          };
+          return {
+            id: request.id,
+            status: request.cancelled && jobState.status === 'running'
+              ? 'cancellation_requested'
+              : jobState.status,
+            total: jobState.total,
+            sent: jobState.sent,
+            skipped: jobState.skipped,
+            uncertain: jobState.uncertain,
+            createdAt: request.createdAt,
+            completedAt: jobState.completedAt || null,
+            error: jobState.error || null
+          };
+        });
+        sendJson(res, 200, {
+          optedInCount: optedIn.length,
+          optedInStudents: optedIn,
+          workerConnected,
+          workerError: state.worker?.error || null,
+          jobs
+        });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load Telegram account broadcasts:', error.message);
+        sendJson(res, 500, { error: 'Could not load Telegram account broadcasts.' });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/telegram-user-broadcasts') {
+      handleTelegramUserBroadcastPost(
+        req,
+        res,
+        telegramProgressFile,
+        telegramUserBroadcastFiles,
+        telegramGroupId
       );
       return;
     }

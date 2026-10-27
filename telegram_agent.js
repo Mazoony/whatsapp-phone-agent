@@ -91,6 +91,13 @@ function isPaymentStatusCommand(text) {
   return /^\/(?:payment|paystatus)(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
 }
 
+function getTelegramAnnouncementPreferenceCommand(text) {
+  const command = /^\/(announcements_on|announcements_off|broadcasts_on|broadcasts_off)(?:@[a-z0-9_]+)?(?:\s|$)/i
+    .exec(text.trim())?.[1]?.toLowerCase() || null;
+  if (command === null) return null;
+  return command.endsWith('_on');
+}
+
 function isGroupChat(chat) {
   return chat?.type === 'group' || chat?.type === 'supergroup';
 }
@@ -553,6 +560,21 @@ export class TelegramLessonAgent {
     state.telegramPrivateChatId = String(message.chat.id);
     this.saveProgress();
     const text = typeof message.text === 'string' ? message.text.trim() : '';
+    const announcementOptIn = getTelegramAnnouncementPreferenceCommand(text);
+    if (announcementOptIn !== null) {
+      state.telegramAnnouncementsOptIn = announcementOptIn;
+      state.telegramAnnouncementsOptInAt = announcementOptIn
+        ? new Date().toISOString()
+        : null;
+      this.saveProgress();
+      await this.bot.sendMessage(
+        String(message.chat.id),
+        announcementOptIn
+          ? 'تم تسجيل موافقتك على رسائل الإعلانات الخاصة. تقدر توقفها في أي وقت بإرسال /announcements_off.'
+          : 'تم إيقاف رسائل الإعلانات الخاصة. ما حنرسل ليك إعلانات تاني إلا لو فعلتها بإرسال /announcements_on.'
+      );
+      return;
+    }
     if (isPaymentStatusCommand(text) || /^\/start(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text)) {
       const payment = this.paymentLedger.getCurrent(
         studentKey,
@@ -848,6 +870,8 @@ export class TelegramLessonAgent {
         if (state.taskVersion !== taskVersion) {
           state.taskVersion = taskVersion;
           state.correctQuestionNumbers = [];
+          state.resolvedQuestionNumbers = [];
+          state.retryQuestionNumbers = [];
           this.saveProgress();
         }
         await this.deliverLesson(
@@ -923,7 +947,9 @@ export class TelegramLessonAgent {
       joinedAt: previous.joinedAt || new Date().toISOString(),
       lessonsCompleted: previous.lessonsCompleted || 0,
       taskVersion: getLessonTaskVersion(lesson),
-      correctQuestionNumbers: []
+      correctQuestionNumbers: [],
+      resolvedQuestionNumbers: [],
+      retryQuestionNumbers: []
     };
     this.saveProgress();
   }
@@ -1095,6 +1121,8 @@ export class TelegramLessonAgent {
     if (state.taskVersion !== taskVersion) {
       state.taskVersion = taskVersion;
       state.correctQuestionNumbers = [];
+      state.resolvedQuestionNumbers = [];
+      state.retryQuestionNumbers = [];
       this.saveProgress();
       this.logger.info(
         `[Telegram] Reset saved answers for ${studentKey} because the active lesson task or answer key changed.`
@@ -1107,9 +1135,21 @@ export class TelegramLessonAgent {
             Number.isInteger(number) && number >= 1 && number <= lesson.answerKey.length)
         : []
     );
+    const previouslyResolved = new Set(
+      Array.isArray(state.resolvedQuestionNumbers)
+        ? state.resolvedQuestionNumbers.filter(number =>
+            Number.isInteger(number) && number >= 1 && number <= lesson.answerKey.length)
+        : []
+    );
+    const retryQuestionNumbers = new Set(
+      Array.isArray(state.retryQuestionNumbers)
+        ? state.retryQuestionNumbers.filter(number =>
+            Number.isInteger(number) && number >= 1 && number <= lesson.answerKey.length)
+        : []
+    );
     const pendingQuestionNumbers = lesson.answerKey
       .map((_, index) => index + 1)
-      .filter(number => !previouslyCorrect.has(number));
+      .filter(number => !previouslyCorrect.has(number) && !previouslyResolved.has(number));
     let result;
     try {
       result = await this.evaluateTask(lesson, submission, studentName, {
@@ -1133,39 +1173,82 @@ export class TelegramLessonAgent {
     if (answeredQuestionNumbers.length === 0) {
       await this.bot.sendMessage(
         chatId,
-        'ما قدرت أحدد رقم إجابتك. أرسل الإجابة ومعاها رقم السؤال، مثلاً: 2. goes',
+        'ما قدرت أحدد الإجابة من رسالتك. أرسل الإجابة بس؛ ما محتاج تعيد باقي الإجابات. ممكن تكتبها بدون رقم لو واضحة، أو أضف كلمة من السؤال لو في أكتر من سؤال باقي.',
         messageId
       );
       return;
+    }
+
+    const incorrectQuestionNumbers = answeredQuestionNumbers
+      .filter(number => !correctQuestionNumbers.has(number));
+    const correctedAfterRetry = new Set(
+      incorrectQuestionNumbers.filter(number => retryQuestionNumbers.has(number))
+    );
+    const newlyNeedsRetry = incorrectQuestionNumbers
+      .filter(number => !retryQuestionNumbers.has(number));
+    for (const number of correctQuestionNumbers) retryQuestionNumbers.delete(number);
+    for (const number of newlyNeedsRetry) retryQuestionNumbers.add(number);
+    for (const number of correctedAfterRetry) {
+      retryQuestionNumbers.delete(number);
+      previouslyResolved.add(number);
     }
 
     state.correctQuestionNumbers = [...new Set([
       ...previouslyCorrect,
       ...correctQuestionNumbers
     ])].sort((left, right) => left - right);
+    state.resolvedQuestionNumbers = [...previouslyResolved].sort((left, right) => left - right);
+    state.retryQuestionNumbers = [...retryQuestionNumbers].sort((left, right) => left - right);
+
     const remainingQuestionNumbers = lesson.answerKey
       .map((_, index) => index + 1)
-      .filter(number => !state.correctQuestionNumbers.includes(number));
+      .filter(number =>
+        !state.correctQuestionNumbers.includes(number) &&
+        !state.resolvedQuestionNumbers.includes(number));
+    const correctionFeedback = correctedAfterRetry.size > 0
+      ? [...correctedAfterRetry].map(number => {
+          const answer = lesson.answerKey[number - 1];
+          const [expectedAnswer, explanation] = answer.split(/\s+—\s+/, 2);
+          const feedback = result.incorrectAnswers?.find(item =>
+            item.questionNumber === number)?.explanation;
+          const conciseExplanation = typeof feedback === 'string' && feedback.trim()
+            ? feedback.trim()
+            : explanation || 'دي الصيغة الصحيحة حسب قاعدة الدرس.';
+          return `السؤال ${number}: الإجابة الصحيحة «${expectedAnswer.trim()}». ${conciseExplanation}`;
+        }).join(' ')
+      : '';
     if (remainingQuestionNumbers.length > 0) {
       state.status = 'awaiting_reattempt';
       this.saveProgress();
-      const incorrectQuestionNumbers = answeredQuestionNumbers
-        .filter(number => !correctQuestionNumbers.has(number));
-      const incorrectFeedback = incorrectQuestionNumbers.length > 0
-        ? ` إجاباتك الخاطئة في الأسئلة: ${incorrectQuestionNumbers.join('، ')}.`
+      const needsCorrection = newlyNeedsRetry;
+      const incorrectFeedback = needsCorrection.length > 0
+        ? ` الإجابة المحتاجة تصحيح: ${needsCorrection.map(number => {
+            const answer = result.incorrectAnswers?.find(item =>
+              item.questionNumber === number)?.studentAnswer;
+            const excerpt = typeof answer === 'string'
+              ? answer.replace(/\s+/g, ' ').trim().slice(0, 160)
+              : '';
+            return `السؤال ${number}${excerpt ? `: «${excerpt}${answer.length > 160 ? '…' : ''}»` : ''}`;
+          }).join('، ')}.`
         : '';
       const list = remainingQuestionNumbers.join('، ');
       await this.bot.sendMessage(
         chatId,
-        `حفظت الإجابات الصحيحة.${incorrectFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس، مع رقم كل سؤال.`,
+        `${correctionFeedback}${correctionFeedback ? ' ' : ''}حفظت الإجابات الصحيحة.${incorrectFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
         messageId
       );
       return;
     }
 
+    const retryResolution = correctedAfterRetry.size > 0
+      ? `${correctionFeedback} صححت ليك الإجابة ووضحت السبب. `
+      : '';
+    const allCorrectMessage = correctedAfterRetry.size > 0
+      ? `${retryResolution}خلصنا التمرين، نواصل للحصة الجاية هسي.`
+      : 'ممتاز! كل الإجابات صحيحة،\n\nيلا دا مستوى ناس الـ93 وفوق والله!\n\nخلينا نستمر كدا وحننبهر بالنتيجة.\n\nبجيك هسي الفيديو البعدو.';
     await this.bot.sendMessage(
       chatId,
-      'ممتاز! كل الإجابات صحيحة،\n\nيلا دا مستوى ناس الـ93 وفوق والله!\n\nخلينا نستمر كدا وحننبهر بالنتيجة.\n\nبجيك هسي الفيديو البعدو.',
+      allCorrectMessage,
       messageId
     );
     state.lessonsCompleted = (state.lessonsCompleted || 0) + 1;

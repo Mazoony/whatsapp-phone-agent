@@ -92,7 +92,14 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
         isTaskSubmission: true,
         allCorrect: correct,
         answeredQuestionNumbers,
-        correctQuestionNumbers: correct ? answeredQuestionNumbers : []
+        correctQuestionNumbers: correct ? answeredQuestionNumbers : [],
+        incorrectAnswers: correct
+          ? []
+          : answeredQuestionNumbers.map(questionNumber => ({
+              questionNumber,
+              studentAnswer: submission,
+              explanation: 'بعد الفاعل المفرد بنضيف s للفعل في المضارع البسيط.'
+            }))
       };
     },
     videoPathResolver: videoFile => path.join(directory, videoFile),
@@ -174,6 +181,23 @@ test('Telegram /lesson sends the lesson privately and confirms in the group', as
   assert.equal(progress.status, 'awaiting_task');
   assert.ok(progress.joinedAt);
   assert.equal(progress.name, 'Student 44');
+});
+
+test('Telegram announcement subscriptions require private opt-in and support immediate opt-out', async t => {
+  const { agent, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  const student = agent.progress['telegram:-100123:44'];
+  assert.equal(student.telegramAnnouncementsOptIn, undefined);
+
+  await agent.handleUpdate(privateUpdate({ text: '/announcements_on' }));
+  assert.equal(student.telegramAnnouncementsOptIn, true);
+  assert.ok(student.telegramAnnouncementsOptInAt);
+  assert.match(sent.at(-1).text, /تقدر توقفها في أي وقت/);
+
+  await agent.handleUpdate(privateUpdate({ text: '/announcements_off' }));
+  assert.equal(student.telegramAnnouncementsOptIn, false);
+  assert.equal(student.telegramAnnouncementsOptInAt, null);
+  assert.match(sent.at(-1).text, /تم إيقاف رسائل الإعلانات الخاصة/);
 });
 
 test('Telegram tracks failed lesson video delivery and retries it from the media queue', async t => {
@@ -499,8 +523,10 @@ test('incorrect Telegram task answers require a reattempt without advancing', as
 
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
   assert.equal(agent.progress['telegram:-100123:44'].status, 'awaiting_reattempt');
-  assert.match(sent.at(-1).text, /إجاباتك الخاطئة في الأسئلة: 1/);
+  assert.match(sent.at(-1).text, /الإجابة المحتاجة تصحيح: السؤال 1: «wrong answer»/);
   assert.match(sent.at(-1).text, /الأسئلة المحتاجة تصحيح أو إجابة: 1/);
+  assert.match(sent.at(-1).text, /ما محتاج تعيد الإجابات الصحيحة/);
+  assert.match(sent.at(-1).text, /بدون رقم/);
   assert.equal(sent.filter(message => message.type === 'video').length, 1);
 });
 
@@ -539,7 +565,13 @@ test('Telegram retains correct answers and accepts only the corrected question',
       allCorrect: pendingQuestionNumbers.every(number =>
         correctQuestionNumbers.includes(number)),
       answeredQuestionNumbers,
-      correctQuestionNumbers
+      correctQuestionNumbers,
+      incorrectAnswers: answeredQuestionNumbers
+        .filter(number => !correctQuestionNumbers.includes(number))
+        .map(questionNumber => ({
+          questionNumber,
+          studentAnswer: answers.get(questionNumber)
+        }))
     };
   };
 
@@ -551,7 +583,7 @@ test('Telegram retains correct answers and accepts only the corrected question',
   assert.deepEqual(agent.progress['telegram:-100123:44'].correctQuestionNumbers, [1]);
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
   assert.equal(agent.progress['telegram:-100123:44'].status, 'awaiting_reattempt');
-  assert.match(sent.at(-1).text, /إجاباتك الخاطئة في الأسئلة: 2، 3/);
+  assert.match(sent.at(-1).text, /السؤال 2: «wrong answer»، السؤال 3: «wrong answer»/);
   assert.match(sent.at(-1).text, /الأسئلة المحتاجة تصحيح أو إجابة: 2، 3/);
 
   await agent.handleUpdate(privateUpdate({ text: 'answer two' }));
@@ -574,6 +606,49 @@ test('Telegram retains correct answers and accepts only the corrected question',
     ]
   );
   assert.ok(sent.slice(-3).every(message => message.chatId === '44'));
+});
+
+test('Telegram explains an answer after one failed correction and sends the next lesson', async t => {
+  const { agent, sent } = createFixture(t);
+  const lesson = agent.lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  lesson.answerKey = ['goes — بعد he بنضيف s للفعل في المضارع البسيط.'];
+  lesson.taskMessage = 'Complete: He ____ to school. (go)';
+  agent.evaluateTask = async (_lesson, submission, _studentName, { pendingQuestionNumbers }) => {
+    const correct = submission.toLowerCase() === 'goes';
+    const questionNumber = pendingQuestionNumbers[0];
+    return {
+      isTaskSubmission: true,
+      allCorrect: correct,
+      answeredQuestionNumbers: [questionNumber],
+      correctQuestionNumbers: correct ? [questionNumber] : [],
+      incorrectAnswers: correct ? [] : [{
+        questionNumber,
+        studentAnswer: submission,
+        explanation: 'بعد he بنضيف s للفعل في المضارع البسيط.'
+      }]
+    };
+  };
+
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  await agent.handleUpdate(privateUpdate({ text: 'go' }));
+
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
+  assert.deepEqual(agent.progress['telegram:-100123:44'].retryQuestionNumbers, [1]);
+  assert.match(sent.at(-1).text, /السؤال 1: «go»/);
+  assert.match(sent.at(-1).text, /ما محتاج تعيد الإجابات الصحيحة/);
+  assert.equal(sent.filter(message => message.type === 'video').length, 1);
+
+  await agent.handleUpdate(privateUpdate({ text: 'go' }));
+
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_2');
+  assert.equal(agent.progress['telegram:-100123:44'].status, 'awaiting_task');
+  assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
+  assert.deepEqual(agent.progress['telegram:-100123:44'].resolvedQuestionNumbers, []);
+  assert.deepEqual(agent.progress['telegram:-100123:44'].retryQuestionNumbers, []);
+  assert.match(sent.at(-3).text, /الإجابة الصحيحة «goes»/);
+  assert.match(sent.at(-3).text, /بعد he بنضيف s للفعل في المضارع البسيط/);
+  assert.equal(sent.at(-2).type, 'video');
+  assert.equal(sent.at(-1).text, 'Answer question 2.');
 });
 
 test('students marked complete can receive lessons added to the curriculum later', async t => {

@@ -2770,6 +2770,88 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
     }
   });
 
+  test('Telegram account announcements include only private-chat opt-ins and can be cancelled', async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-telegram-broadcast-test-'));
+    const progressFile = path.join(temporaryDirectory, 'telegram_progress.json');
+    const requestsFile = path.join(temporaryDirectory, 'telegram_broadcasts.json');
+    const stateFile = path.join(temporaryDirectory, 'telegram_broadcast_state.json');
+    fs.writeFileSync(progressFile, JSON.stringify({
+      'telegram:-1001:11': {
+        name: 'Opted-in learner',
+        telegramUserId: 11,
+        telegramChatId: '-1001',
+        telegramPrivateChatId: '11',
+        telegramAnnouncementsOptIn: true
+      },
+      'telegram:-1001:12': {
+        name: 'Opted-out learner',
+        telegramUserId: 12,
+        telegramChatId: '-1001',
+        telegramPrivateChatId: '12',
+        telegramAnnouncementsOptIn: false
+      },
+      'telegram:-1001:13': {
+        name: 'Not started privately',
+        telegramUserId: 13,
+        telegramChatId: '-1001',
+        telegramAnnouncementsOptIn: true
+      },
+      'telegram:-1002:14': {
+        name: 'Opted-in learner from another group',
+        telegramUserId: 14,
+        telegramChatId: '-1002',
+        telegramPrivateChatId: '14',
+        telegramAnnouncementsOptIn: true
+      }
+    }));
+    const server = createAdminDashboardServer({
+      telegramProgressFile: progressFile,
+      telegramGroupId: '-1001',
+      telegramUserBroadcastFiles: { requests: requestsFile, state: stateFile }
+    });
+
+    try {
+      await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+      const origin = `http://127.0.0.1:${server.address().port}`;
+      const url = `${origin}/api/admin/telegram-user-broadcasts`;
+      const summary = await (await fetch(url)).json();
+      assert.equal(summary.optedInCount, 1);
+      assert.equal(summary.optedInStudents[0].name, 'Opted-in learner');
+      assert.equal(summary.workerConnected, false);
+
+      const denied = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: 'http://example.com', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Announcement' })
+      });
+      assert.equal(denied.status, 403);
+
+      const queuedResponse = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '  Announcement  ' })
+      });
+      assert.equal(queuedResponse.status, 202);
+      const queued = await queuedResponse.json();
+      const requests = JSON.parse(fs.readFileSync(requestsFile, 'utf8'));
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0].text, 'Announcement');
+      assert.deepEqual(requests[0].recipients, [{ userId: '11' }]);
+
+      const cancelled = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', id: queued.id })
+      });
+      assert.equal(cancelled.status, 200);
+      const refreshed = await (await fetch(url)).json();
+      assert.equal(refreshed.jobs[0].status, 'cancelled');
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
   test('direct-message API queues a message for a selected chat and rejects opted-out chats', async () => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-message-test-'));
     const messageRequestsFile = path.join(temporaryDirectory, 'messages.json');

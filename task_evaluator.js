@@ -18,13 +18,27 @@ const TASK_EVALUATION_FORMAT = {
     isTaskSubmission: { type: 'boolean' },
     allCorrect: { type: 'boolean' },
     answeredQuestionNumbers: { type: 'array', items: { type: 'integer' } },
-    correctQuestionNumbers: { type: 'array', items: { type: 'integer' } }
+    correctQuestionNumbers: { type: 'array', items: { type: 'integer' } },
+    incorrectAnswers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          questionNumber: { type: 'integer' },
+          studentAnswer: { type: 'string' },
+          explanation: { type: 'string' }
+        },
+        required: ['questionNumber', 'studentAnswer', 'explanation'],
+        additionalProperties: false
+      }
+    }
   },
   required: [
     'isTaskSubmission',
     'allCorrect',
     'answeredQuestionNumbers',
-    'correctQuestionNumbers'
+    'correctQuestionNumbers',
+    'incorrectAnswers'
   ],
   additionalProperties: false
 };
@@ -44,7 +58,7 @@ function getTaskFeedback(isTaskSubmission, allCorrect) {
  * @param {string} studentSubmission The message sent by the student
  * @param {string} studentName The student's name
  * @param {object} options Optional pending question numbers for partial corrections
- * @returns {Promise<{ isTaskSubmission: boolean, allCorrect: boolean, answeredQuestionNumbers: number[], correctQuestionNumbers: number[], feedback: string }>}
+ * @returns {Promise<{ isTaskSubmission: boolean, allCorrect: boolean, answeredQuestionNumbers: number[], correctQuestionNumbers: number[], incorrectAnswers: { questionNumber: number, studentAnswer: string }[], feedback: string }>}
  */
 export async function evaluateStudentTask(
   lesson,
@@ -58,6 +72,7 @@ export async function evaluateStudentTask(
       allCorrect: false,
       answeredQuestionNumbers: [],
       correctQuestionNumbers: [],
+      incorrectAnswers: [],
       feedback: ''
     };
   }
@@ -75,6 +90,7 @@ export async function evaluateStudentTask(
       allCorrect: false,
       answeredQuestionNumbers: [],
       correctQuestionNumbers: [],
+      incorrectAnswers: [],
       feedback: ''
     };
   }
@@ -89,16 +105,17 @@ QUESTIONS: ${lesson.taskMessage}
 PENDING ANSWERS: ${JSON.stringify(pendingAnswers)}
 STUDENT: "${studentSubmission}"
 
-Only grade answers in the student's latest message; previously accepted answers are not part of this message. If the message is unrelated to this exercise, return isTaskSubmission=false and empty arrays. Otherwise, identify which pending question numbers the student actually answered. Use explicit question numbers when present, but do not require students to number their answers. For unnumbered answers, match each answer to the pending question whose wording and expected answer best fit its meaning. A single answer may be matched by its content even when several questions remain, if the match is clear and unique. For several unnumbered answers, use their order when it clearly corresponds to the exercise or remaining question order; also use the content of each answer to resolve the match when possible. If the mapping is genuinely ambiguous, do not guess. Never treat a missing answer as wrong or answered.
+Only grade answers in the student's latest message; previously accepted answers are not part of this message. If the message is unrelated to this exercise, return isTaskSubmission=false and empty arrays. Otherwise, identify which pending question numbers the student actually answered. Do not require students to number their answers: infer the question from answer content, task wording, context, and order. When there is only one pending question, match a clear answer to it even if it is unnumbered. For multiple unnumbered answers, match by meaning and order when they clearly fit the remaining questions. If the mapping is genuinely ambiguous, do not guess; leave the ambiguous answer unmatched and do not mark it wrong. Never treat a missing answer as wrong or answered.
 
-Judge meaning and the grammar being tested, not exact wording. Accept correct paraphrases, synonyms, valid equivalent forms, contractions, concise answers, and minor typos that do not change meaning. A one-word answer can be complete. Reject answers that change meaning or use the wrong form when that form is tested. If meaning is ambiguous, do not assume correctness. answeredQuestionNumbers contains only questions answered in this message. correctQuestionNumbers is the subset of those answers that are correct. allCorrect is true only when this message answers every question in PENDING ANSWERS and every one is correct.
+Judge meaning and the grammar being tested, not exact wording. Accept correct paraphrases, synonyms, valid equivalent forms, contractions, concise answers, and minor typos that do not change meaning. A one-word answer can be complete. Reject answers that change meaning or use the wrong form when that form is tested. If meaning is ambiguous, do not assume correctness. answeredQuestionNumbers contains only questions answered in this message. correctQuestionNumbers is the subset of those answers that are correct. incorrectAnswers must contain one entry for each answered but incorrect question; studentAnswer must be copied verbatim from the student's latest message as a concise contiguous excerpt, excluding any question-number prefix. explanation must be a concise, accurate explanation in Sudanese Arabic of why the expected answer is correct; do not reveal the expected answer inside explanation because the app supplies it separately. allCorrect is true only when this message answers every question in PENDING ANSWERS and every one is correct.
 
 Return only this JSON shape. Do not generate feedback; the app sends it:
 {
   "isTaskSubmission": boolean,
   "allCorrect": boolean,
   "answeredQuestionNumbers": number[],
-  "correctQuestionNumbers": number[]
+  "correctQuestionNumbers": number[],
+  "incorrectAnswers": [{ "questionNumber": number, "studentAnswer": string, "explanation": string }]
 }
 `;
 
@@ -162,15 +179,31 @@ function isValidTaskEvaluation(result, answerCount, pendingQuestionNumbers) {
   if (typeof result?.isTaskSubmission !== 'boolean' ||
       typeof result?.allCorrect !== 'boolean' ||
       !Array.isArray(result.answeredQuestionNumbers) ||
-      !Array.isArray(result.correctQuestionNumbers)) {
+      !Array.isArray(result.correctQuestionNumbers) ||
+      !Array.isArray(result.incorrectAnswers)) {
     return false;
   }
   const pending = new Set(pendingQuestionNumbers);
   const answered = new Set(result.answeredQuestionNumbers);
   const correct = new Set(result.correctQuestionNumbers);
+  const incorrect = new Set();
+  for (const answer of result.incorrectAnswers) {
+    if (!Number.isInteger(answer?.questionNumber) ||
+        typeof answer.studentAnswer !== 'string' ||
+        !answer.studentAnswer.trim() ||
+        typeof answer.explanation !== 'string' ||
+        !answer.explanation.trim() ||
+        incorrect.has(answer.questionNumber) ||
+        !answered.has(answer.questionNumber) ||
+        correct.has(answer.questionNumber)) {
+      return false;
+    }
+    incorrect.add(answer.questionNumber);
+  }
   return answered.size === result.answeredQuestionNumbers.length &&
     correct.size === result.correctQuestionNumbers.length &&
     [...answered].every(number => Number.isInteger(number) && number >= 1 &&
       number <= answerCount && pending.has(number)) &&
-    [...correct].every(number => answered.has(number));
+    [...correct].every(number => answered.has(number)) &&
+    [...answered].filter(number => !correct.has(number)).every(number => incorrect.has(number));
 }
