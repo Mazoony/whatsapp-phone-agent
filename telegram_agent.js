@@ -124,7 +124,16 @@ function taskFailureMessage() {
 }
 
 function privateLessonStartMessage() {
-  return 'عشان أرسل الدروس وأصحح الإجابات في الخاص، افتح المحادثة الخاصة معاي واضغط Start، وبعدها أرسل /lesson هنا مرة تانية.';
+  return `خش هنا
+
+@eSchoolsdBot
+
+و أضغط start
+
+و خش القروب رسل
+/lesson
+
+الدروس طوالي بتترسل ليك في الخاص`;
 }
 
 function isPrivateChatUnavailable(error) {

@@ -273,7 +273,10 @@ test('Telegram asks students to start the private chat before sending lessons th
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].chatId, '-100123');
-  assert.match(sent[0].text, /افتح المحادثة الخاصة معاي واضغط Start/);
+  assert.match(sent[0].text, /@eSchoolsdBot/);
+  assert.match(sent[0].text, /و أضغط start/);
+  assert.match(sent[0].text, /\/lesson/);
+  assert.match(sent[0].text, /الدروس طوالي بتترسل ليك في الخاص/);
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, undefined);
   assert.equal(agent.progress['telegram:-100123:44'].telegramPrivateChatId, undefined);
 
