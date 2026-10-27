@@ -686,6 +686,33 @@ test('students marked complete can receive lessons added to the curriculum later
   );
 });
 
+test('Telegram /lesson resumes from saved lesson index when the lesson ID is missing', async t => {
+  const { agent, directory, lessonManager, sent } = createFixture(t);
+  const lesson3 = {
+    id: 'lesson_3',
+    title: 'Lesson 3',
+    videoFile: 'lesson_3.mp4',
+    caption: 'Watch lesson 3',
+    taskMessage: 'Answer question 3.',
+    answerKey: ['answer 3']
+  };
+  fs.writeFileSync(path.join(directory, lesson3.videoFile), Buffer.from('lesson_3'));
+  lessonManager.lessonsConfig.grade_3_secondary.lessons.push(lesson3);
+  agent.progress['telegram:-100123:44'] = {
+    grade: 'grade_3_secondary',
+    currentLessonIndex: 1,
+    status: 'completed'
+  };
+
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_3');
+  assert.deepEqual(
+    sent.map(message => message.type === 'video' ? message.video.toString() : message.text),
+    ['lesson_3', 'Answer question 3.', 'تمام، رديت عليك في الخاص. راجع المحادثة هناك، كل التوفيق يا رب.']
+  );
+});
+
 test('completed students are told they are done when no lessons remain configured', async t => {
   const { agent, sent } = createFixture(t);
   agent.progress['telegram:-100123:44'] = {

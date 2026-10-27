@@ -857,8 +857,16 @@ export class TelegramLessonAgent {
 
   getNextLesson(studentKey) {
     const state = this.progress[studentKey];
-    if (state?.currentLessonId) {
-      return this.lessonManager.getNextSequentialLesson(state.grade, state.currentLessonId);
+    if (state) {
+      const grade = state.grade || this.defaultGrade;
+      const lessons = this.lessonManager.lessonsConfig[grade]?.lessons || [];
+      const currentLessonId = state.currentLessonId ||
+        (Number.isInteger(state.currentLessonIndex)
+          ? lessons[state.currentLessonIndex]?.id
+          : null);
+      if (currentLessonId) {
+        return this.lessonManager.getNextSequentialLesson(grade, currentLessonId);
+      }
     }
     const lesson = this.lessonManager.getWelcomeSampleLesson(this.defaultGrade);
     if (!lesson) return { status: 'awaiting_content' };
@@ -873,7 +881,8 @@ export class TelegramLessonAgent {
     this.lessonManager.refreshLessonsConfig?.();
     const state = this.progress[studentKey];
     if (state && ['awaiting_task', 'awaiting_reattempt'].includes(state.status)) {
-      const lesson = this.lessonManager.lessonsConfig[state.grade]?.lessons?.[state.currentLessonIndex];
+      const grade = state.grade || this.defaultGrade;
+      const lesson = this.lessonManager.lessonsConfig[grade]?.lessons?.[state.currentLessonIndex];
       if (isReadyLesson(lesson)) {
         const taskVersion = getLessonTaskVersion(lesson);
         if (state.taskVersion !== taskVersion) {
@@ -886,7 +895,7 @@ export class TelegramLessonAgent {
         await this.deliverLesson(
           chatId,
           studentKey,
-          state.grade,
+          grade,
           state.currentLessonIndex,
           lesson,
           messageId
@@ -914,11 +923,12 @@ export class TelegramLessonAgent {
       );
       return;
     }
-    const lesson = this.lessonManager.lessonsConfig[this.defaultGrade]?.lessons?.[next.lessonIndex];
+    const grade = state?.grade || this.defaultGrade;
+    const lesson = this.lessonManager.lessonsConfig[grade]?.lessons?.[next.lessonIndex];
     if (!isReadyLesson(lesson)) {
       throw new Error(`Lesson ${next.lessonIndex + 1} is missing its video, task, or answer key.`);
     }
-    await this.deliverLesson(chatId, studentKey, this.defaultGrade, next.lessonIndex, lesson, messageId);
+    await this.deliverLesson(chatId, studentKey, grade, next.lessonIndex, lesson, messageId);
   }
 
   async deliverLesson(chatId, studentKey, grade, lessonIndex, lesson, replyToMessageId) {
