@@ -183,21 +183,20 @@ test('Telegram /lesson sends the lesson privately and confirms in the group', as
   assert.equal(progress.name, 'Student 44');
 });
 
-test('Telegram announcement subscriptions require private opt-in and support immediate opt-out', async t => {
+test('Telegram lesson requests include students in announcements unless they explicitly opt out', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
   const student = agent.progress['telegram:-100123:44'];
-  assert.equal(student.telegramAnnouncementsOptIn, undefined);
-
-  await agent.handleUpdate(privateUpdate({ text: '/announcements_on' }));
   assert.equal(student.telegramAnnouncementsOptIn, true);
   assert.ok(student.telegramAnnouncementsOptInAt);
-  assert.match(sent.at(-1).text, /تقدر توقفها في أي وقت/);
 
   await agent.handleUpdate(privateUpdate({ text: '/announcements_off' }));
   assert.equal(student.telegramAnnouncementsOptIn, false);
   assert.equal(student.telegramAnnouncementsOptInAt, null);
   assert.match(sent.at(-1).text, /تم إيقاف رسائل الإعلانات الخاصة/);
+
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  assert.equal(agent.progress['telegram:-100123:44'].telegramAnnouncementsOptIn, false);
 });
 
 test('Telegram tracks failed lesson video delivery and retries it from the media queue', async t => {
@@ -692,6 +691,47 @@ test('Telegram explains an answer after one failed correction and sends the next
   assert.equal(sent.at(-1).text, 'Answer question 2.');
 });
 
+test('Telegram advances after a second wrong answer even when other questions are unanswered', async t => {
+  const { agent, sent } = createFixture(t);
+  const lesson = agent.lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  lesson.answerKey = [
+    'studies — With he, change consonant + y to -ies.',
+    'enjoys — With she, add -s after vowel + y.',
+    'finishes — Add -es after sh.'
+  ];
+  lesson.taskMessage = 'Complete all three sentences.';
+  agent.evaluateTask = async (_lesson, submission, _studentName, { pendingQuestionNumbers }) => {
+    const questionNumber = pendingQuestionNumbers[0];
+    return {
+      isTaskSubmission: true,
+      allCorrect: false,
+      answeredQuestionNumbers: [questionNumber],
+      correctQuestionNumbers: [],
+      incorrectAnswers: [{
+        questionNumber,
+        studentAnswer: submission,
+        explanation: 'راجعي قاعدة إضافة s للفعل مع الفاعل المفرد.'
+      }]
+    };
+  };
+
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  await agent.handleUpdate(privateUpdate({ text: 'study' }));
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
+  assert.match(sent.at(-1).text, /الأسئلة المحتاجة تصحيح أو إجابة: 1، 2، 3/);
+
+  await agent.handleUpdate(privateUpdate({ text: 'study' }));
+
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_2');
+  assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
+  assert.equal(agent.progress['telegram:-100123:44'].status, 'awaiting_task');
+  assert.match(sent.at(-3).text, /الإجابة الصحيحة «studies»/);
+  assert.match(sent.at(-3).text, /بعد المحاولة التانية/);
+  assert.doesNotMatch(sent.at(-3).text, /الأسئلة المحتاجة تصحيح أو إجابة/);
+  assert.equal(sent.at(-2).type, 'video');
+  assert.equal(sent.at(-1).text, 'Answer question 2.');
+});
+
 test('students marked complete can receive lessons added to the curriculum later', async t => {
   const { agent, directory, lessonManager, sent } = createFixture(t);
   const lesson3 = {
@@ -919,7 +959,7 @@ test('Telegram sends a due unanswered lesson reminder once and records it', asyn
   await agent.processDueLessonAnswerReminders();
   await agent.processDueLessonAnswerReminders();
 
-  const reminders = sent.filter(message => /تمرين الحصة لسه منتظر إجابتك/.test(message.text));
+  const reminders = sent.filter(message => /قلت أذكرك تشتغل التمرين/.test(message.text));
   assert.equal(reminders.length, 1);
   assert.equal(reminders[0].chatId, '44');
   assert.equal(student.answerReminderSentForDeliveryAt, student.deliveredAt);
@@ -941,7 +981,7 @@ test('Telegram holds reminders privately until the student starts a private chat
 
   await agent.processDueLessonAnswerReminders();
 
-  assert.equal(sent.filter(message => /تمرين الحصة لسه منتظر إجابتك/.test(message.text)).length, 0);
+  assert.equal(sent.filter(message => /قلت أذكرك تشتغل التمرين/.test(message.text)).length, 0);
   assert.equal(student.answerReminderSentForDeliveryAt, undefined);
   assert.equal(student.privateReminderUnavailableForDeliveryAt, student.deliveredAt);
 
@@ -958,7 +998,7 @@ test('Telegram holds reminders privately until the student starts a private chat
   agent.saveProgress();
   await agent.processDueLessonAnswerReminders();
 
-  const reminder = sent.find(message => /تمرين الحصة لسه منتظر إجابتك/.test(message.text));
+  const reminder = sent.find(message => /قلت أذكرك تشتغل التمرين/.test(message.text));
   assert.ok(reminder);
   assert.equal(reminder.chatId, '44');
   assert.equal(resumedStudent.answerReminderSentForDeliveryAt, resumedStudent.deliveredAt);

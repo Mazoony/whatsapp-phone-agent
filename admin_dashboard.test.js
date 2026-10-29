@@ -2802,6 +2802,13 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
         telegramChatId: '-1002',
         telegramPrivateChatId: '14',
         telegramAnnouncementsOptIn: true
+      },
+      'telegram:-1001:15': {
+        name: 'Returning lesson learner',
+        telegramUserId: 15,
+        telegramChatId: '-1001',
+        telegramPrivateChatId: '15',
+        currentLessonId: 'lesson_2'
       }
     }));
     const server = createAdminDashboardServer({
@@ -2815,7 +2822,7 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       const origin = `http://127.0.0.1:${server.address().port}`;
       const url = `${origin}/api/admin/telegram-user-broadcasts`;
       const summary = await (await fetch(url)).json();
-      assert.equal(summary.optedInCount, 1);
+      assert.equal(summary.optedInCount, 2);
       assert.equal(summary.optedInStudents[0].name, 'Opted-in learner');
       assert.equal(summary.workerConnected, false);
 
@@ -2836,7 +2843,10 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       const requests = JSON.parse(fs.readFileSync(requestsFile, 'utf8'));
       assert.equal(requests.length, 1);
       assert.equal(requests[0].text, 'Announcement');
-      assert.deepEqual(requests[0].recipients, [{ userId: '11' }]);
+      assert.deepEqual(requests[0].recipients, [
+        { userId: '11' },
+        { userId: '15' }
+      ]);
 
       const cancelled = await fetch(url, {
         method: 'POST',

@@ -48,6 +48,7 @@ import {
   TELEGRAM_AGENT_CONTROL_FILE,
   TELEGRAM_UPDATE_QUEUE_FILE
 } from './telegram_update_queue.js';
+import { isTelegramAnnouncementRecipient } from './telegram_announcement_recipients.js';
 import { findLessonForMediaActivity } from './lesson_media_retry.js';
 import { getInactiveEligibleEsContacts } from './broadcast_utils.js';
 import {
@@ -1762,11 +1763,7 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
     }
     const progress = readJsonFileOr(progressFile, {});
     const recipients = Object.values(progress)
-      .filter(student =>
-        student?.telegramAnnouncementsOptIn === true &&
-        Number.isSafeInteger(student.telegramUserId) &&
-        student.telegramPrivateChatId &&
-        String(student.telegramChatId) === String(groupId || ''))
+      .filter(student => isTelegramAnnouncementRecipient(student, groupId))
       .map(student => ({ userId: String(student.telegramUserId) }));
     if (recipients.length === 0) {
       sendJson(res, 409, { error: 'No students have opted in to private Telegram announcements.' });
@@ -2637,11 +2634,7 @@ export function createAdminDashboardServer({
       try {
         const progress = readJsonFileOr(telegramProgressFile, {});
         const optedIn = Object.entries(progress)
-          .filter(([, student]) =>
-            student?.telegramAnnouncementsOptIn === true &&
-            Number.isSafeInteger(student.telegramUserId) &&
-            student.telegramPrivateChatId &&
-            String(student.telegramChatId) === String(telegramGroupId || ''))
+          .filter(([, student]) => isTelegramAnnouncementRecipient(student, telegramGroupId))
           .map(([, student]) => ({
             name: student.name || student.telegramUsername || `Telegram user ${student.telegramUserId}`,
             optedInAt: student.telegramAnnouncementsOptInAt || null

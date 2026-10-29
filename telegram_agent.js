@@ -41,6 +41,7 @@ import {
   LESSON_ANSWER_REMINDER_MESSAGE,
   markLessonAnswerReminderSent
 } from './lesson_answer_reminders.js';
+import { recordTelegramLessonAnnouncementOptIn } from './telegram_announcement_recipients.js';
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(APP_DIR, 'data');
@@ -431,8 +432,10 @@ export class TelegramLessonAgent {
       this.logger.info(`[Telegram] Starting or resuming a lesson for ${studentName}.`);
       await this.runStudentOperation(studentKey, async () => {
         this.recordStudentActivity(studentKey, chatId, message.from);
+        const currentState = this.progress[studentKey];
+        recordTelegramLessonAnnouncementOptIn(currentState);
         const privateChatId = String(message.from.id);
-        this.progress[studentKey].telegramPrivateChatId = privateChatId;
+        currentState.telegramPrivateChatId = privateChatId;
         this.saveProgress();
         try {
           await this.startOrResumeLesson(privateChatId, studentKey);
@@ -674,7 +677,9 @@ export class TelegramLessonAgent {
     if (isLessonCommand(text)) {
       await this.runStudentOperation(studentKey, async () => {
         this.recordStudentActivity(studentKey, state.telegramChatId, message.from);
-        state.telegramPrivateChatId = String(message.chat.id);
+        const currentState = this.progress[studentKey];
+        recordTelegramLessonAnnouncementOptIn(currentState);
+        currentState.telegramPrivateChatId = String(message.chat.id);
         this.saveProgress();
         try {
           await this.startOrResumeLesson(
@@ -1259,7 +1264,7 @@ export class TelegramLessonAgent {
           return `السؤال ${number}: الإجابة الصحيحة «${expectedAnswer.trim()}». ${conciseExplanation}`;
         }).join(' ')
       : '';
-    if (remainingQuestionNumbers.length > 0) {
+    if (remainingQuestionNumbers.length > 0 && correctedAfterRetry.size === 0) {
       state.status = 'awaiting_reattempt';
       this.saveProgress();
       const needsCorrection = newlyNeedsRetry;
@@ -1283,10 +1288,10 @@ export class TelegramLessonAgent {
     }
 
     const retryResolution = correctedAfterRetry.size > 0
-      ? `${correctionFeedback} صححت ليك الإجابة ووضحت السبب. `
+      ? `${correctionFeedback} وضحت ليك الإجابة بعد المحاولة التانية، ونواصل للحصة الجاية هسي. `
       : '';
     const allCorrectMessage = correctedAfterRetry.size > 0
-      ? `${retryResolution}خلصنا التمرين، نواصل للحصة الجاية هسي.`
+      ? retryResolution.trim()
       : 'ممتاز! كل الإجابات صحيحة،\n\nيلا دا مستوى ناس الـ93 وفوق والله!\n\nخلينا نستمر كدا وحننبهر بالنتيجة.\n\nبجيك هسي الفيديو البعدو.';
     await this.bot.sendMessage(
       chatId,

@@ -1077,21 +1077,21 @@
         <div class="section-heading">
           <div>
             <h2>Telegram announcements from your account</h2>
-            <p>Send a private message only to learners who explicitly opted in.</p>
+            <p>Send a private message to learners who requested or received a lesson.</p>
           </div>
           <button class="pagination button" id="telegram-user-broadcast-refresh" type="button">Refresh</button>
         </div>
         <article class="panel composer">
-          <h3>Opt-in recipients</h3>
-          <p id="telegram-user-broadcast-recipients" aria-live="polite">Loading opt-in status…</p>
+          <h3>Eligible recipients</h3>
+          <p id="telegram-user-broadcast-recipients" aria-live="polite">Loading eligible recipients…</p>
           <p id="telegram-user-broadcast-worker" aria-live="polite">Checking account sender…</p>
-          <p>Students can opt in by privately messaging the Telegram bot <code>/announcements_on</code>, and opt out at any time with <code>/announcements_off</code>. Only opted-in members of the configured group who have started a private chat are eligible. Messages are sent individually from your Telegram account, with a 3-second pause between recipients. Telegram privacy settings or rate limits can still prevent delivery.</p>
+          <p>Students who request a lesson with <code>/lesson</code> (or have lesson progress) are included if they have started a private chat. They can opt out at any time by privately messaging the bot <code>/announcements_off</code>, or opt back in with <code>/announcements_on</code>. Only current members of the configured group are eligible. Messages are sent individually from your Telegram account, with a 3-second pause between recipients. Telegram privacy settings or rate limits can still prevent delivery.</p>
           <form id="telegram-user-broadcast-form">
             <label for="telegram-user-broadcast-message">Message to send</label>
             <textarea id="telegram-user-broadcast-message" maxlength="4096" required placeholder="Write the announcement…"></textarea>
             <div class="composer-actions">
               <span class="result-count" id="telegram-user-broadcast-length">0 / 4,096</span>
-              <button class="primary-button" id="telegram-user-broadcast-send" type="submit" disabled>Send to opted-in students</button>
+              <button class="primary-button" id="telegram-user-broadcast-send" type="submit" disabled>Send to eligible students</button>
             </div>
           </form>
         </article>
@@ -2955,7 +2955,7 @@
       const data = await api('/api/admin/telegram-user-broadcasts');
       $('#telegram-user-broadcast-recipients').dataset.count = String(data.optedInCount);
       $('#telegram-user-broadcast-recipients').textContent =
-        `${data.optedInCount.toLocaleString()} eligible learner${data.optedInCount === 1 ? '' : 's'} opted in.`;
+        `${data.optedInCount.toLocaleString()} eligible lesson learner${data.optedInCount === 1 ? '' : 's'}.`;
       $('#telegram-user-broadcast-worker').textContent = data.workerConnected
         ? `Personal Telegram account sender is connected on this computer.${data.workerError ? ` Last error: ${data.workerError}` : ''}`
         : `Sender is offline. Start it in a terminal on this computer with npm run telegram-broadcast.${data.workerError ? ` Last error: ${data.workerError}` : ''}`;
@@ -3872,7 +3872,7 @@
         agent: ['WhatsApp agent', 'A readable live view of incoming messages and the agent’s replies, alongside its terminal log.'],
         'es-contacts': ['Es contacts', 'Review Es contacts synced from your phone book.'],
         progress: ['Student progress', 'Review students and their current lesson status.'],
-        'telegram-broadcast': ['Telegram announcements', 'Send private announcements from your account to learners who opted in.'],
+        'telegram-broadcast': ['Telegram announcements', 'Send private announcements to lesson learners.'],
         'payment-ledger': ['Payment ledger', 'Review student payment claims and confirm the current 30-day period.'],
         'payment-calendar': ['Payment calendar', 'Review historical payment dates and collected amounts.'],
         'scheduled-lessons': ['Scheduled WhatsApp lessons', 'Create and manage one-time WhatsApp lesson deliveries. Times use Sudan time.'],
@@ -3896,7 +3896,7 @@
       if (!text) return;
       const count = Number($('#telegram-user-broadcast-recipients').dataset.count || 0);
       if (!window.confirm(
-        `Send this message from your Telegram account individually to ${count} opted-in learners, with a 3-second pause between messages?`
+        `Send this message from your Telegram account individually to ${count} eligible lesson learners, with a 3-second pause between messages?`
       )) return;
       const button = $('#telegram-user-broadcast-send');
       button.disabled = true;
@@ -3912,7 +3912,7 @@
       } catch (error) {
         showError(`Could not queue Telegram announcement: ${error.message}`);
       } finally {
-        button.textContent = 'Send to opted-in students';
+        button.textContent = 'Send to eligible students';
       }
     });
     document.addEventListener('click', event => {

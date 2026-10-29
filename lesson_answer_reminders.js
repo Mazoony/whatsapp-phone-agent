@@ -2,7 +2,7 @@ export const LESSON_ANSWER_REMINDER_DELAY_MS = 8 * 60 * 60 * 1000;
 export const LESSON_ANSWER_REMINDER_CHECK_INTERVAL_MS = 60 * 1000;
 
 export const LESSON_ANSWER_REMINDER_MESSAGE =
-  'تذكير يا بطل: تمرين الحصة لسه منتظر إجابتك. أرسل إجاباتك متين ما تكون جاهز.';
+  'سلام,\n\nقلت أذكرك تشتغل التمرين عشان نمش للحصة البعديها\n\nو نحقق الدرجة العايزنها إن شاء الله\n\nو قليل دائم, خير من كثير منقطع\n\nكل التوفيق يا رب';
 
 export function getDueLessonAnswerReminders(
   progress,

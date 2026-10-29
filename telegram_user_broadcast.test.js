@@ -33,12 +33,23 @@ test('Telegram user broadcasts send only to group participants who remain opted 
       telegramUserId: 13,
       telegramPrivateChatId: '13',
       telegramAnnouncementsOptIn: false
+    },
+    'telegram:-100123:14': {
+      telegramChatId: '-100123',
+      telegramUserId: 14,
+      telegramPrivateChatId: '14',
+      currentLessonId: 'lesson_2'
     }
   });
   writeJson(requestsFile, [{
     id: 'job-1',
     text: 'Announcement',
-    recipients: [{ userId: '11' }, { userId: '12' }, { userId: '13' }],
+    recipients: [
+      { userId: '11' },
+      { userId: '12' },
+      { userId: '13' },
+      { userId: '14' }
+    ],
     createdAt: new Date().toISOString(),
     cancelled: false
   }]);
@@ -49,6 +60,7 @@ test('Telegram user broadcasts send only to group participants who remain opted 
     async *iterParticipants() {
       yield { id: 11 };
       yield { id: 12 };
+      yield { id: 14 };
     },
     async sendMessage(participant, options) {
       sent.push({ userId: participant.id, ...options });
@@ -71,12 +83,15 @@ test('Telegram user broadcasts send only to group participants who remain opted 
 
   await worker.processNextJob();
 
-  assert.deepEqual(sent, [{ userId: 11, message: 'Announcement' }]);
+  assert.deepEqual(sent, [
+    { userId: 11, message: 'Announcement' },
+    { userId: 14, message: 'Announcement' }
+  ]);
   const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   assert.equal(state.jobs['job-1'].status, 'completed');
-  assert.equal(state.jobs['job-1'].sent, 1);
+  assert.equal(state.jobs['job-1'].sent, 2);
   assert.equal(state.jobs['job-1'].skipped, 2);
-  assert.equal(state.jobs['job-1'].nextIndex, 3);
+  assert.equal(state.jobs['job-1'].nextIndex, 4);
 });
 
 test('Telegram user broadcasts stop after a send error and mark delivery uncertain', async t => {

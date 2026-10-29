@@ -6,6 +6,7 @@ import { stdin, stdout } from 'node:process';
 import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions';
 import { config } from './config.js';
+import { isTelegramAnnouncementRecipient } from './telegram_announcement_recipients.js';
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(APP_DIR, 'data');
@@ -43,11 +44,7 @@ function getGroupEntityId(entity) {
 
 function getOptedInRecipientIds(progress, groupId) {
   return new Set(Object.values(progress || {})
-    .filter(student =>
-      student?.telegramAnnouncementsOptIn === true &&
-      Number.isSafeInteger(student.telegramUserId) &&
-      student.telegramPrivateChatId &&
-      String(student.telegramChatId) === String(groupId))
+    .filter(student => isTelegramAnnouncementRecipient(student, groupId))
     .map(student => String(student.telegramUserId)));
 }
 
