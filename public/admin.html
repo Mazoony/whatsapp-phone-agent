@@ -593,6 +593,8 @@
     .rubric-head, .task-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
     .btn-micro { border: 1px solid #c8dcd0; background: white; border-radius: 6px; padding: 4px 9px; font-size: 10px; font-weight: 650; color: var(--green); cursor: pointer; }
     .btn-micro:hover { background: var(--green-soft); }
+    .btn-micro.btn-danger { color: var(--red); border-color: #f2cfcf; }
+    .btn-micro.btn-danger:hover { background: #fff5f5; border-color: var(--red); }
     .rubric-rows { display: grid; gap: 8px; max-height: 240px; overflow-y: auto; padding-right: 4px; }
     .rubric-row { display: grid; grid-template-columns: 28px minmax(100px, 1.2fr) minmax(130px, 1.8fr) 28px; align-items: center; gap: 8px; }
     .rubric-num { text-align: center; font-weight: 750; color: var(--green); font-size: 11px; }
@@ -1120,6 +1122,30 @@
           </div>
           <button class="pagination button" id="payment-ledger-refresh" type="button">Refresh</button>
         </div>
+        <article class="panel payment-calendar-panel" style="margin-bottom:16px">
+          <div class="section-heading" style="margin-bottom:12px">
+            <div><h3 style="margin:0">Telegram payments this month</h3><p style="margin:4px 0 0">Totals include only payments confirmed as paid.</p></div>
+          </div>
+          <div class="payment-summary-grid" aria-label="Monthly Telegram payment totals">
+            <div class="payment-summary-stat">
+              <span class="payment-summary-label">Students paid this month</span>
+              <strong class="payment-summary-value" id="telegram-payment-month-student-count">0</strong>
+            </div>
+            <div class="payment-summary-stat">
+              <span class="payment-summary-label">Total collected</span>
+              <strong class="payment-summary-value" id="telegram-payment-month-total">0 SDG</strong>
+            </div>
+            <div class="payment-summary-stat">
+              <span class="payment-summary-label">USD equivalent</span>
+              <strong class="payment-summary-value" id="telegram-payment-month-usd-total">Enter rate</strong>
+              <label class="payment-summary-rate" for="telegram-payment-usd-rate">
+                <span>SDG per 1 USD</span>
+                <input id="telegram-payment-usd-rate" type="number" min="0" step="any" inputmode="decimal" aria-describedby="telegram-payment-rate-status">
+              </label>
+              <p class="payment-rate-status" id="telegram-payment-rate-status" aria-live="polite"></p>
+            </div>
+          </div>
+        </article>
         <article class="panel table-wrap">
           <table>
             <thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Payment period</th><th>Status</th><th>Amount</th><th>Evidence / reference</th><th>Actions</th></tr></thead>
@@ -1528,6 +1554,7 @@
     let paymentCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let paymentCalendarSelectedDate = new Date();
     let paymentCalendarPayments = [];
+    let telegramPaymentHistory = [];
     const PAYMENT_MONTHLY_AMOUNT_SDG = 17000;
     const PAYMENT_USD_RATE_STORAGE_KEY = 'eshool-payment-sdg-per-usd';
     let paymentSdgPerUsd = '';
@@ -3839,6 +3866,59 @@
       );
     }
 
+    function renderTelegramPaymentSummary() {
+      const currentMonth = new Date();
+      const monthPayments = telegramPaymentHistory.filter(payment => {
+        const paidAt = new Date(payment.paidAt);
+        return !Number.isNaN(paidAt.getTime()) &&
+          paidAt.getFullYear() === currentMonth.getFullYear() &&
+          paidAt.getMonth() === currentMonth.getMonth();
+      });
+      const paidStudents = new Set(monthPayments.map(payment => payment.studentKey).filter(Boolean));
+      const totalsByCurrency = new Map();
+      for (const payment of monthPayments) {
+        const amount = Number(payment.amount);
+        const currency = Number.isFinite(amount) && amount > 0
+          ? (payment.currency || 'SDG').toUpperCase()
+          : 'SDG';
+        const collected = Number.isFinite(amount) && amount > 0
+          ? amount
+          : PAYMENT_MONTHLY_AMOUNT_SDG;
+        totalsByCurrency.set(currency, (totalsByCurrency.get(currency) || 0) + collected);
+      }
+
+      const formatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+      const currencyTotals = [...totalsByCurrency.entries()]
+        .sort(([left], [right]) => left.localeCompare(right));
+      $('#telegram-payment-month-student-count').textContent =
+        formatter.format(paidStudents.size);
+      $('#telegram-payment-month-total').textContent = currencyTotals.length
+        ? currencyTotals.map(([currency, amount]) => `${formatter.format(amount)} ${currency}`).join(' · ')
+        : '0 SDG';
+
+      const totalSdg = totalsByCurrency.get('SDG') || 0;
+      const totalUsd = totalsByCurrency.get('USD') || 0;
+      const unsupportedCurrencies = currencyTotals
+        .filter(([currency]) => currency !== 'SDG' && currency !== 'USD')
+        .map(([currency]) => currency);
+      const rate = Number(paymentSdgPerUsd);
+      const hasSdg = totalSdg > 0;
+      $('#telegram-payment-usd-rate').value = paymentSdgPerUsd;
+      $('#telegram-payment-month-usd-total').textContent =
+        hasSdg && (!Number.isFinite(rate) || rate <= 0)
+          ? 'Enter rate'
+          : new Intl.NumberFormat(undefined, {
+              style: 'currency',
+              currency: 'USD'
+            }).format(totalUsd + (hasSdg ? totalSdg / rate : 0));
+      $('#telegram-payment-rate-status').textContent = hasSdg &&
+        (!Number.isFinite(rate) || rate <= 0)
+        ? 'Enter a rate greater than zero to calculate the SDG equivalent.'
+        : unsupportedCurrencies.length
+          ? `USD equivalent excludes: ${unsupportedCurrencies.join(', ')}.`
+          : '';
+    }
+
     async function loadPaymentCalendar() {
       const { payments } = await api('/api/admin/payment-calendar');
       paymentCalendarPayments = payments;
@@ -3846,7 +3926,9 @@
     }
 
     async function loadPaymentLedger() {
-      const { students } = await api('/api/admin/payment-ledger');
+      const { students, payments } = await api('/api/admin/payment-ledger');
+      telegramPaymentHistory = payments;
+      renderTelegramPaymentSummary();
       const statusLabels = {
         unpaid: 'Unpaid',
         pending_review: 'Pending review',
@@ -4344,8 +4426,8 @@
       paymentCalendarMonth = new Date(year, month - 1, 1);
       renderPaymentCalendar();
     });
-    $('#payment-usd-rate').addEventListener('input', event => {
-      paymentSdgPerUsd = event.target.value;
+    function updatePaymentUsdRate(value) {
+      paymentSdgPerUsd = value;
       try {
         if (paymentSdgPerUsd) {
           localStorage.setItem(PAYMENT_USD_RATE_STORAGE_KEY, paymentSdgPerUsd);
@@ -4353,12 +4435,22 @@
           localStorage.removeItem(PAYMENT_USD_RATE_STORAGE_KEY);
         }
         $('#payment-rate-status').textContent = '';
+        $('#telegram-payment-rate-status').textContent = '';
       } catch (error) {
         console.warn('[Payments] Could not save USD conversion rate:', error.message);
         $('#payment-rate-status').textContent = 'Could not save the rate in this browser; it may reset when you leave.';
+        $('#telegram-payment-rate-status').textContent = 'Could not save the rate in this browser; it may reset when you leave.';
       }
+      $('#payment-usd-rate').value = paymentSdgPerUsd;
+      $('#telegram-payment-usd-rate').value = paymentSdgPerUsd;
       renderPaymentSummary($('#payment-calendar-month').textContent);
-    });
+      renderTelegramPaymentSummary();
+    }
+
+    $('#payment-usd-rate').addEventListener('input', event =>
+      updatePaymentUsdRate(event.target.value));
+    $('#telegram-payment-usd-rate').addEventListener('input', event =>
+      updatePaymentUsdRate(event.target.value));
 
     function openChats(activeOnly = false) {
       activeChatsOnly = activeOnly;
@@ -5309,6 +5401,16 @@
       return `${bytes} B`;
     }
 
+    function renderLessonCompletionMetric(lesson) {
+      const completionCount = Number.isSafeInteger(lesson.completionCount)
+        ? lesson.completionCount
+        : 0;
+      const studentCount = Number.isSafeInteger(lesson.studentCount)
+        ? lesson.studentCount
+        : 0;
+      return `<span class="metric-chip" title="Completion totals are recorded from this release onward; earlier per-lesson totals were not saved.">✅ Done ${completionCount} ${completionCount === 1 ? 'time' : 'times'} · ${studentCount} ${studentCount === 1 ? 'student' : 'students'}</span>`;
+    }
+
     async function loadCurriculumOverview() {
       try {
         const data = await api('/api/admin/curriculum');
@@ -5390,7 +5492,7 @@
 
         $('#curriculum-grade-title').textContent = data.name;
         $('#curriculum-grade-meta').textContent =
-          `${data.stageName} (${data.stageNameEn}) · ${data.lessons.length} sequential lessons · ${data.standaloneLessons.length} standalone`;
+          `${data.stageName} (${data.stageNameEn}) · ${data.lessons.length} sequential lessons · ${data.standaloneLessons.length} standalone · per-lesson counts recorded from now on`;
 
         // Render keywords
         const keywordsBar = $('#curriculum-keywords-bar');
@@ -5439,6 +5541,7 @@
                     </div>
                   </div>
                   <div class="lesson-badges">
+                    ${renderLessonCompletionMetric(lesson)}
                     <span class="metric-chip ${lesson.videoExists ? 'has-lessons' : ''}">
                       🎬 ${escapeHtml(lesson.videoFile)} ${lesson.videoExists ? `(${formatFileSize(lesson.videoSizeBytes)})` : '⚠️ Missing file'}
                     </span>
@@ -5473,6 +5576,7 @@
                     </div>
                   </div>
                   <div class="lesson-badges">
+                    ${renderLessonCompletionMetric(lesson)}
                     <span class="metric-chip ${lesson.videoExists ? 'has-lessons' : ''}">
                       🎬 ${escapeHtml(lesson.videoFile)} ${lesson.videoExists ? `(${formatFileSize(lesson.videoSizeBytes)})` : '⚠️ Missing file'}
                     </span>
@@ -5497,7 +5601,10 @@
                     ${unusedVideos.map(v => `
                       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:white;padding:8px 12px;border:1px solid var(--line);border-radius:7px;font-size:11px">
                         <span>🎬 <strong>${escapeHtml(v.fileName)}</strong> <small style="color:var(--muted)">(${formatFileSize(v.sizeBytes)})</small></span>
-                        <button class="btn-micro" type="button" data-create-lesson-from-video="${escapeHtml(v.relativePath)}" data-video-name="${escapeHtml(v.fileName)}">+ Create Lesson for this Video</button>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+                          <button class="btn-micro" type="button" data-create-lesson-from-video="${escapeHtml(v.relativePath)}" data-video-name="${escapeHtml(v.fileName)}">+ Create Lesson</button>
+                          <button class="btn-micro btn-danger" type="button" data-delete-unused-video="${escapeHtml(v.relativePath)}" data-video-name="${escapeHtml(v.fileName)}">Delete video</button>
+                        </div>
                       </div>
                     `).join('')}
                   </div>
@@ -5532,6 +5639,7 @@
                   </div>
                 </div>
                 <div class="lesson-badges">
+                  ${renderLessonCompletionMetric(lesson)}
                   <span class="metric-chip ${lesson.videoExists ? 'has-lessons' : ''}">🎬 ${escapeHtml(lesson.videoFile)} ${lesson.videoExists ? `(${formatFileSize(lesson.videoSizeBytes)})` : '⚠️ Missing file'}</span>
                   <span class="metric-chip">📝 ${lesson.answerCount} exercise items</span>
                 </div>
@@ -6214,6 +6322,26 @@
             prefillVideo: videoPath,
             lesson: idMatch ? { id: `lesson_${idMatch[1]}`, title: `الحصة ${idMatch[1]}`, videoFile: videoPath } : null
           });
+          return;
+        }
+
+        const deleteUnusedVideoBtn = event.target.closest('[data-delete-unused-video]');
+        if (deleteUnusedVideoBtn) {
+          const videoPath = deleteUnusedVideoBtn.dataset.deleteUnusedVideo;
+          const videoName = deleteUnusedVideoBtn.dataset.videoName;
+          if (!await dashboardConfirm(`Permanently delete unused video "${videoName}"? This cannot be undone.`, {
+            title: 'Delete unused video',
+            confirmText: 'Delete video',
+            variant: 'danger'
+          })) return;
+          try {
+            await api(`/api/admin/curriculum/video?gradeKey=${encodeURIComponent(selectedGradeKey)}&relativePath=${encodeURIComponent(videoPath)}`, {
+              method: 'DELETE'
+            });
+            await openGradeCurriculum(selectedGradeKey, false);
+          } catch (error) {
+            showError(`Could not delete unused video: ${error.message}`);
+          }
           return;
         }
 

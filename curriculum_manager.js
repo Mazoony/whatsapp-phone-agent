@@ -205,6 +205,44 @@ export function listCurriculumOverview(lessonsConfig = null, { filePath = LESSON
   };
 }
 
+export function deleteUnusedLessonVideo({
+  gradeKey,
+  relativePath,
+  filePath = LESSONS_FILE,
+  mediaDir = LESSON_MEDIA_DIR
+} = {}) {
+  if (!/^grade_\d+_(primary|intermediate|secondary)$/.test(gradeKey || '') ||
+      typeof relativePath !== 'string') {
+    throw new Error('A valid grade and video path are required.');
+  }
+  const video = getDiskVideosForGrade(gradeKey, mediaDir)
+    .find(item => item.relativePath === relativePath);
+  if (!video) {
+    throw new Error('This video is no longer available in the selected grade folder.');
+  }
+
+  const config = readLessonsFile(filePath);
+  const videoPath = path.resolve(mediaDir, gradeKey,
+    relativePath.slice(`media/lessons/${gradeKey}/`.length).split('/').join(path.sep));
+  const isReferenced = Object.values(config).some(grade => {
+    const lessons = [
+      ...(Array.isArray(grade?.lessons) ? grade.lessons : []),
+      ...(Array.isArray(grade?.standaloneLessons) ? grade.standaloneLessons : []),
+      ...Object.values(grade?.collections || {}).flatMap(collection =>
+        Array.isArray(collection?.lessons) ? collection.lessons : [])
+    ];
+    return lessons.some(lesson =>
+      typeof lesson?.videoFile === 'string' &&
+      path.resolve(path.dirname(filePath), lesson.videoFile) === videoPath);
+  });
+  if (isReferenced) {
+    throw new Error('This video is assigned to a lesson and cannot be deleted as unused.');
+  }
+
+  fs.unlinkSync(videoPath);
+  return { success: true, fileName: video.fileName };
+}
+
 export function getGradeCurriculum(gradeKey, lessonsConfig = null, { filePath = LESSONS_FILE, mediaDir = LESSON_MEDIA_DIR, appDir = APP_DIR } = {}) {
   const config = lessonsConfig || readLessonsFile(filePath);
   if (!config[gradeKey]) return null;

@@ -116,7 +116,8 @@ import {
   deleteLesson,
   reorderLessons,
   saveGradeMetadata,
-  saveLessonVideo
+  saveLessonVideo,
+  deleteUnusedLessonVideo
 } from './curriculum_manager.js';
 
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -208,6 +209,36 @@ function readBinaryRequestBody(req, maxBytes) {
 
 function readJsonFileOr(filePath, fallback) {
   return fs.existsSync(filePath) ? readJsonFile(filePath) : fallback;
+}
+
+function addLessonCompletionStats(gradeCurriculum, studentsProgress) {
+  const countsByLesson = new Map();
+  for (const student of Object.values(studentsProgress)) {
+    if (student?.grade !== gradeCurriculum.key ||
+        !student.lessonCompletionCounts ||
+        typeof student.lessonCompletionCounts !== 'object' ||
+        Array.isArray(student.lessonCompletionCounts)) continue;
+    for (const [lessonId, count] of Object.entries(student.lessonCompletionCounts)) {
+      if (!Number.isSafeInteger(count) || count < 1) continue;
+      const stats = countsByLesson.get(lessonId) || { completionCount: 0, studentCount: 0 };
+      stats.completionCount += count;
+      stats.studentCount += 1;
+      countsByLesson.set(lessonId, stats);
+    }
+  }
+  const addStats = lesson => ({
+    ...lesson,
+    ...(countsByLesson.get(lesson.id) || { completionCount: 0, studentCount: 0 })
+  });
+  return {
+    ...gradeCurriculum,
+    lessons: gradeCurriculum.lessons.map(addStats),
+    standaloneLessons: gradeCurriculum.standaloneLessons.map(addStats),
+    collections: gradeCurriculum.collections.map(collection => ({
+      ...collection,
+      lessons: collection.lessons.map(addStats)
+    }))
+  };
 }
 
 function writeJsonFile(filePath, value) {
@@ -2640,6 +2671,27 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'DELETE' && requestUrl.pathname === '/api/admin/curriculum/video') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Media can only be deleted from this local dashboard.' });
+        return;
+      }
+      try {
+        const result = deleteUnusedLessonVideo({
+          gradeKey: requestUrl.searchParams.get('gradeKey'),
+          relativePath: requestUrl.searchParams.get('relativePath'),
+          filePath: lessonsFile,
+          mediaDir: lessonMediaDirectory
+        });
+        scheduleChange(path.basename(lessonsFile));
+        sendJson(res, 200, result);
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not delete unused lesson video:', error.message);
+        sendJson(res, 400, { error: error.message });
+      }
+      return;
+    }
+
     if (req.method === 'POST' &&
         requestUrl.pathname === '/api/admin/curriculum/generate-answer-key') {
       if (!isSameOriginLoopbackRequest(req)) {
@@ -3616,7 +3668,8 @@ export function createAdminDashboardServer({
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/payment-ledger') {
       try {
-        const students = getTelegramProgressSnapshot('UTC').students
+        const progressSnapshot = getTelegramProgressSnapshot('UTC');
+        const students = progressSnapshot.students
           .filter(student => student.paymentKey && student.enrolledAt)
           .map(student => ({
             platform: 'Telegram',
@@ -3630,7 +3683,25 @@ export function createAdminDashboardServer({
               student.enrolledAt
             )
           }));
-        sendJson(res, 200, { students });
+        const studentsByKey = new Map(students.map(student => [student.studentKey, student]));
+        const payments = Object.entries(studentPaymentLedger.list())
+          .flatMap(([studentKey, record]) => Object.values(record.periods || {})
+            .filter(payment => payment.status === 'paid' && payment.paidAt)
+            .map(payment => {
+              const student = studentsByKey.get(studentKey);
+              return {
+                platform: 'Telegram',
+                studentKey,
+                name: student?.name || studentKey,
+                gradeName: student?.gradeName || '',
+                paidAt: payment.paidAt,
+                amount: payment.amount ?? null,
+                currency: payment.currency || 'SDG',
+                periodStart: payment.periodStart
+              };
+            }))
+          .sort((left, right) => Date.parse(right.paidAt) - Date.parse(left.paidAt));
+        sendJson(res, 200, { students, payments });
       } catch (error) {
         console.error('[Admin Dashboard] Could not load the student payment ledger:', error.message);
         sendJson(res, 500, { error: 'Could not read the student payment ledger.' });
@@ -4192,7 +4263,14 @@ export function createAdminDashboardServer({
           sendJson(res, 404, { error: 'Grade not found.' });
           return;
         }
-        sendJson(res, 200, gradeCurriculum);
+        sendJson(
+          res,
+          200,
+          addLessonCompletionStats(
+            gradeCurriculum,
+            readJsonFileOr(telegramProgressFile, {})
+          )
+        );
         return;
       }
 

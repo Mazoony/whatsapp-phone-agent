@@ -445,6 +445,9 @@ test('Telegram grading keeps students isolated and sends the next lesson after a
   assert.equal(agent.progress['telegram:-100123:45'].currentLessonId, 'lesson_1');
   assert.equal(agent.progress['telegram:-100123:45'].status, 'awaiting_task');
   assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
+  assert.deepEqual(agent.progress['telegram:-100123:44'].lessonCompletionCounts, {
+    lesson_1: 1
+  });
   assert.equal(agent.progress['telegram:-100123:44'].submissionsReceived, 1);
   assert.ok(agent.progress['telegram:-100123:44'].joinedAt);
   assert.deepEqual(

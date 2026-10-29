@@ -1359,6 +1359,18 @@ export class TelegramLessonAgent {
         );
       }
     }
+    const previousLessonCompletionCounts = state.lessonCompletionCounts &&
+      typeof state.lessonCompletionCounts === 'object' &&
+      !Array.isArray(state.lessonCompletionCounts)
+      ? state.lessonCompletionCounts
+      : {};
+    const previousLessonCompletionCount = previousLessonCompletionCounts[lesson.id];
+    state.lessonCompletionCounts = {
+      ...previousLessonCompletionCounts,
+      [lesson.id]: (Number.isSafeInteger(previousLessonCompletionCount)
+        ? previousLessonCompletionCount
+        : 0) + 1
+    };
     state.lessonsCompleted = (state.lessonsCompleted || 0) + 1;
     state.status = 'awaiting_content';
     this.saveProgress();

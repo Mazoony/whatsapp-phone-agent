@@ -1544,6 +1544,15 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(reviewed.payment.amount, 17000);
     assert.equal(reviewed.payment.currency, 'SDG');
 
+    const paidHistoryResponse = await fetch(ledgerUrl);
+    assert.equal(paidHistoryResponse.status, 200);
+    const paidHistory = await paidHistoryResponse.json();
+    assert.equal(paidHistory.payments.length, 1);
+    assert.equal(paidHistory.payments[0].studentKey, studentKey);
+    assert.equal(paidHistory.payments[0].amount, 17000);
+    assert.equal(paidHistory.payments[0].currency, 'SDG');
+    assert.equal(paidHistory.payments[0].paidAt, reviewed.payment.paidAt);
+
     const invalidResponse = await fetch(ledgerUrl, {
       method: 'POST',
       headers: { Origin: origin, 'Content-Type': 'application/json' },
@@ -3156,8 +3165,17 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
 test('curriculum API endpoints allow viewing, saving, uploading video, and managing lessons', async () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'curriculum-api-test-'));
   const testLessonsFile = path.join(temporaryDirectory, 'lessons.json');
+  const testTelegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
   const testMediaDir = path.join(temporaryDirectory, 'media', 'lessons');
   fs.mkdirSync(path.join(testMediaDir, 'grade_3_secondary'), { recursive: true });
+  fs.writeFileSync(
+    path.join(testMediaDir, 'grade_3_secondary', 'lesson_1.mp4'),
+    Buffer.from('assigned-video')
+  );
+  fs.writeFileSync(
+    path.join(testMediaDir, 'grade_3_secondary', 'unused_clip.mp4'),
+    Buffer.from('unused-video')
+  );
 
   const initialLessons = {
     grade_3_secondary: {
@@ -3175,11 +3193,26 @@ test('curriculum API endpoints allow viewing, saving, uploading video, and manag
     }
   };
   fs.writeFileSync(testLessonsFile, JSON.stringify(initialLessons, null, 2), 'utf8');
+  fs.writeFileSync(testTelegramProgressFile, JSON.stringify({
+    studentOne: {
+      grade: 'grade_3_secondary',
+      lessonCompletionCounts: { lesson_1: 2 }
+    },
+    studentTwo: {
+      grade: 'grade_3_secondary',
+      lessonCompletionCounts: { lesson_1: 1 }
+    },
+    otherGradeStudent: {
+      grade: 'grade_2_secondary',
+      lessonCompletionCounts: { lesson_1: 5 }
+    }
+  }), 'utf8');
 
   const server = createAdminDashboardServer({
     readData: () => ({ ...sampleData, lessons: JSON.parse(fs.readFileSync(testLessonsFile, 'utf8')) }),
     lessonsFile: testLessonsFile,
-    lessonMediaDirectory: testMediaDir
+    lessonMediaDirectory: testMediaDir,
+    telegramProgressFile: testTelegramProgressFile
   });
 
   try {
@@ -3200,6 +3233,28 @@ test('curriculum API endpoints allow viewing, saving, uploading video, and manag
     const gradeData = await gradeRes.json();
     assert.equal(gradeData.key, 'grade_3_secondary');
     assert.equal(gradeData.lessons.length, 1);
+    assert.equal(gradeData.lessons[0].completionCount, 3);
+    assert.equal(gradeData.lessons[0].studentCount, 2);
+
+    const assignedVideoDeleteRes = await fetch(
+      `${origin}/api/admin/curriculum/video?gradeKey=grade_3_secondary&relativePath=${encodeURIComponent('media/lessons/grade_3_secondary/lesson_1.mp4')}`,
+      { method: 'DELETE', headers: { Origin: origin } }
+    );
+    assert.equal(assignedVideoDeleteRes.status, 400);
+    assert.equal(
+      fs.existsSync(path.join(testMediaDir, 'grade_3_secondary', 'lesson_1.mp4')),
+      true
+    );
+
+    const unusedVideoDeleteRes = await fetch(
+      `${origin}/api/admin/curriculum/video?gradeKey=grade_3_secondary&relativePath=${encodeURIComponent('media/lessons/grade_3_secondary/unused_clip.mp4')}`,
+      { method: 'DELETE', headers: { Origin: origin } }
+    );
+    assert.equal(unusedVideoDeleteRes.status, 200);
+    assert.equal(
+      fs.existsSync(path.join(testMediaDir, 'grade_3_secondary', 'unused_clip.mp4')),
+      false
+    );
 
     // 3. POST /api/admin/curriculum/video (upload lesson video)
     const videoBuffer = Buffer.from('simulated-mp4-stream');
