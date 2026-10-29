@@ -6,6 +6,7 @@ const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const STUDENT_PAYMENT_LEDGER_FILE = path.join(ROOT_DIR, 'data', 'student_payment_ledger.json');
 export const PAYMENT_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 export const PAYMENT_STATUSES = ['unpaid', 'pending_review', 'paid', 'rejected'];
+const PAYMENT_RECEIPT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function validTimestamp(value) {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return null;
@@ -231,6 +232,9 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
             recipientName: details.recipientName || null,
             recipientAccount: details.recipientAccount || null,
             receiptDate: details.date || null,
+            receiptId: PAYMENT_RECEIPT_ID_PATTERN.test(details.receiptId || '')
+              ? details.receiptId
+              : previous?.details?.receiptId || null,
             reason: details.reason || null
           } : previous?.details || null,
           updatedAt: new Date().toISOString()

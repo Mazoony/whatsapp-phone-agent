@@ -108,6 +108,10 @@ import {
 } from './student_payment_ledger.js';
 import { TELEGRAM_AGENT_STATUS_FILE } from './telegram_agent_status.js';
 import {
+  PAYMENT_RECEIPT_IMAGE_DIRECTORY,
+  readPaymentReceiptImage
+} from './payment_receipt_images.js';
+import {
   LESSON_MEDIA_DIR,
   MAX_LESSON_VIDEO_BYTES,
   listCurriculumOverview,
@@ -1880,6 +1884,7 @@ export function createAdminDashboardServer({
   telegramUpdateQueueFile = TELEGRAM_UPDATE_QUEUE_FILE,
   telegramAgentControlFile = TELEGRAM_AGENT_CONTROL_FILE,
   telegramProgressFile = TELEGRAM_PROGRESS_FILE,
+  paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
   telegramGroupId = process.env.TELEGRAM_GROUP_ID,
   telegramMemberCountProvider = null,
   telegramUserBroadcastFiles = {
@@ -3705,6 +3710,39 @@ export function createAdminDashboardServer({
       } catch (error) {
         console.error('[Admin Dashboard] Could not load the student payment ledger:', error.message);
         sendJson(res, 500, { error: 'Could not read the student payment ledger.' });
+      }
+      return;
+    }
+
+    const receiptImageMatch = /^\/api\/admin\/payment-receipts\/([0-9a-f-]+)$/i
+      .exec(requestUrl.pathname);
+    if (req.method === 'GET' && receiptImageMatch) {
+      const receiptId = receiptImageMatch[1];
+      try {
+        const hasLedgerReference = Object.values(studentPaymentLedger.list()).some(record =>
+          Object.values(record.periods || {}).some(payment =>
+            payment.source === 'telegram-receipt' &&
+            payment.details?.receiptId === receiptId));
+        if (!hasLedgerReference) {
+          sendJson(res, 404, { error: 'Receipt image not found.' });
+          return;
+        }
+        const image = readPaymentReceiptImage(receiptId, paymentReceiptImageDirectory);
+        res.writeHead(200, {
+          'Content-Type': 'image/jpeg',
+          'Content-Length': image.length,
+          'Cache-Control': 'private, no-store',
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+        });
+        res.end(image);
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          sendJson(res, 404, { error: 'Receipt image not found.' });
+          return;
+        }
+        console.error('[Admin Dashboard] Could not load payment receipt image:', error.message);
+        sendJson(res, 500, { error: 'Could not load the payment receipt image.' });
       }
       return;
     }

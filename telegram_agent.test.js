@@ -65,6 +65,7 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
   };
   const sent = [];
   const paymentLedger = createStudentPaymentLedger(path.join(directory, 'student_payment_ledger.json'));
+  const paymentReceiptImageDirectory = path.join(directory, 'payment_receipts');
   const mediaActivityFile = path.join(directory, 'telegram_agent_media_activity.json');
   const mediaRetryRequestsFile = path.join(directory, 'telegram_agent_media_retry_requests.json');
   let currentPrivateChatError = privateChatError;
@@ -108,6 +109,7 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
     mediaActivityFile,
     mediaRetryRequestsFile,
     paymentLedger,
+    paymentReceiptImageDirectory,
     ...(scanReceipt ? { scanReceipt } : {}),
     logger: { info() {}, error() {} }
   });
@@ -120,6 +122,7 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
     mediaActivityFile,
     mediaRetryRequestsFile,
     paymentLedger,
+    paymentReceiptImageDirectory,
     sent,
     setPrivateChatError: error => {
       currentPrivateChatError = error;
@@ -1033,7 +1036,7 @@ test('Telegram payment status is sent privately and group replies do not disclos
 });
 
 test('Telegram receipt scans are recorded as pending review', async t => {
-  const { agent, paymentLedger, sent } = createFixture(t, {
+  const { agent, paymentLedger, paymentReceiptImageDirectory, sent } = createFixture(t, {
     scanReceipt: async () => ({
       isPayment: true,
       details: {
@@ -1061,6 +1064,11 @@ test('Telegram receipt scans are recorded as pending review', async t => {
   assert.equal(payment.status, 'pending_review');
   assert.equal(payment.amount, 17000);
   assert.equal(payment.details.transactionId, 'TX-1');
+  assert.ok(payment.details.receiptId);
+  assert.equal(
+    fs.readFileSync(path.join(paymentReceiptImageDirectory, `${payment.details.receiptId}.jpg`)).toString(),
+    'receipt-image'
+  );
   assert.equal(sent.at(-1).text, 'وصل إشعار الدفع للمراجعة، حنراجعه وبأكد ليك. موفق يا رب!');
 });
 

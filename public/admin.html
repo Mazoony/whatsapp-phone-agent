@@ -3948,8 +3948,12 @@
                 : '',
             details.bank,
             details.transactionId ? `Ref: ${details.transactionId}` : '',
-            details.adminNote
-          ].filter(Boolean).map(escapeHtml).join(' · ');
+            details.adminNote,
+            details.receiptId
+              ? `<a class="btn-micro" href="/api/admin/payment-receipts/${encodeURIComponent(details.receiptId)}" target="_blank" rel="noopener noreferrer">View receipt image</a>`
+              : ''
+          ].filter(Boolean).map(item =>
+            item.startsWith('<a ') ? item : escapeHtml(item)).join(' · ');
           return `<tr data-payment-ledger-key="${escapeHtml(student.studentKey)}">
             <td>${escapeHtml(student.platform)}</td>
             <td>${escapeHtml(student.name)}</td>

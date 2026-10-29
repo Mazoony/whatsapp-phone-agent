@@ -26,6 +26,11 @@ import {
   STUDENT_PAYMENT_LEDGER_FILE
 } from './student_payment_ledger.js';
 import {
+  deletePaymentReceiptImage,
+  PAYMENT_RECEIPT_IMAGE_DIRECTORY,
+  savePaymentReceiptImage
+} from './payment_receipt_images.js';
+import {
   TELEGRAM_AGENT_STATUS_FILE,
   writeTelegramAgentStatus
 } from './telegram_agent_status.js';
@@ -286,6 +291,7 @@ export class TelegramLessonAgent {
     mediaActivityFile = TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE,
     mediaRetryRequestsFile = TELEGRAM_AGENT_MEDIA_RETRY_REQUESTS_FILE,
     paymentLedger = createStudentPaymentLedger(STUDENT_PAYMENT_LEDGER_FILE),
+    paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
     scanReceipt = scanPaymentReceipt,
     logger = console
   }) {
@@ -304,6 +310,7 @@ export class TelegramLessonAgent {
     this.mediaActivityFile = mediaActivityFile;
     this.mediaRetryRequestsFile = mediaRetryRequestsFile;
     this.paymentLedger = paymentLedger;
+    this.paymentReceiptImageDirectory = paymentReceiptImageDirectory;
     this.scanReceipt = scanReceipt;
     this.logger = logger;
     this.processingLessonSkips = false;
@@ -742,6 +749,8 @@ export class TelegramLessonAgent {
     }
 
     if (Array.isArray(message.photo) && message.photo.length) {
+      let receiptId = null;
+      let receiptRecorded = false;
       try {
         const photo = [...message.photo].sort((left, right) =>
           (right.file_size || 0) - (left.file_size || 0))[0];
@@ -761,16 +770,27 @@ export class TelegramLessonAgent {
           );
           return;
         }
+        receiptId = savePaymentReceiptImage(image, this.paymentReceiptImageDirectory);
         const payment = this.paymentLedger.recordClaim(studentKey, {
           enrolledAt: state.enrolledAt || state.joinedAt || state.deliveredAt,
           source: 'telegram-receipt',
-          details: scan.details
+          details: { ...scan.details, receiptId }
         });
+        receiptRecorded = true;
         await this.bot.sendMessage(
           String(message.chat.id),
           'وصل إشعار الدفع للمراجعة، حنراجعه وبأكد ليك. موفق يا رب!'
         );
       } catch (error) {
+        if (receiptId && !receiptRecorded) {
+          try {
+            deletePaymentReceiptImage(receiptId, this.paymentReceiptImageDirectory);
+          } catch (cleanupError) {
+            this.logger.error(
+              `[Telegram] Could not clean up an unrecorded receipt for ${studentKey}: ${cleanupError.message}`
+            );
+          }
+        }
         this.logger.error(`[Telegram] Could not review a private receipt for ${studentKey}: ${error.message}`);
         await this.bot.sendMessage(
           String(message.chat.id),

@@ -1480,6 +1480,7 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-payment-ledger-test-'));
   t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
   const paymentLedgerFile = path.join(temporaryDirectory, 'student_payment_ledger.json');
+  const paymentReceiptImageDirectory = path.join(temporaryDirectory, 'payment_receipts');
   const enrolledAt = '2026-01-01T12:00:00.000Z';
   const studentKey = 'telegram:-100123:44';
   const telegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
@@ -1507,7 +1508,8 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
   const server = createAdminDashboardServer({
     readData: () => data,
     telegramProgressFile,
-    paymentLedgerFile
+    paymentLedgerFile,
+    paymentReceiptImageDirectory
   });
 
   try {
@@ -1544,6 +1546,16 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(reviewed.payment.amount, 17000);
     assert.equal(reviewed.payment.currency, 'SDG');
 
+    const receiptId = 'c0a80123-4567-489a-8bcd-0123456789ab';
+    const receiptImage = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    fs.mkdirSync(paymentReceiptImageDirectory, { recursive: true });
+    fs.writeFileSync(path.join(paymentReceiptImageDirectory, `${receiptId}.jpg`), receiptImage);
+    const paymentLedger = JSON.parse(fs.readFileSync(paymentLedgerFile, 'utf8'));
+    const currentPeriod = paymentLedger[studentKey].periods[reviewed.payment.periodStart];
+    currentPeriod.source = 'telegram-receipt';
+    currentPeriod.details = { receiptId };
+    fs.writeFileSync(paymentLedgerFile, JSON.stringify(paymentLedger));
+
     const paidHistoryResponse = await fetch(ledgerUrl);
     assert.equal(paidHistoryResponse.status, 200);
     const paidHistory = await paidHistoryResponse.json();
@@ -1552,6 +1564,18 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(paidHistory.payments[0].amount, 17000);
     assert.equal(paidHistory.payments[0].currency, 'SDG');
     assert.equal(paidHistory.payments[0].paidAt, reviewed.payment.paidAt);
+
+    const receiptImageResponse = await fetch(
+      `${origin}/api/admin/payment-receipts/${receiptId}`
+    );
+    assert.equal(receiptImageResponse.status, 200);
+    assert.equal(receiptImageResponse.headers.get('content-type'), 'image/jpeg');
+    assert.equal(receiptImageResponse.headers.get('cache-control'), 'private, no-store');
+    assert.deepEqual(Buffer.from(await receiptImageResponse.arrayBuffer()), receiptImage);
+    const unknownReceiptResponse = await fetch(
+      `${origin}/api/admin/payment-receipts/00000000-0000-4000-8000-000000000000`
+    );
+    assert.equal(unknownReceiptResponse.status, 404);
 
     const invalidResponse = await fetch(ledgerUrl, {
       method: 'POST',
