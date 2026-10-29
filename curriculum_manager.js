@@ -287,6 +287,9 @@ export function saveLesson({
   lesson,
   isStandalone = false,
   collectionId = null,
+  sourceGradeKey = gradeKey,
+  sourceType = null,
+  sourceLessonId = null,
   lessonsConfig = null,
   filePath = LESSONS_FILE
 }) {
@@ -322,6 +325,71 @@ export function saveLesson({
   const introMessage = String(lesson.introMessage || '').trim();
 
   const config = lessonsConfig || readLessonsFile(filePath);
+  const targetType = collectionId || (isStandalone ? 'standalone' : 'sequential');
+  if (sourceType !== null && !['sequential', 'standalone', ...Object.keys(LESSON_COLLECTIONS)].includes(sourceType)) {
+    throw new Error('A valid source lesson type is required.');
+  }
+  const getLessonList = (gradeKeyForList, grade, type, { create = false } = {}) => {
+    if (type !== 'sequential' && type !== 'standalone') {
+      const collection = LESSON_COLLECTIONS[type];
+      if (!collection || collection.gradeKey !== gradeKeyForList) {
+        throw new Error('This lesson collection is not available for the selected grade.');
+      }
+      if (create) {
+        grade.collections ||= {};
+        grade.collections[type] ||= { title: collection.title, lessons: [] };
+        grade.collections[type].lessons ||= [];
+      }
+      return grade.collections?.[type]?.lessons || [];
+    }
+
+    const arrayKey = type === 'standalone' ? 'standaloneLessons' : 'lessons';
+    if (create && !Array.isArray(grade[arrayKey])) grade[arrayKey] = [];
+    return Array.isArray(grade[arrayKey]) ? grade[arrayKey] : [];
+  };
+
+  const sourceGrade = sourceType === null ? null : config[sourceGradeKey];
+  if (sourceType !== null && !sourceGrade) {
+    throw new Error('The lesson to edit could not be found in its original grade.');
+  }
+  const sourceLessons = sourceType === null
+    ? null
+    : getLessonList(sourceGradeKey, sourceGrade, sourceType);
+  const lessonIdInput = String(lesson.id || '').trim();
+  const sourceId = sourceLessonId || lessonIdInput;
+  const sourceIndex = sourceLessons?.findIndex(item => item.id === sourceId) ?? -1;
+  if (sourceType !== null && sourceIndex < 0) {
+    throw new Error('The lesson to edit could not be found in its original lesson type.');
+  }
+
+  const existingTargetLessons = config[gradeKey]
+    ? getLessonList(gradeKey, config[gradeKey], targetType)
+    : [];
+  let lessonId = lessonIdInput;
+  if (!lessonId) {
+    let maxNum = 0;
+    for (const item of existingTargetLessons) {
+      const match = /^lesson_(\d+)$/.exec(item.id || '');
+      if (match) maxNum = Math.max(maxNum, Number(match[1]));
+    }
+    lessonId = `lesson_${maxNum + 1}`;
+  } else {
+    lessonId = lessonId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+  if (targetType === 'sequential' && !/^lesson_\d+$/.test(lessonId)) {
+    throw new Error('Sequential lesson IDs must use the lesson_<number> format, such as lesson_1.');
+  }
+
+  const locationChanged = sourceType !== null &&
+    (sourceGradeKey !== gradeKey || sourceType !== targetType);
+  const sameSourceList = sourceGradeKey === gradeKey && sourceType === targetType;
+  const targetHasDuplicate = existingTargetLessons.some((item, index) =>
+    item.id === lessonId &&
+    !(sameSourceList && index === sourceIndex));
+  if (sourceType !== null && targetHasDuplicate) {
+    throw new Error('A lesson with this ID already exists in the selected lesson type.');
+  }
+
   if (!config[gradeKey]) {
     config[gradeKey] = {
       name: gradeKey,
@@ -330,41 +398,7 @@ export function saveLesson({
     };
   }
 
-  let lessonsList;
-  if (collectionId) {
-    const collection = LESSON_COLLECTIONS[collectionId];
-    if (!collection || collection.gradeKey !== gradeKey) {
-      throw new Error('This lesson collection is not available for the selected grade.');
-    }
-    config[gradeKey].collections ||= {};
-    config[gradeKey].collections[collectionId] ||= {
-      title: collection.title,
-      lessons: []
-    };
-    lessonsList = config[gradeKey].collections[collectionId].lessons;
-  } else {
-    const targetArrayKey = isStandalone ? 'standaloneLessons' : 'lessons';
-    if (!Array.isArray(config[gradeKey][targetArrayKey])) {
-      config[gradeKey][targetArrayKey] = [];
-    }
-    lessonsList = config[gradeKey][targetArrayKey];
-  }
-
-  let lessonId = String(lesson.id || '').trim();
-  if (!lessonId) {
-    // Generate next lesson ID
-    let maxNum = 0;
-    for (const item of lessonsList) {
-      const match = /^lesson_(\d+)$/.exec(item.id || '');
-      if (match) {
-        maxNum = Math.max(maxNum, Number(match[1]));
-      }
-    }
-    lessonId = `lesson_${maxNum + 1}`;
-  } else {
-    // Sanitize ID
-    lessonId = lessonId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  }
+  const lessonsList = getLessonList(gradeKey, config[gradeKey], targetType, { create: true });
 
   const sanitizedLesson = {
     id: lessonId,
@@ -375,6 +409,17 @@ export function saveLesson({
     taskMessage,
     answerKey
   };
+
+  if (sourceType !== null && (locationChanged || sourceId !== lessonId)) {
+    if (locationChanged) {
+      sourceLessons.splice(sourceIndex, 1);
+      lessonsList.push(sanitizedLesson);
+    } else {
+      sourceLessons.splice(sourceIndex, 1, sanitizedLesson);
+    }
+    writeLessonsFileAtomic(filePath, config);
+    return { success: true, lesson: sanitizedLesson, isNew: false };
+  }
 
   const existingIndex = lessonsList.findIndex(item => item.id === lessonId);
   if (existingIndex >= 0) {

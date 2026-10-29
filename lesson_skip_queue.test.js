@@ -29,6 +29,13 @@ test('lesson skip queue claims, recovers, deduplicates, and completes requests',
   const duplicate = queue.enqueue(details);
   assert.equal(duplicate.alreadyQueued, true);
   assert.equal(duplicate.request.id, created.request.id);
+  const conflicting = queue.enqueue({
+    ...details,
+    requestType: 'send_lesson',
+    nextLessonId: 'lesson_3'
+  });
+  assert.equal(conflicting.conflict, true);
+  assert.equal(conflicting.request.id, created.request.id);
   assert.equal(queue.recoverProcessing(), 1);
   assert.equal(queue.claimNext().status, 'processing');
 

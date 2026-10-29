@@ -215,6 +215,27 @@
     .weekly-chat-legend .weekly-chat-telegram-key { background: #8e55b9; }
     .weekly-chat-legend .weekly-chat-joins-key { background: #d47b2d; }
     .weekly-chat-summary { margin-top: 3px !important; }
+    .telegram-stats-panel { margin: 14px 0; padding: 15px 17px 12px; }
+    .telegram-stats-panel h2 { margin: 0; font-size: 15px; }
+    .telegram-stats-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+    .telegram-stats-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
+    .telegram-stat-card { padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .telegram-stat-label { color: var(--muted); font-size: 10px; font-weight: 650; }
+    .telegram-stat-value { margin-top: 5px; font-size: 21px; font-weight: 760; }
+    .telegram-stat-foot { margin-top: 2px; color: #94a099; font-size: 9px; }
+    .telegram-stats-chart { position: relative; overflow-x: auto; margin-top: 10px; }
+    .telegram-stats-chart svg { display: block; width: 100%; min-width: 600px; height: auto; }
+    .telegram-stats-chart text { fill: var(--muted); font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .telegram-stats-chart .telegram-stats-grid { stroke: #e5ebe7; stroke-width: 1; }
+    .telegram-stats-chart .telegram-joins-line { fill: none; stroke: #23875a; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .telegram-stats-chart .telegram-active-line { fill: none; stroke: #5278c7; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .telegram-stats-chart .telegram-joins-point { fill: white; stroke: #23875a; stroke-width: 2; }
+    .telegram-stats-chart .telegram-active-point { fill: white; stroke: #5278c7; stroke-width: 2; }
+    .telegram-stats-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .telegram-stats-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .telegram-stats-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: #23875a; }
+    .telegram-stats-legend .telegram-active-key { background: #5278c7; }
+    @media (max-width: 700px) { .telegram-stats-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .payment-calendar-panel { padding: 16px; }
     .payment-calendar-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
     .payment-calendar-toolbar button { border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px; color: var(--ink); background: white; font: inherit; font-size: 12px; }
@@ -437,6 +458,34 @@
     th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eff2f0; font-size: 11px; }
     th { color: var(--muted); font-weight: 650; background: #fafcfb; }
     td { color: #43534b; }
+    #progress-rows > tr > td:last-child { min-width: 225px; }
+    .progress-actions { display: grid; gap: 12px; min-width: 195px; }
+    .send-lesson-controls { display: grid; gap: 7px; }
+    .send-lesson-picker { position: relative; display: grid; gap: 4px; color: #66776e; font-size: 10px; font-weight: 700; }
+    .send-lesson-picker-trigger { display: flex; width: 100%; min-width: 0; min-height: 38px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid #dce6df; border-radius: 8px; outline: 0; background: #fff; color: var(--ink); font: inherit; font-size: 11px; font-weight: 550; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+    .send-lesson-picker-trigger:hover:not(:disabled) { border-color: #a9cbb5; background: #fcfefc; }
+    .send-lesson-picker-trigger:focus-visible, .send-lesson-picker.is-open .send-lesson-picker-trigger { border-color: #72aa88; box-shadow: 0 0 0 3px #137b5a16; }
+    .send-lesson-picker-trigger:disabled { color: #8c9992; background: #f3f6f4; cursor: not-allowed; }
+    .send-lesson-picker-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .send-lesson-picker-chevron { flex: 0 0 auto; color: #718078; font-size: 13px; transition: transform .15s; }
+    .send-lesson-picker.is-open .send-lesson-picker-chevron { transform: rotate(180deg); }
+    .send-lesson-menu { position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; right: 0; max-height: 260px; overflow-y: auto; padding: 5px; border: 1px solid #dce6df; border-radius: 10px; background: white; box-shadow: 0 12px 28px rgba(24, 50, 38, .16); }
+    .send-lesson-menu[hidden] { display: none; }
+    .send-lesson-menu.is-floating { position: fixed; z-index: 200; top: auto; right: auto; bottom: auto; left: auto; }
+    .send-lesson-option { display: flex; width: 100%; min-height: 36px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: #43534b; font: inherit; font-size: 10px; line-height: 1.4; text-align: left; cursor: pointer; }
+    .send-lesson-option:hover, .send-lesson-option:focus-visible { outline: 0; background: #f0f7f2; color: #174e37; }
+    .send-lesson-option[aria-selected="true"] { background: #e8f4ec; color: #17633f; font-weight: 700; }
+    .send-lesson-option-check { flex: 0 0 auto; color: var(--green); font-size: 12px; }
+    .send-lesson-button, .skip-lesson-button { display: inline-flex; width: fit-content; min-height: 34px; align-items: center; justify-content: center; gap: 7px; padding: 7px 11px; border: 1px solid transparent; border-radius: 8px; font: inherit; font-size: 10px; font-weight: 700; transition: background .15s, border-color .15s, box-shadow .15s, transform .15s; }
+    .send-lesson-button { color: white; background: var(--green); box-shadow: 0 2px 5px #137b5a20; }
+    .send-lesson-button:hover:not(:disabled) { background: #0f684c; box-shadow: 0 4px 10px #137b5a2a; transform: translateY(-1px); }
+    .send-lesson-button:focus-visible, .skip-lesson-button:focus-visible { outline: 3px solid #137b5a30; outline-offset: 2px; }
+    .send-lesson-button:disabled, .skip-lesson-button:disabled { opacity: .58; cursor: not-allowed; box-shadow: none; transform: none; }
+    .send-lesson-button-icon { font-size: 12px; }
+    .send-lesson-status { display: block; color: var(--muted); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+    .skip-lesson-controls { display: grid; justify-items: start; gap: 3px; padding-top: 9px; border-top: 1px solid #eff2f0; }
+    .skip-lesson-button { color: #35664e; border-color: #d7e7dc; background: #f6faf7; }
+    .skip-lesson-button:hover:not(:disabled) { border-color: #a9cbb5; background: #eaf5ee; }
     .status { display: inline-flex; padding: 3px 8px; border-radius: 20px; background: #eef3ef; color: #56675d; font-size: 9px; }
     .status.awaiting_task { background: #fff4df; color: #986113; }
     .status.awaiting_reattempt { background: #fce9e7; color: #a3423c; }
@@ -538,6 +587,9 @@
     .progress-text { font-size: 11px; font-weight: 700; color: var(--green); min-width: 38px; text-align: right; }
     .selected-video-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 11px; padding-top: 10px; border-top: 1px dashed var(--line); }
     .selected-video-preview input { font-family: ui-monospace, Consolas, monospace; font-size: 11px; background: #f4f7f5; padding: 6px 9px; flex: 1; }
+    #lesson-video-preview-container { flex: 0 0 100%; }
+    #lesson-video-preview-container[hidden] { display: none; }
+    #lesson-video-preview { display: block; width: min(100%, 640px); max-height: 360px; margin-top: 8px; background: #111; border-radius: 9px; }
     .rubric-head, .task-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
     .btn-micro { border: 1px solid #c8dcd0; background: white; border-radius: 6px; padding: 4px 9px; font-size: 10px; font-weight: 650; color: var(--green); cursor: pointer; }
     .btn-micro:hover { background: var(--green-soft); }
@@ -548,6 +600,26 @@
     .rubric-delete-btn:hover { background: #feebeb; }
     .modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid var(--line); background: #fafcfb; }
     .footer-buttons { display: flex; gap: 10px; }
+    .dashboard-dialog { width: min(440px, calc(100% - 32px)); max-width: none; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: white; color: var(--ink); box-shadow: 0 24px 70px rgba(10, 35, 25, .28); }
+    .dashboard-dialog::backdrop { background: rgba(18, 38, 30, .58); backdrop-filter: blur(4px); }
+    .dashboard-dialog-panel { padding: 24px; }
+    .dashboard-dialog-heading { display: flex; align-items: flex-start; gap: 13px; }
+    .dashboard-dialog-icon { display: grid; flex: 0 0 38px; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--green-soft); color: var(--green); font-size: 19px; font-weight: 800; }
+    .dashboard-dialog[data-variant="danger"] .dashboard-dialog-icon { background: #fff0ef; color: var(--red); }
+    .dashboard-dialog-title { margin: 1px 0 5px; font-size: 16px; font-weight: 760; letter-spacing: -.25px; }
+    .dashboard-dialog-message { margin: 0; color: #64736c; font-size: 12px; line-height: 1.65; white-space: pre-line; overflow-wrap: anywhere; }
+    .dashboard-dialog-input-label { display: grid; gap: 6px; margin-top: 18px; color: #43534b; font-size: 11px; font-weight: 650; }
+    .dashboard-dialog-input-label[hidden] { display: none; }
+    .dashboard-dialog-input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #d5e0d9; border-radius: 8px; color: var(--ink); background: white; font: inherit; font-size: 12px; }
+    .dashboard-dialog-input:focus { outline: 0; border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
+    .dashboard-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 23px; }
+    .dashboard-dialog-actions button { min-height: 36px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 8px; background: white; color: #43534b; font: inherit; font-size: 11px; font-weight: 700; }
+    .dashboard-dialog-actions button:hover { background: #f5f8f6; }
+    .dashboard-dialog-actions .dashboard-dialog-confirm { border-color: var(--green); background: var(--green); color: white; }
+    .dashboard-dialog-actions .dashboard-dialog-confirm:hover { background: #0f684c; }
+    .dashboard-dialog[data-variant="danger"] .dashboard-dialog-confirm { border-color: var(--red); background: var(--red); }
+    .dashboard-dialog[data-variant="danger"] .dashboard-dialog-confirm:hover { background: #9e3939; }
+    @media (max-width: 480px) { .dashboard-dialog-panel { padding: 20px; } }
     .phone-mockup { max-width: 380px; width: 100%; border-radius: 24px; border: 9px solid #1a2c24; background: #eef2ee; overflow: hidden; box-shadow: 0 20px 48px rgba(0,0,0,.25); margin: 0 auto; }
     .phone-header { background: #229ed9; color: white; padding: 11px 13px; display: flex; align-items: center; gap: 10px; }
     .phone-avatar { width: 34px; height: 34px; border-radius: 50%; background: #168acd; display: grid; place-items: center; font-weight: 850; color: white; font-size: 14px; }
@@ -577,9 +649,16 @@
       .gender-stat { padding: 12px; }
     }
     @media (max-width: 420px) { .metrics { gap: 8px; } .metric { padding: 12px; } .metric-value { font-size: 22px; } .gender-statistics { grid-template-columns: 1fr; } .nav-item { font-size: 0; } .nav-icon { font-size: 15px; } }
+    body.telegram-only #section-overview > :nth-child(n + 5),
+    body.telegram-only #section-chats,
+    body.telegram-only #section-es-contacts,
+    body.telegram-only #section-scheduled-lessons,
+    body.telegram-only #section-payment-calendar {
+      display: none !important;
+    }
   </style>
 </head>
-<body class="auth-locked">
+<body class="auth-locked telegram-only">
   <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
     <div class="auth-card">
       <div class="auth-brand"><span class="auth-brand-icon">e</span><div><strong>eShool Admin</strong><small>Private local dashboard</small></div></div>
@@ -607,16 +686,8 @@
         <button class="nav-item" data-section="telegram-broadcast"><span class="nav-icon">✉</span>Telegram announcements</button>
         <button class="nav-item" data-section="curriculum"><span class="nav-icon">📚</span>Lessons &amp; curriculum</button>
         <button class="nav-item" data-section="payment-ledger"><span class="nav-icon">$</span>Payment ledger</button>
-        <button class="nav-item" data-section="payment-calendar"><span class="nav-icon">▦</span>Payment calendar</button>
       </nav>
-      <div class="nav-label">WhatsApp tools</div>
-      <nav aria-label="WhatsApp tools">
-        <button class="nav-item" data-section="chats"><span class="nav-icon">▤</span>Chats</button>
-        <button class="nav-item" data-section="agent"><span class="nav-icon">●</span>WhatsApp agent</button>
-        <button class="nav-item" data-section="es-contacts"><span class="nav-icon">✳</span>Es contacts</button>
-        <button class="nav-item" data-section="scheduled-lessons"><span class="nav-icon">◷</span>Scheduled WhatsApp lessons</button>
-      </nav>
-      <div class="side-note"><b>Telegram lessons first</b>Manage learners, lesson progress, and curriculum here. WhatsApp tools remain in a separate section.</div>
+      <div class="side-note"><b>Telegram learning</b>Manage Telegram learners, lesson progress, announcements, and curriculum here.</div>
     </aside>
 
     <main>
@@ -639,6 +710,25 @@
             <div class="metric-foot" id="telegram-agent-status-detail">Connection status updates automatically</div>
           </article>
         </div>
+        <article class="panel telegram-stats-panel" aria-labelledby="telegram-stats-title">
+          <div>
+            <h2 id="telegram-stats-title">Telegram group statistics</h2>
+            <p>Group membership from Telegram, plus recorded joins and learner activity over the last 30 days.</p>
+          </div>
+          <div class="telegram-stats-summary" id="telegram-stats-summary" aria-live="polite">
+            <div class="telegram-stat-card"><div class="telegram-stat-label">Total group members</div><div class="telegram-stat-value">Loading…</div></div>
+            <div class="telegram-stat-card"><div class="telegram-stat-label">Tracked learners</div><div class="telegram-stat-value">—</div></div>
+            <div class="telegram-stat-card"><div class="telegram-stat-label">Joined today</div><div class="telegram-stat-value">—</div></div>
+            <div class="telegram-stat-card"><div class="telegram-stat-label">Joined in 7 days</div><div class="telegram-stat-value">—</div></div>
+          </div>
+          <div class="telegram-stats-chart" id="telegram-stats-chart" aria-live="polite">
+            <p>Loading Telegram activity…</p>
+          </div>
+          <div class="telegram-stats-legend" aria-label="Telegram graph legend">
+            <span><i></i>Daily recorded group joins</span>
+            <span><i class="telegram-active-key"></i>Active tracked learners</span>
+          </div>
+        </article>
         <article class="panel agent-log-panel">
           <h3>Telegram agent terminal log</h3>
           <p>Recent output from the running Telegram bot. Refreshes automatically; log entries may include student names or IDs.</p>
@@ -768,7 +858,7 @@
         <div class="panel"><div id="recent-list"></div></div>
       </section>
 
-      <section class="section" id="section-chats">
+      <section class="section" id="section-chats" hidden>
         <div class="section-heading"><div><h2>Chats</h2><p>Search contact names or saved conversation text.</p></div></div>
         <article class="panel agent-conversation-panel" id="agent-conversation-panel" hidden>
           <h3>Recent messages and agent replies</h3>
@@ -870,7 +960,7 @@
         </div>
       </section>
 
-      <section class="section" id="section-es-contacts">
+      <section class="section" id="section-es-contacts" hidden>
         <div class="section-heading"><div><h2 id="broadcast-recipient-heading">Es phone-book contacts</h2><p id="broadcast-recipient-description">Ban a number to stop all agent replies and follow-ups. Delete removes its local contact record and also blocks it; WhatsApp may sync its contact record again, but the number remains excluded.</p></div></div>
         <div class="toolbar">
           <label class="search"><span class="search-icon">⌕</span><input id="contact-search" type="search" placeholder="Search names or phone numbers…" autocomplete="off"></label>
@@ -986,7 +1076,7 @@
         </article>
       </section>
 
-      <section class="section" id="section-payment-calendar">
+      <section class="section" id="section-payment-calendar" hidden>
         <div class="section-heading"><div><h2>Monthly payment calendar</h2><p>See which students you marked paid on each date. Each mark records one month of payment.</p></div></div>
         <article class="panel payment-calendar-panel">
           <div class="payment-calendar-toolbar">
@@ -1069,7 +1159,7 @@
           </article>
         </div>
         <div class="panel table-wrap">
-          <table><thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Action</th></tr></thead><tbody id="progress-rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Actions</th></tr></thead><tbody id="progress-rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
         </div>
       </section>
 
@@ -1101,7 +1191,7 @@
         </article>
       </section>
 
-      <section class="section" id="section-scheduled-lessons">
+      <section class="section" id="section-scheduled-lessons" hidden>
         <div class="section-heading">
           <div>
             <h2>One-time WhatsApp lesson deliveries</h2>
@@ -1251,7 +1341,7 @@
                 </label>
                 <label for="lesson-form-id">Lesson ID / Code (معرّف الحصة)
                   <input type="text" id="lesson-form-id" placeholder="e.g. lesson_1" required>
-                  <small class="field-hint">e.g. lesson_1, lesson_2 (used for progress tracking)</small>
+                  <small class="field-hint">Editable when changing a lesson. Sequential IDs must use lesson_&lt;number&gt; (e.g. lesson_1). Changing an ID does not update learners' saved progress.</small>
                 </label>
                 <label for="lesson-form-type">Lesson Type (نوع الحصة)
                   <select id="lesson-form-type">
@@ -1302,6 +1392,11 @@
                   <label for="lesson-form-video-path">Video Path:</label>
                   <input type="text" id="lesson-form-video-path" placeholder="media/lessons/grade_3_secondary/lesson_1.mp4" readonly required>
                   <span class="badge" id="selected-video-status">No video selected</span>
+                  <div id="lesson-video-preview-container" hidden>
+                    <video id="lesson-video-preview" controls playsinline preload="metadata"
+                      aria-label="Preview of the selected lesson video"></video>
+                    <small class="field-hint">Preview the selected video here before saving the lesson.</small>
+                  </div>
                 </div>
               </div>
 
@@ -1324,7 +1419,11 @@
                   <button type="button" class="btn-micro" id="insert-task-template-btn">+ Insert Standard eShool Template</button>
                 </div>
                 <textarea id="lesson-form-task" rows="7" placeholder="📝 *تمرين الحصة (Task 1):*\n\n1. The analyst __________ (interpret) the survey results.\n2. A responsible engineer __________ (maintain) the equipment.\n\n✍️ رسل لي إجاباتك مرقّمة من 1 إلى 2 عشان أراجعها ليك." required></textarea>
-                <small class="field-hint">Delivered to the student on WhatsApp. The student will reply with their answers.</small>
+                <small class="field-hint">Delivered to the student on Telegram. The student will reply with their answers.</small>
+                <label for="lesson-form-answer-notes">Optional source notes for answer generation
+                  <textarea id="lesson-form-answer-notes" rows="3" placeholder="Add a passage, lesson rule, or other facts the AI should use when answering."></textarea>
+                  <small class="field-hint">Only used to draft the answer key; sent to your configured AI service and not saved with the lesson or sent to students.</small>
+                </label>
               </div>
 
               <!-- AI Answer Key / Grading Rubric -->
@@ -1335,11 +1434,15 @@
                     <small class="field-hint">Used by Mr. Mazen's AI evaluator to check answers and provide hints in Sudanese dialect.</small>
                   </div>
                   <div class="rubric-actions">
+                    <button type="button" class="btn-micro" id="generate-answer-key-btn">✦ Draft Answer Keys with AI</button>
                     <button type="button" class="btn-micro" id="add-rubric-item-btn">+ Add Question Key</button>
                     <button type="button" class="btn-micro" id="toggle-rubric-mode-btn">Switch to Bulk Text</button>
                   </div>
                 </div>
 
+                <small class="field-hint" id="answer-key-generation-status" role="status" aria-live="polite">
+                  AI suggestions are drafts. Review and edit every answer before saving.
+                </small>
                 <div class="rubric-rows" id="rubric-rows-container">
                   <!-- Dynamic answer rows -->
                 </div>
@@ -1381,6 +1484,26 @@
     </main>
   </div>
 
+  <dialog class="dashboard-dialog" id="dashboard-dialog" aria-labelledby="dashboard-dialog-title" aria-describedby="dashboard-dialog-message">
+    <form class="dashboard-dialog-panel" id="dashboard-dialog-form">
+      <div class="dashboard-dialog-heading">
+        <span class="dashboard-dialog-icon" id="dashboard-dialog-icon" aria-hidden="true">e</span>
+        <div>
+          <h2 class="dashboard-dialog-title" id="dashboard-dialog-title">eShool dashboard</h2>
+          <p class="dashboard-dialog-message" id="dashboard-dialog-message"></p>
+        </div>
+      </div>
+      <label class="dashboard-dialog-input-label" id="dashboard-dialog-input-label" hidden>
+        <span id="dashboard-dialog-input-caption"></span>
+        <input class="dashboard-dialog-input" id="dashboard-dialog-input" type="text">
+      </label>
+      <div class="dashboard-dialog-actions">
+        <button id="dashboard-dialog-cancel" type="button">Cancel</button>
+        <button class="dashboard-dialog-confirm" id="dashboard-dialog-confirm" type="submit">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
   <script>
     const PAGE_SIZE = 30;
     const CONTACT_PAGE_SIZE = 50;
@@ -1397,6 +1520,7 @@
     let selectedJids = new Set();
     let showingEligibleOnly = true;
     let selectedJid = '';
+    let lessonVideoPreviewUrl = null;
     let activityDays = 30;
     let esActivityJid = '';
     let esActivityName = '';
@@ -1446,7 +1570,113 @@
     const DASHBOARD_CACHE_MAX_ENTRIES = 24;
     const dashboardApiRequests = new Map();
     let dashboardCacheGeneration = 0;
+    let dashboardDialogResolver = null;
+    let dashboardDialogQueue = Promise.resolve();
     const $ = selector => document.querySelector(selector);
+
+    function closeOpenLessonPickers() {
+      document.querySelectorAll('[data-send-lesson-picker].is-open').forEach(picker => {
+        picker.classList.remove('is-open');
+        picker.querySelector('.send-lesson-picker-trigger').setAttribute('aria-expanded', 'false');
+        const menu = picker.querySelector('.send-lesson-menu');
+        menu.hidden = true;
+        menu.classList.remove('is-floating');
+        menu.removeAttribute('style');
+      });
+    }
+
+    document.addEventListener('click', event => {
+      if (!event.target.closest('[data-send-lesson-picker]')) closeOpenLessonPickers();
+    });
+    document.addEventListener('scroll', closeOpenLessonPickers, true);
+    window.addEventListener('resize', closeOpenLessonPickers);
+
+    function openDashboardDialog(options) {
+      const result = dashboardDialogQueue.then(() => new Promise(resolve => {
+        const dialog = $('#dashboard-dialog');
+        const inputLabel = $('#dashboard-dialog-input-label');
+        const input = $('#dashboard-dialog-input');
+        const cancel = $('#dashboard-dialog-cancel');
+        const confirm = $('#dashboard-dialog-confirm');
+        const variant = options.variant || 'info';
+        dialog.dataset.variant = variant;
+        dialog.returnValue = '';
+        $('#dashboard-dialog-icon').textContent = variant === 'danger' ? '!' : variant === 'warning' ? '?' : 'e';
+        $('#dashboard-dialog-title').textContent = options.title || 'eShool dashboard';
+        $('#dashboard-dialog-message').textContent = options.message || '';
+        $('#dashboard-dialog-input-caption').textContent = options.inputCaption || '';
+        inputLabel.hidden = !options.inputCaption;
+        input.value = options.defaultValue || '';
+        cancel.hidden = !options.showCancel;
+        cancel.textContent = options.cancelText || 'Cancel';
+        confirm.textContent = options.confirmText || 'Continue';
+        dashboardDialogResolver = resolve;
+        dialog.showModal();
+        requestAnimationFrame(() => {
+          if (options.inputCaption) {
+            input.focus();
+            input.select();
+          } else {
+            confirm.focus();
+          }
+        });
+      }));
+      dashboardDialogQueue = result.then(() => undefined, () => undefined);
+      return result;
+    }
+
+    function closeDashboardDialog(value) {
+      const dialog = $('#dashboard-dialog');
+      if (dialog.open) dialog.close(value);
+    }
+
+    $('#dashboard-dialog-form').addEventListener('submit', event => {
+      event.preventDefault();
+      closeDashboardDialog('confirm');
+    });
+    $('#dashboard-dialog-cancel').addEventListener('click', () => closeDashboardDialog('cancel'));
+    $('#dashboard-dialog').addEventListener('close', () => {
+      const resolve = dashboardDialogResolver;
+      dashboardDialogResolver = null;
+      if (!resolve) return;
+      const confirmed = $('#dashboard-dialog').returnValue === 'confirm';
+      resolve(confirmed
+        ? ($('#dashboard-dialog-input-label').hidden ? true : $('#dashboard-dialog-input').value)
+        : ($('#dashboard-dialog-input-label').hidden ? false : null));
+    });
+
+    function dashboardAlert(message, options = {}) {
+      return openDashboardDialog({
+        message,
+        title: options.title || 'Notice',
+        confirmText: options.confirmText || 'Got it',
+        variant: options.variant || 'info'
+      });
+    }
+
+    async function dashboardConfirm(message, options = {}) {
+      return (await openDashboardDialog({
+        message,
+        title: options.title || 'Please confirm',
+        confirmText: options.confirmText || 'Continue',
+        cancelText: options.cancelText || 'Cancel',
+        showCancel: true,
+        variant: options.variant || 'warning'
+      })) === true;
+    }
+
+    function dashboardPrompt(message, defaultValue = '', options = {}) {
+      return openDashboardDialog({
+        message,
+        title: options.title || 'Enter a value',
+        confirmText: options.confirmText || 'Save',
+        cancelText: options.cancelText || 'Cancel',
+        showCancel: true,
+        variant: 'info',
+        inputCaption: options.inputCaption || 'Value',
+        defaultValue
+      });
+    }
 
     function showError(message) {
       const error = $('#error');
@@ -1650,6 +1880,8 @@
       if (dashboardStarted) return;
       dashboardStarted = true;
       refreshAll();
+      loadTelegramStats().catch(error =>
+        showError(`Could not load Telegram statistics: ${error.message}`));
       dashboardEvents = new EventSource('/api/admin/events');
       dashboardEvents.addEventListener('dashboard-update', event => {
         try {
@@ -1660,7 +1892,16 @@
           showError(`Could not process dashboard update: ${error.message}`);
         }
       });
-      dashboardPollTimer = setInterval(() => refreshAll({ clearCache: true }), 15000);
+      dashboardPollTimer = setInterval(() => {
+        loadOverview().catch(error => showError(`Could not refresh Telegram overview: ${error.message}`));
+        if (document.querySelector('#section-overview').classList.contains('active')) {
+          loadTelegramStats().catch(error =>
+            showError(`Could not refresh Telegram statistics: ${error.message}`));
+        }
+        if (document.querySelector('#section-progress').classList.contains('active')) {
+          loadProgress().catch(error => showError(`Could not refresh Telegram progress: ${error.message}`));
+        }
+      }, 15000);
       telegramAgentPollTimer = setInterval(() => {
         if (document.querySelector('#section-overview').classList.contains('active')) {
           loadTelegramAgentLogs().catch(error => showError(`Could not refresh Telegram agent log: ${error.message}`));
@@ -1670,15 +1911,6 @@
         if (document.querySelector('#section-telegram-broadcast').classList.contains('active')) {
           loadTelegramUserBroadcasts().catch(error =>
             showError(`Could not refresh Telegram announcements: ${error.message}`));
-        }
-      }, 5000);
-      agentPollTimer = setInterval(() => {
-        if (handledChatsOnly && !$('#agent-media-panel').hidden) {
-          loadAgentLogs().catch(error => showError(`Could not refresh WhatsApp agent log: ${error.message}`));
-          loadAgentConversation().catch(error => showError(`Could not refresh recent agent messages: ${error.message}`));
-          loadAgentMediaActivity().catch(error => showError(`Could not refresh media delivery status: ${error.message}`));
-          loadAgentQr().catch(error => showError(`Could not refresh WhatsApp pairing QR: ${error.message}`));
-          loadAgentQueue().catch(error => showError(`Could not refresh the live chat queue: ${error.message}`));
         }
       }, 5000);
       dashboardEvents.addEventListener('error', () => {
@@ -1971,12 +2203,16 @@
       );
     }
 
-    function addBroadcastLink() {
+    async function addBroadcastLink() {
       const message = $('#broadcast-message');
       const start = message.selectionStart;
       const end = message.selectionEnd;
       const selected = message.value.slice(start, end);
-      const url = window.prompt('Enter the web address to include. WhatsApp recognizes URLs as links:', selected.match(/https?:\/\/\S+/)?.[0] || 'https://');
+      const url = await dashboardPrompt(
+        'Enter the web address to include. WhatsApp recognizes URLs as links:',
+        selected.match(/https?:\/\/\S+/)?.[0] || 'https://',
+        { title: 'Add a link', inputCaption: 'Web address' }
+      );
       if (url === null || !url.trim()) return;
       const normalizedUrl = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
       const insertion = selected
@@ -1985,7 +2221,7 @@
       replaceBroadcastMessage(start, end, insertion, start + insertion.length);
     }
 
-    function applyBroadcastFormatting(format) {
+    async function applyBroadcastFormatting(format) {
       const markers = { bold: '*', italic: '_', strike: '~', code: '```' };
       if (markers[format]) {
         applyBroadcastInlineFormat(markers[format]);
@@ -1994,7 +2230,7 @@
       } else if (format === 'numbered') {
         applyBroadcastList('', true);
       } else if (format === 'link') {
-        addBroadcastLink();
+        await addBroadcastLink();
       } else if (format === 'clear') {
         const message = $('#broadcast-message');
         const start = message.selectionStart;
@@ -2228,56 +2464,109 @@
         `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats · ${telegramTotal.toLocaleString()} Telegram active learner-days · ${telegramJoinTotal.toLocaleString()} Telegram group joins over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
     }
 
+    function renderTelegramStats(stats) {
+      const summary = $('#telegram-stats-summary');
+      const memberValue = stats.totalGroupMembers === null
+        ? 'Unavailable'
+        : stats.totalGroupMembers.toLocaleString();
+      const memberFoot = stats.memberCountStatus === 'not_configured'
+        ? 'Configure TELEGRAM_BOT_TOKEN and TELEGRAM_GROUP_ID'
+        : stats.memberCountUpdatedAt
+          ? `Updated ${new Date(stats.memberCountUpdatedAt).toLocaleTimeString()}`
+          : 'Could not refresh from Telegram';
+      summary.innerHTML = `
+        <div class="telegram-stat-card">
+          <div class="telegram-stat-label">Total group members</div>
+          <div class="telegram-stat-value">${escapeHtml(memberValue)}</div>
+          <div class="telegram-stat-foot">${escapeHtml(memberFoot)}</div>
+        </div>
+        <div class="telegram-stat-card">
+          <div class="telegram-stat-label">Tracked learners</div>
+          <div class="telegram-stat-value">${stats.trackedLearners.toLocaleString()}</div>
+          <div class="telegram-stat-foot">Learners with saved lesson progress</div>
+        </div>
+        <div class="telegram-stat-card">
+          <div class="telegram-stat-label">Joined today</div>
+          <div class="telegram-stat-value">${stats.joinsToday.toLocaleString()}</div>
+          <div class="telegram-stat-foot">Recorded group joins</div>
+        </div>
+        <div class="telegram-stat-card">
+          <div class="telegram-stat-label">Joined in 7 days</div>
+          <div class="telegram-stat-value">${stats.joinsLast7Days.toLocaleString()}</div>
+          <div class="telegram-stat-foot">Recorded group joins</div>
+        </div>`;
+
+      const chart = $('#telegram-stats-chart');
+      if (!Array.isArray(stats.dailyStats) || stats.dailyStats.length !== 30) {
+        throw new Error('Telegram daily statistics are incomplete.');
+      }
+      const days = stats.dailyStats;
+      const width = 860;
+      const height = 280;
+      const left = 44;
+      const right = 44;
+      const top = 26;
+      const bottom = 52;
+      const plotWidth = width - left - right;
+      const plotHeight = height - top - bottom;
+      const maxJoins = Math.max(1, ...days.map(day => day.joins));
+      const maxActive = Math.max(1, ...days.map(day => day.activeLearners));
+      const tickValues = [0, 0.5, 1];
+      const grid = tickValues.map(fraction => {
+        const y = top + plotHeight * (1 - fraction);
+        const joinValue = Math.round(maxJoins * fraction);
+        const activeValue = Math.round(maxActive * fraction);
+        return `<line class="telegram-stats-grid" x1="${left}" y1="${y}" x2="${width - right}" y2="${y}"></line>
+          <text x="${left - 8}" y="${y + 3}" text-anchor="end">${joinValue}</text>
+          <text x="${width - right + 8}" y="${y + 3}">${activeValue}</text>`;
+      }).join('');
+      const points = days.map((day, index) => {
+        const x = left + index * (plotWidth / (days.length - 1));
+        const joinsY = top + plotHeight * (1 - day.joins / maxJoins);
+        const activeY = top + plotHeight * (1 - day.activeLearners / maxActive);
+        return { ...day, x, joinsY, activeY };
+      });
+      const joinsLine = points.map(point => `${point.x},${point.joinsY}`).join(' ');
+      const activeLine = points.map(point => `${point.x},${point.activeY}`).join(' ');
+      const marks = points.map((point, index) => {
+        const label = new Intl.DateTimeFormat(undefined, {
+          month: 'numeric',
+          day: 'numeric',
+          timeZone: 'UTC'
+        }).format(new Date(`${point.date}T00:00:00Z`));
+        const description = `${point.date}: ${point.joins} recorded joins, ${point.activeLearners} active tracked learners`;
+        const dateLabel = index % 7 === 0 || index === points.length - 1
+          ? `<text x="${point.x}" y="${height - 24}" text-anchor="middle">${escapeHtml(label)}</text>`
+          : '';
+        return `<circle class="telegram-joins-point" cx="${point.x}" cy="${point.joinsY}" r="3"><title>${escapeHtml(description)}</title></circle>
+          <circle class="telegram-active-point" cx="${point.x}" cy="${point.activeY}" r="3"><title>${escapeHtml(description)}</title></circle>
+          ${dateLabel}`;
+      }).join('');
+      chart.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img"
+          aria-label="Telegram daily group joins and active tracked learners over the last 30 days. Left scale is joins; right scale is active learners.">
+          ${grid}
+          <text x="${left}" y="14">Joins</text>
+          <text x="${width - right}" y="14" text-anchor="end">Active learners</text>
+          <polyline class="telegram-joins-line" points="${joinsLine}"></polyline>
+          <polyline class="telegram-active-line" points="${activeLine}"></polyline>
+          ${marks}
+          <text x="${width / 2}" y="${height - 4}" text-anchor="middle">Last 30 days</text>
+        </svg>`;
+    }
+
+    async function loadTelegramStats() {
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const stats = await api(`/api/admin/telegram-stats?${new URLSearchParams({ timeZone })}`);
+      renderTelegramStats(stats);
+    }
+
     async function loadOverview() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const data = await api(`/api/admin/overview?${new URLSearchParams({ timeZone })}`);
-      let telegramStudents = [];
-      if (Array.isArray(data.weeklyChatActivity?.days) &&
-        data.weeklyChatActivity.days.length === 7 &&
-        data.weeklyChatActivity.days.some(day =>
-          day.telegramActiveStudents === undefined || day.telegramJoins === undefined)) {
-        const progress = await api(`/api/admin/progress?${new URLSearchParams({ timeZone })}`);
-        telegramStudents = progress.students || [];
-      }
-      renderWeeklyChatActivity(data.weeklyChatActivity, telegramStudents);
-      $('#metric-chats').textContent = data.totalChats.toLocaleString();
-      $('#metric-active').textContent = data.activeToday.toLocaleString();
-      $('#metric-students').textContent = data.studentsWithProgress.toLocaleString();
+      const data = await api(`/api/admin/telegram-overview?${new URLSearchParams({ timeZone })}`);
       $('#metric-telegram-students').textContent = data.telegramStudents.toLocaleString();
       $('#metric-telegram-joins').textContent =
         `Joined today ${data.telegramJoinedToday.toLocaleString()} · last 7 days ${data.telegramJoinedLast7Days.toLocaleString()}`;
-      $('#metric-es').textContent = data.esContacts.toLocaleString();
-      $('#metric-permanent-history').textContent = data.permanentHistoryContacts.toLocaleString();
-      $('#metric-handled').textContent = data.handledChats.toLocaleString();
-      const genderStatistics = data.genderStatistics;
-      for (const gender of ['female', 'male', 'unknown']) {
-        const count = genderStatistics[gender];
-        const percentage = genderStatistics.total
-          ? count / genderStatistics.total * 100
-          : 0;
-        $(`#gender-${gender}`).textContent = count.toLocaleString();
-        $(`#gender-${gender}-percent`).textContent = `${percentage.toFixed(1)}% of Es contacts`;
-        $(`#gender-${gender}-bar`).style.width = `${percentage}%`;
-      }
-      $('#gender-stat-note').textContent =
-        `${genderStatistics.total.toLocaleString()} Es contacts · ${genderStatistics.manual.toLocaleString()} manually set · ${genderStatistics.inferred.toLocaleString()} inferred`;
-      $('#lesson-count').textContent = `${data.configuredLessons} configured lessons`;
-      $('#quick-awaiting').textContent = data.awaitingTask;
-      $('#quick-reattempt').textContent = data.awaitingReattempt;
-      $('#quick-completed').textContent = data.completed;
-      $('#quick-lessons').textContent = data.configuredLessons;
-      const total = data.awaitingTask + data.awaitingReattempt + data.completed;
-      setBar('awaiting', data.awaitingTask, total);
-      setBar('reattempt', data.awaitingReattempt, total);
-      setBar('completed', data.completed, total);
-
-      const recent = await api('/api/admin/chats?limit=6');
-      $('#recent-list').innerHTML = recent.chats.length ? recent.chats.map(chat => `
-        <button class="chat-item" data-open-chat="${escapeHtml(chat.jid)}">
-          <span class="chat-name-row"><span class="chat-name">${escapeHtml(chat.name)}</span><span class="chat-time">${formatDate(chat.lastActivity)}</span></span>
-          <span class="chat-preview">${escapeHtml(chat.lastMessage)}</span>
-          ${chat.gender?.value !== 'unknown' ? `<span class="badge gender">${chat.gender.value === 'female' ? 'Female' : 'Male'}${chat.gender.source === 'manual' ? ' · manual' : ' · inferred'}</span>` : ''}
-        </button>`).join('') : '<div class="empty">No saved chats found.</div>';
     }
 
     async function loadChats() {
@@ -2779,7 +3068,7 @@
 
     async function loadProgress() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const { students, insights } = await api(`/api/admin/progress?${new URLSearchParams({ timeZone })}`);
+      const { students, insights } = await api(`/api/admin/telegram-progress?${new URLSearchParams({ timeZone })}`);
       renderTelegramEnrollment(insights.telegramEnrollment, timeZone);
       renderRosterInsights(
         insights,
@@ -2802,6 +3091,9 @@
       $('#progress-rows').innerHTML = students.length ? students.map(student => {
         const skipRequest = student.skipRequest;
         const isWaiting = ['queued', 'processing'].includes(skipRequest?.status);
+        const sendRequest = student.sendLessonRequest;
+        const isSendingLesson = ['queued', 'processing'].includes(sendRequest?.status);
+        const hasPendingLessonRequest = isWaiting || isSendingLesson;
         const skipButtonLabel = isWaiting
           ? skipRequest.status === 'processing' ? 'Sending…' : 'Queued…'
           : skipRequest?.status === 'failed' ? 'Retry skip' : 'Skip to next lesson';
@@ -2811,17 +3103,98 @@
             ? `Previous attempt failed: ${escapeHtml(skipRequest.error || 'delivery error')}`
             : `Next: ${escapeHtml(student.nextLessonTitle)}`;
         const skipAction = student.canSkipToNextLesson
-          ? `<button class="pagination button skip-lesson-button" type="button" data-skip-platform="${escapeHtml(student.platform)}" data-skip-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${isWaiting ? 'disabled' : ''}>${skipButtonLabel}</button><small class="skip-lesson-status">${skipStatusText}</small>`
-          : '—';
-        return `<tr><td>${escapeHtml(student.platform)}</td><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td>${skipAction}</td></tr>`;
+          ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-skip-platform="${escapeHtml(student.platform)}" data-skip-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${hasPendingLessonRequest ? 'disabled' : ''}>${skipButtonLabel}</button><small class="skip-lesson-status">${skipStatusText}</small></div>`
+          : '';
+        const availableLessons = student.platform === 'Telegram' ? student.availableLessons || [] : [];
+        const sendLessonAction = availableLessons.length
+          ? `<div class="send-lesson-controls"><div class="send-lesson-picker" data-send-lesson-picker><span>Choose a lesson</span><button class="send-lesson-picker-trigger" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a lesson for ${escapeHtml(student.name)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-picker-value" data-selected-lesson>Select from curriculum…</span><span class="send-lesson-picker-chevron" aria-hidden="true">⌄</span></button><div class="send-lesson-menu" role="listbox" aria-label="Available lessons for ${escapeHtml(student.name)}" hidden>${availableLessons.map(lesson => `<button class="send-lesson-option" type="button" role="option" aria-selected="false" data-lesson-id="${escapeHtml(lesson.id)}"><span>${escapeHtml(lesson.title)}</span><span class="send-lesson-option-check" aria-hidden="true"></span></button>`).join('')}</div></div><button class="send-lesson-button" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-button-icon" aria-hidden="true">➤</span>${isSendingLesson ? sendRequest.status === 'processing' ? 'Sending…' : 'Queued…' : 'Send lesson'}</button>${sendRequest?.status === 'failed' ? `<small class="send-lesson-status">Last send failed: ${escapeHtml(sendRequest.error || 'delivery error')}</small>` : isSendingLesson ? '<small class="send-lesson-status">The selected lesson is being sent.</small>' : '<small class="send-lesson-status">This becomes their active lesson.</small>'}</div>`
+          : '';
+        return `<tr><td>${escapeHtml(student.platform)}</td><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${skipAction || '—'}</div></td></tr>`;
       }).join('') : '<tr><td colspan="12" class="empty">No student progress recorded yet.</td></tr>';
+      $('#progress-rows').querySelectorAll('[data-send-lesson-picker]').forEach(picker => {
+        const trigger = picker.querySelector('.send-lesson-picker-trigger');
+        const menu = picker.querySelector('.send-lesson-menu');
+        const closeMenu = ({ restoreFocus = false } = {}) => {
+          picker.classList.remove('is-open');
+          trigger.setAttribute('aria-expanded', 'false');
+          menu.hidden = true;
+          menu.classList.remove('is-floating');
+          menu.style.removeProperty('left');
+          menu.style.removeProperty('top');
+          menu.style.removeProperty('width');
+          menu.style.removeProperty('max-height');
+          if (restoreFocus) trigger.focus();
+        };
+        const openMenu = () => {
+          closeOpenLessonPickers();
+          picker.classList.add('is-open');
+          trigger.setAttribute('aria-expanded', 'true');
+          menu.hidden = false;
+          const triggerRect = trigger.getBoundingClientRect();
+          menu.classList.add('is-floating');
+          menu.style.left = `${triggerRect.left}px`;
+          menu.style.top = '0px';
+          menu.style.width = `${triggerRect.width}px`;
+          const desiredHeight = Math.min(menu.scrollHeight, 260);
+          const spaceBelow = window.innerHeight - triggerRect.bottom - 12;
+          const spaceAbove = triggerRect.top - 12;
+          const placeBelow = spaceBelow >= Math.min(desiredHeight, 180) ||
+            spaceBelow >= spaceAbove;
+          const availableHeight = Math.max(80, placeBelow ? spaceBelow : spaceAbove);
+          menu.style.maxHeight = `${Math.min(desiredHeight, availableHeight)}px`;
+          menu.style.top = `${placeBelow
+            ? triggerRect.bottom + 5
+            : Math.max(8, triggerRect.top - menu.offsetHeight - 5)}px`;
+          const selected = menu.querySelector('[aria-selected="true"]');
+          (selected || menu.querySelector('.send-lesson-option'))?.focus();
+        };
+        trigger.addEventListener('click', () => {
+          if (menu.hidden) openMenu();
+          else closeMenu();
+        });
+        trigger.addEventListener('keydown', event => {
+          if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+            event.preventDefault();
+            if (menu.hidden) openMenu();
+          }
+        });
+        menu.querySelectorAll('.send-lesson-option').forEach(option => {
+          option.addEventListener('click', () => {
+            menu.querySelectorAll('.send-lesson-option').forEach(item => {
+              const isSelected = item === option;
+              item.setAttribute('aria-selected', String(isSelected));
+              item.querySelector('.send-lesson-option-check').textContent = isSelected ? '✓' : '';
+            });
+            picker.dataset.selectedLesson = option.dataset.lessonId;
+            picker.querySelector('[data-selected-lesson]').textContent =
+              option.querySelector('span').textContent;
+            closeMenu({ restoreFocus: true });
+          });
+          option.addEventListener('keydown', event => {
+            const options = [...menu.querySelectorAll('.send-lesson-option')];
+            const currentIndex = options.indexOf(option);
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault();
+              const direction = event.key === 'ArrowDown' ? 1 : -1;
+              options[(currentIndex + direction + options.length) % options.length].focus();
+            } else if (event.key === 'Home' || event.key === 'End') {
+              event.preventDefault();
+              options[event.key === 'Home' ? 0 : options.length - 1].focus();
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              closeMenu({ restoreFocus: true });
+            }
+          });
+        });
+      });
       $('#progress-rows').querySelectorAll('.skip-lesson-button').forEach(button => {
         button.addEventListener('click', async () => {
           const platform = button.dataset.skipPlatform;
           const jid = button.dataset.skipJid;
           const student = students.find(item => item.platform === platform && item.jid === jid);
-          if (!student || !window.confirm(
-            `Skip ${student.name} from ${student.lessonTitle} to ${student.nextLessonTitle}? They will no longer be graded on the current lesson.`
+          if (!student || !await dashboardConfirm(
+            `Skip ${student.name} from ${student.lessonTitle} to ${student.nextLessonTitle}? They will no longer be graded on the current lesson.`,
+            { title: 'Skip to next lesson', confirmText: 'Skip lesson', variant: 'danger' }
           )) return;
           button.disabled = true;
           button.textContent = 'Queuing…';
@@ -2839,6 +3212,40 @@
             button.disabled = false;
             button.textContent = 'Skip to next lesson';
             showError(`Could not skip this student to the next lesson: ${error.message}`);
+          }
+        });
+      });
+      $('#progress-rows').querySelectorAll('.send-lesson-button').forEach(button => {
+        button.addEventListener('click', async () => {
+          const student = students.find(item =>
+            item.platform === 'Telegram' && item.jid === button.dataset.sendLessonJid);
+          const selectedLessonId = button.closest('tr')
+            ?.querySelector('[data-send-lesson-picker]')?.dataset.selectedLesson;
+          const lesson = student?.availableLessons?.find(item => item.id === selectedLessonId);
+          if (!student || !lesson) {
+            showError('Choose an available lesson before sending.');
+            return;
+          }
+          if (!await dashboardConfirm(
+            `Send "${lesson.title}" to ${student.name}? This becomes their active lesson and replaces the current exercise.`,
+            { title: 'Send lesson', confirmText: 'Send lesson' }
+          )) return;
+          button.disabled = true;
+          button.textContent = 'Queuing…';
+          try {
+            await api('/api/admin/progress/send-lesson', {
+              method: 'POST',
+              body: JSON.stringify({
+                jid: student.jid,
+                currentLessonId: button.dataset.currentLesson,
+                lessonId: lesson.id
+              })
+            });
+            await loadProgress();
+          } catch (error) {
+            button.disabled = false;
+            button.textContent = 'Send lesson';
+            showError(`Could not send this lesson: ${error.message}`);
           }
         });
       });
@@ -3481,8 +3888,9 @@
           const amountInput = row.querySelector('[data-payment-amount]');
           const currencyInput = row.querySelector('[data-payment-currency]');
           const nextStatus = statusSelect.value;
-          if (nextStatus === 'paid' && !window.confirm(
-            `Confirm this student's payment as received for the current 30-day period?`
+          if (nextStatus === 'paid' && !await dashboardConfirm(
+            `Confirm this student's payment as received for the current 30-day period?`,
+            { title: 'Confirm payment', confirmText: 'Mark as paid' }
           )) return;
           button.disabled = true;
           button.textContent = 'Saving…';
@@ -3751,25 +4159,14 @@
       try {
         await Promise.all([
           loadOverview(),
-          loadChats(),
-          loadProgress(),
-          loadEsContacts(),
-          loadBlockedContacts(),
-          loadBroadcastJobs(),
-          loadScheduledLessons(),
-          loadManualScheduleOptions(),
-          loadAgentStatus(),
           loadTelegramAgentStatus(),
           loadTelegramAgentLogs(),
           loadTelegramUpdateQueue(),
           loadTelegramAgentMediaActivity(),
-          loadTelegramUserBroadcasts(),
-          loadWorkbookStatus(),
-          loadCurriculumOverview().catch(() => {})
+          loadTelegramUserBroadcasts()
         ]);
-        if (selectedJid) await loadConversation(selectedJid);
       } catch (error) {
-        showError(`Could not load dashboard data: ${error.message}`);
+        showError(`Could not load Telegram dashboard data: ${error.message}`);
       }
     }
 
@@ -3785,32 +4182,23 @@
         const tasks = [];
         const has = (...names) => names.some(name => changedFiles.has(name));
 
-        if (has('chat_history.json')) {
-          tasks.push(loadOverview(), loadChats(), loadProgress());
-          if (selectedJid) tasks.push(loadConversation(selectedJid));
-          if (handledChatsOnly) tasks.push(loadAgentConversation());
-        }
-        if (has('whatsapp_presence.json')) {
-          tasks.push(loadChats());
-          if (selectedJid) tasks.push(loadConversation(selectedJid));
-          if (selectedJid) tasks.push(loadStudentActivity(selectedJid));
-          if (esActivityJid) tasks.push(loadEsStudentActivity());
-        }
-        if (has('contacts.json', 'followup_state.json', 'blocked_contacts.json', 'contact_gender.json', 'contact_payment_labels.json')) {
-          tasks.push(loadOverview(), loadEsContacts(), loadBlockedContacts());
-          if (document.querySelector('#section-payment-calendar').classList.contains('active')) {
-            tasks.push(loadPaymentCalendar());
+        if (has('telegram_progress.json', 'lessons.json')) {
+          tasks.push(loadOverview());
+          if (document.querySelector('#section-overview').classList.contains('active')) {
+            tasks.push(loadTelegramStats());
           }
-        }
-        if (has('student_progress.json', 'telegram_progress.json', 'lessons.json')) {
-            tasks.push(loadOverview(), loadProgress(), loadWorkbookStatus(), loadCurriculumOverview());
+          if (document.querySelector('#section-progress').classList.contains('active')) {
+            tasks.push(loadProgress());
+          }
+          if (has('lessons.json') &&
+              document.querySelector('#section-curriculum').classList.contains('active')) {
+            tasks.push(loadCurriculumOverview());
+          }
         }
         if (has('student_payment_ledger.json') &&
             document.querySelector('#section-payment-ledger').classList.contains('active')) {
           tasks.push(loadPaymentLedger());
         }
-          if (has('contacts.json', 'chat_history.json', 'students.xlsx')) tasks.push(loadWorkbookStatus());
-        if (has('agent_status.json')) tasks.push(loadAgentStatus());
         if (has('telegram_agent_status.json')) tasks.push(loadTelegramAgentStatus());
         if (has('telegram_agent.log')) tasks.push(loadTelegramAgentLogs());
         if (has('telegram_update_queue.json', 'telegram_agent_control.json')) {
@@ -3820,16 +4208,6 @@
         if (has('telegram_user_broadcasts.json', 'telegram_user_broadcast_state.json')) {
           tasks.push(loadTelegramUserBroadcasts());
         }
-        if (has('agent_qr.json') && handledChatsOnly) tasks.push(loadAgentQr());
-        if (has('agent_media_activity.json') &&
-            handledChatsOnly &&
-            !$('#agent-media-panel').hidden) tasks.push(loadAgentMediaActivity());
-        if (has('incoming_chat_queue.json') && handledChatsOnly) tasks.push(loadAgentQueue());
-        if (has('agent.log') && handledChatsOnly) tasks.push(loadAgentLogs());
-        if (has('chat_read_state.json') && !handledChatsOnly) tasks.push(loadChats());
-        if (has('broadcast_requests.json', 'broadcast_state.json')) tasks.push(loadBroadcastJobs());
-        if (has('scheduled_lessons.json')) tasks.push(loadScheduledLessons());
-        if (has('message_requests.json', 'broadcast_state.json')) tasks.push(loadDirectMessageStatuses());
         if (tasks.length === 0) return;
 
         const results = await Promise.allSettled(tasks);
@@ -3848,7 +4226,7 @@
       $('#agent-conversation-panel').hidden = name !== 'agent';
       $('#chat-sort-controls').hidden = handledChatsOnly;
       if (name === 'progress') {
-        loadWorkbookStatus().catch(error => showError(`Could not load student workbook status: ${error.message}`));
+        loadProgress().catch(error => showError(`Could not load Telegram progress: ${error.message}`));
       }
       if (name === 'curriculum') {
         loadCurriculumOverview().catch(error => showError(`Could not load curriculum: ${error.message}`));
@@ -3895,8 +4273,9 @@
       const text = $('#telegram-user-broadcast-message').value.trim();
       if (!text) return;
       const count = Number($('#telegram-user-broadcast-recipients').dataset.count || 0);
-      if (!window.confirm(
-        `Send this message from your Telegram account individually to ${count} eligible lesson learners, with a 3-second pause between messages?`
+      if (!await dashboardConfirm(
+        `Send this message from your Telegram account individually to ${count} eligible lesson learners, with a 3-second pause between messages?`,
+        { title: 'Send Telegram announcement', confirmText: 'Queue announcement' }
       )) return;
       const button = $('#telegram-user-broadcast-send');
       button.disabled = true;
@@ -4041,16 +4420,24 @@
         (async () => {
           let body = { action, id };
           if (action === 'cancel' &&
-              !window.confirm('Cancel this scheduled lesson delivery?')) return;
+              !await dashboardConfirm('Cancel this scheduled lesson delivery?', {
+                title: 'Cancel scheduled lesson',
+                confirmText: 'Cancel delivery',
+                variant: 'danger'
+              })) return;
           if (action === 'send_now' &&
-              !window.confirm('Send this lesson as soon as the WhatsApp agent can process it?')) return;
+              !await dashboardConfirm('Send this lesson as soon as the WhatsApp agent can process it?', {
+                title: 'Send lesson now',
+                confirmText: 'Send now'
+              })) return;
           if (action === 'reschedule') {
             const schedule = (await api('/api/admin/scheduled-lessons')).schedules
               .find(item => item.id === id);
             if (!schedule) throw new Error('Scheduled lesson not found.');
-            const value = window.prompt(
+            const value = await dashboardPrompt(
               'Enter the new Sudan-local time as YYYY-MM-DDTHH:mm (24-hour clock):',
-              sudanDateTimeInput(schedule.scheduledAt)
+              sudanDateTimeInput(schedule.scheduledAt),
+              { title: 'Reschedule lesson', inputCaption: 'Sudan-local date and time' }
             );
             if (value === null) return;
             if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value.trim())) {
@@ -4176,7 +4563,11 @@
         : action === 'ban'
           ? `Ban ${phoneNumber}? The agent will stop replying and sending follow-ups.`
           : `Allow the agent to interact with ${phoneNumber} again?`;
-      if (!window.confirm(confirmation)) return;
+      if (!await dashboardConfirm(confirmation, {
+        title: action === 'delete' ? 'Delete and block contact' : action === 'ban' ? 'Ban contact' : 'Unblock contact',
+        confirmText: action === 'unblock' ? 'Allow contact' : action === 'delete' ? 'Delete and block' : 'Ban contact',
+        variant: action === 'unblock' ? 'warning' : 'danger'
+      })) return;
       showError('');
       setContactActionStatus(`${action === 'unblock' ? 'Allowing' : action === 'delete' ? 'Deleting and blocking' : 'Banning'} ${phoneNumber}…`);
       button.disabled = true;
@@ -4201,7 +4592,10 @@
         showError('Enter a valid phone number with 5 to 15 digits.');
         return;
       }
-      if (!window.confirm(`Ban ${phoneNumber}? The agent will stop replying and sending follow-ups.`)) return;
+      if (!await dashboardConfirm(
+        `Ban ${phoneNumber}? The agent will stop replying and sending follow-ups.`,
+        { title: 'Ban contact', confirmText: 'Ban contact', variant: 'danger' }
+      )) return;
       showError('');
       setContactActionStatus(`Banning ${phoneNumber}…`);
       const button = $('#ban-number-submit');
@@ -4221,7 +4615,10 @@
     $('#blocked-contact-rows').addEventListener('click', async event => {
       const button = event.target.closest('[data-contact-action="unblock"]');
       if (!button) return;
-      if (!window.confirm(`Allow the agent to interact with ${button.dataset.phoneNumber} again?`)) return;
+      if (!await dashboardConfirm(
+        `Allow the agent to interact with ${button.dataset.phoneNumber} again?`,
+        { title: 'Unblock contact', confirmText: 'Allow contact' }
+      )) return;
       button.disabled = true;
       try {
         await api(`/api/admin/contacts/${encodeURIComponent(button.dataset.phoneNumber)}/unblock`, { method: 'POST' });
@@ -4372,11 +4769,11 @@
     $('.broadcast-format-toolbar').addEventListener('mousedown', event => {
       if (event.target.closest('[data-message-format]')) event.preventDefault();
     });
-    $('.broadcast-format-toolbar').addEventListener('click', event => {
+    $('.broadcast-format-toolbar').addEventListener('click', async event => {
       const button = event.target.closest('[data-message-format]');
-      if (button) applyBroadcastFormatting(button.dataset.messageFormat);
+      if (button) await applyBroadcastFormatting(button.dataset.messageFormat);
     });
-    $('#broadcast-message').addEventListener('keydown', event => {
+    $('#broadcast-message').addEventListener('keydown', async event => {
       if (!event.ctrlKey && !event.metaKey) return;
       const key = event.key.toLowerCase();
       const format = key === 'b' ? 'bold' : key === 'i' ? 'italic'
@@ -4384,7 +4781,7 @@
           : '';
       if (!format) return;
       event.preventDefault();
-      applyBroadcastFormatting(format);
+      await applyBroadcastFormatting(format);
     });
     $('#broadcast-message').addEventListener('input', () => {
       updateBroadcastMessageLength();
@@ -4544,8 +4941,9 @@
         const recipientLabel = broadcastRecipientType === 'es'
           ? 'eligible saved Es contacts'
           : 'tracked non-Es direct chats (including unsaved contacts)';
-        const confirmed = window.confirm(
-          `Queue this message${pendingBroadcastAttachments.length ? ` with ${pendingBroadcastAttachments.length} attachment(s)` : ''} for ${jids.length.toLocaleString()} ${recipientLabel}${contactActivityDate ? ` who messaged you on ${contactActivityDate}` : ''}? It will be sent individually with a 5-second gap after the WhatsApp agent is connected. Faster sending may increase the risk of WhatsApp rate limits or account restrictions.`
+        const confirmed = await dashboardConfirm(
+          `Queue this message${pendingBroadcastAttachments.length ? ` with ${pendingBroadcastAttachments.length} attachment(s)` : ''} for ${jids.length.toLocaleString()} ${recipientLabel}${contactActivityDate ? ` who messaged you on ${contactActivityDate}` : ''}? It will be sent individually with a 5-second gap after the WhatsApp agent is connected. Faster sending may increase the risk of WhatsApp rate limits or account restrictions.`,
+          { title: 'Queue broadcast', confirmText: 'Queue broadcast' }
         );
         if (!confirmed) return;
 
@@ -4676,7 +5074,11 @@
         $('#agent-status-value').textContent === 'Connecting';
       const action = isConnected ? 'disconnect' : 'connect';
       if (action === 'disconnect' &&
-          !window.confirm('Disconnect the WhatsApp agent now? The device will remain linked.')) {
+          !await dashboardConfirm('Disconnect the WhatsApp agent now? The device will remain linked.', {
+            title: 'Disconnect agent',
+            confirmText: 'Disconnect',
+            variant: 'danger'
+          })) {
         return;
       }
       button.disabled = true;
@@ -4766,8 +5168,9 @@
       const jid = button.dataset.cancelQueueJid;
       const name = button.closest('.agent-queue-item')
         .querySelector('.agent-queue-name').textContent;
-      if (!window.confirm(
-        `Cancel the queued response for ${name}? Incoming messages remain saved, but the agent will skip handling this waiting batch.`
+      if (!await dashboardConfirm(
+        `Cancel the queued response for ${name}? Incoming messages remain saved, but the agent will skip handling this waiting batch.`,
+        { title: 'Cancel queued response', confirmText: 'Cancel response', variant: 'danger' }
       )) return;
       pendingQueueCancellations.add(jid);
       button.disabled = true;
@@ -5157,8 +5560,11 @@
       const form = $('#lesson-form');
       if (!modal || !form) return;
 
+      clearLessonVideoPreview();
       form.reset();
       $('#lesson-form-status').textContent = '';
+      $('#answer-key-generation-status').textContent =
+        'AI suggestions are drafts. Review and edit every answer before saving.';
       $('#lesson-video-progress').hidden = true;
 
       populateGradeDropdowns(curriculumOverviewData);
@@ -5169,13 +5575,16 @@
       treasureIslandOption.hidden = targetGradeKey !== 'grade_3_secondary';
       if (lesson?.collectionId) collectionId = lesson.collectionId;
       const lessonType = collectionId || (isStandalone ? 'standalone' : 'sequential');
+      typeSelect.disabled = false;
 
       if (lesson) {
         $('#lesson-modal-title').textContent = `Edit Lesson: ${lesson.title}`;
         $('#lesson-form-id').value = lesson.id;
-        $('#lesson-form-id').readOnly = true;
+        $('#lesson-form-id').readOnly = false;
         typeSelect.value = lessonType;
-        typeSelect.disabled = true;
+        form.dataset.sourceType = lessonType;
+        form.dataset.sourceGradeKey = targetGradeKey;
+        form.dataset.sourceLessonId = lesson.id;
         $('#lesson-form-title').value = lesson.title;
         $('#lesson-form-intro').value = lesson.introMessage || '';
         $('#lesson-form-caption').value = lesson.caption || '';
@@ -5189,6 +5598,9 @@
         $('#lesson-form-id').readOnly = false;
         typeSelect.value = lessonType;
         typeSelect.disabled = false;
+        delete form.dataset.sourceType;
+        delete form.dataset.sourceGradeKey;
+        delete form.dataset.sourceLessonId;
 
         // Auto determine next sequential lesson number
         const existingCount = collectionId
@@ -5249,8 +5661,32 @@
         available.map(video => `<option value="${escapeHtml(video.relativePath)}">${escapeHtml(video.fileName)} (${formatFileSize(video.sizeBytes)})${video.isUsed ? ' [Already in use]' : ''}</option>`).join('');
     }
 
+    function clearLessonVideoPreview() {
+      const video = $('#lesson-video-preview');
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      }
+      $('#lesson-video-preview-container').hidden = true;
+      if (lessonVideoPreviewUrl) {
+        URL.revokeObjectURL(lessonVideoPreviewUrl);
+        lessonVideoPreviewUrl = null;
+      }
+    }
+
+    function previewLessonVideoFile(file) {
+      clearLessonVideoPreview();
+      lessonVideoPreviewUrl = URL.createObjectURL(file);
+      const video = $('#lesson-video-preview');
+      video.src = lessonVideoPreviewUrl;
+      $('#lesson-video-preview-container').hidden = false;
+      video.load();
+    }
+
     function clearSelectedLessonVideo() {
       $('#lesson-form-video-path').value = '';
+      clearLessonVideoPreview();
       const status = $('#selected-video-status');
       status.textContent = 'No video selected';
       status.style.background = '#f0f5f2';
@@ -5312,6 +5748,7 @@
         return;
       }
 
+      previewLessonVideoFile(file);
       const progressContainer = $('#lesson-video-progress');
       const progressFill = $('#lesson-video-progress-fill');
       const progressText = $('#lesson-video-progress-text');
@@ -5486,9 +5923,15 @@
 
       // Modal close & cancel buttons
       const closeModalBtn = $('#close-lesson-modal-btn');
-      if (closeModalBtn) closeModalBtn.addEventListener('click', () => $('#lesson-modal').hidden = true);
+      if (closeModalBtn) closeModalBtn.addEventListener('click', () => {
+        $('#lesson-modal').hidden = true;
+        clearLessonVideoPreview();
+      });
       const cancelModalBtn = $('#cancel-lesson-modal-btn');
-      if (cancelModalBtn) cancelModalBtn.addEventListener('click', () => $('#lesson-modal').hidden = true);
+      if (cancelModalBtn) cancelModalBtn.addEventListener('click', () => {
+        $('#lesson-modal').hidden = true;
+        clearLessonVideoPreview();
+      });
 
       // Preview modal close button
       const closePreviewBtn = $('#close-preview-modal-btn');
@@ -5518,6 +5961,7 @@
         existingSelect.addEventListener('change', () => {
           const val = existingSelect.value;
           if (val) {
+            clearLessonVideoPreview();
             $('#lesson-form-video-path').value = val;
             const status = $('#selected-video-status');
             status.textContent = `🟢 Selected: ${val.split('/').pop()}`;
@@ -5592,6 +6036,52 @@
         });
       }
 
+      const generateAnswerKeyBtn = $('#generate-answer-key-btn');
+      if (generateAnswerKeyBtn) {
+        generateAnswerKeyBtn.addEventListener('click', async () => {
+          const taskMessage = $('#lesson-form-task').value.trim();
+          const currentKeys = rubricBulkMode
+            ? $('#lesson-form-rubric-bulk').value.trim()
+            : [...$('#rubric-rows-container').querySelectorAll('[data-rubric-ans]')]
+              .map(input => input.value.trim()).filter(Boolean).join('\n');
+          if (currentKeys && !await dashboardConfirm(
+            'Generating a new draft will replace the answer keys currently in the editor. Continue?',
+            { title: 'Replace answer key draft', confirmText: 'Generate new draft' }
+          )) return;
+
+          generateAnswerKeyBtn.disabled = true;
+          $('#answer-key-generation-status').textContent = 'Generating a draft answer key…';
+          try {
+            const result = await api('/api/admin/curriculum/generate-answer-key', {
+              method: 'POST',
+              body: JSON.stringify({
+                taskMessage,
+                notes: $('#lesson-form-answer-notes').value.trim()
+              })
+            });
+            rubricRows = result.answers.map(item => ({
+              id: item.questionNumber,
+              text: `${item.answer} — ${item.explanation}`
+            }));
+            rubricBulkMode = false;
+            $('#rubric-rows-container').hidden = false;
+            $('#rubric-bulk-container').hidden = true;
+            $('#toggle-rubric-mode-btn').textContent = 'Switch to Bulk Text';
+            renderRubricRows();
+            const reviewQuestions = result.answers
+              .filter(item => item.confidence !== 'high')
+              .map(item => `#${item.questionNumber} (${item.confidence})`);
+            $('#answer-key-generation-status').textContent = reviewQuestions.length
+              ? `Drafted ${result.answers.length} answers. Review all answers; pay special attention to ${reviewQuestions.join(', ')}.`
+              : `Drafted ${result.answers.length} answers. Review every answer before saving.`;
+          } catch (error) {
+            $('#answer-key-generation-status').textContent = `Could not draft answer keys: ${error.message}`;
+          } finally {
+            generateAnswerKeyBtn.disabled = false;
+          }
+        });
+      }
+
       $('#add-treasure-island-lesson')?.addEventListener('click', () => {
         openLessonModal({ gradeKey: 'grade_3_secondary', collectionId: 'treasure_island' });
       });
@@ -5639,6 +6129,11 @@
                 gradeKey,
                 isStandalone,
                 collectionId,
+                ...(lessonForm.dataset.sourceType ? {
+                  sourceType: lessonForm.dataset.sourceType,
+                  sourceGradeKey: lessonForm.dataset.sourceGradeKey,
+                  sourceLessonId: lessonForm.dataset.sourceLessonId
+                } : {}),
                 lesson: {
                   id,
                   title,
@@ -5652,6 +6147,7 @@
             });
 
             $('#lesson-modal').hidden = true;
+            clearLessonVideoPreview();
             await loadCurriculumOverview();
             await openGradeCurriculum(gradeKey);
           } catch (error) {
@@ -5669,7 +6165,11 @@
         editKeywordsBtn.addEventListener('click', async () => {
           if (!selectedGradeCurriculum) return;
           const current = (selectedGradeCurriculum.keywords || []).join(', ');
-          const input = window.prompt(`Edit search keywords for ${selectedGradeCurriculum.name} (comma-separated):`, current);
+          const input = await dashboardPrompt(
+            `Edit search keywords for ${selectedGradeCurriculum.name} (comma-separated):`,
+            current,
+            { title: 'Edit search keywords', inputCaption: 'Keywords, separated by commas' }
+          );
           if (input === null) return;
           const newKeywords = input.split(',').map(k => k.trim()).filter(Boolean);
           try {
@@ -5732,11 +6232,15 @@
             });
             const preview = await api(`/api/admin/curriculum/lesson-broadcast?${query}`);
             if (!preview.total) {
-              window.alert('No eligible eShool contacts have saved WhatsApp activity older than 10 days. Contacts without a saved activity timestamp are excluded.');
+              await dashboardAlert(
+                'No eligible eShool contacts have saved WhatsApp activity older than 10 days. Contacts without a saved activity timestamp are excluded.',
+                { title: 'No eligible recipients' }
+              );
               return;
             }
-            const confirmed = window.confirm(
-              `Queue "${preview.title}" for ${preview.total.toLocaleString()} eligible eShool contacts whose last recorded WhatsApp activity is more than 10 days ago?\n\nContacts with no saved activity are excluded. The video will be sent individually with a 5-second gap; a large list may take hours.`
+            const confirmed = await dashboardConfirm(
+              `Queue "${preview.title}" for ${preview.total.toLocaleString()} eligible eShool contacts whose last recorded WhatsApp activity is more than 10 days ago?\n\nContacts with no saved activity are excluded. The video will be sent individually with a 5-second gap; a large list may take hours.`,
+              { title: 'Queue lesson video', confirmText: 'Queue video' }
             );
             if (!confirmed) return;
             broadcastLessonBtn.textContent = 'Queueing video…';
@@ -5744,7 +6248,10 @@
               method: 'POST',
               body: JSON.stringify({ previewId: preview.previewId })
             });
-            window.alert(`Video broadcast queued for ${result.total.toLocaleString()} students. You can monitor or stop it in Broadcasts.`);
+            await dashboardAlert(
+              `Video broadcast queued for ${result.total.toLocaleString()} students. You can monitor or stop it in Broadcasts.`,
+              { title: 'Video broadcast queued' }
+            );
           } catch (error) {
             showError(`Could not queue lesson video: ${error.message}`);
           } finally {
@@ -5788,7 +6295,11 @@
         const deleteCollectionBtn = event.target.closest('[data-delete-collection-lesson]');
         if (deleteCollectionBtn) {
           const lessonId = deleteCollectionBtn.dataset.deleteCollectionLesson;
-          if (!window.confirm(`Remove Treasure Island lesson "${lessonId}"?`)) return;
+          if (!await dashboardConfirm(`Remove Treasure Island lesson "${lessonId}"?`, {
+            title: 'Remove Treasure Island lesson',
+            confirmText: 'Remove lesson',
+            variant: 'danger'
+          })) return;
           try {
             await api(`/api/admin/curriculum/lesson?gradeKey=${encodeURIComponent(selectedGradeKey)}&lessonId=${encodeURIComponent(lessonId)}&collectionId=treasure_island`, {
               method: 'DELETE'
@@ -5806,7 +6317,11 @@
         if (deleteBtn) {
           const lessonId = deleteBtn.dataset.deleteLesson;
           const isStandalone = deleteBtn.dataset.isStandalone === 'true';
-          if (!window.confirm(`Are you sure you want to remove lesson "${lessonId}"?`)) return;
+          if (!await dashboardConfirm(`Are you sure you want to remove lesson "${lessonId}"?`, {
+            title: 'Remove lesson',
+            confirmText: 'Remove lesson',
+            variant: 'danger'
+          })) return;
           try {
             await api(`/api/admin/curriculum/lesson?gradeKey=${encodeURIComponent(selectedGradeKey)}&lessonId=${encodeURIComponent(lessonId)}&isStandalone=${isStandalone}`, {
               method: 'DELETE'

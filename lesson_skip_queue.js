@@ -107,11 +107,18 @@ export class LessonSkipQueue {
     }
     return this.withLock(() => {
       const requests = this.read();
-      const existing = requests.find(request =>
+      const requestType = details.requestType || 'skip_next';
+      const activeRequest = requests.find(request =>
         request.studentKey === details.studentKey &&
-        request.currentLessonId === details.currentLessonId &&
         ['queued', 'processing'].includes(request.status));
-      if (existing) return { request: existing, alreadyQueued: true };
+      if (activeRequest) {
+        if (activeRequest.currentLessonId === details.currentLessonId &&
+            (activeRequest.requestType || 'skip_next') === requestType &&
+            activeRequest.nextLessonId === details.nextLessonId) {
+          return { request: activeRequest, alreadyQueued: true };
+        }
+        return { request: activeRequest, alreadyQueued: false, conflict: true };
+      }
 
       const request = {
         ...details,

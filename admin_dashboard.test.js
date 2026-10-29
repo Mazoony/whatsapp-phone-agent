@@ -28,6 +28,7 @@ import { createContactPaymentLabelsStore } from './contact_payment_labels.js';
 import { config } from './config.js';
 import { WhatsAppPresenceManager } from './whatsapp_presence.js';
 import { createScheduledLessonStore } from './scheduled_lessons.js';
+import { LessonSkipQueue } from './lesson_skip_queue.js';
 
 const testAuthManager = {
   status: () => ({ setupRequired: false, authenticated: true }),
@@ -74,6 +75,82 @@ test('dashboard data cache reuses a snapshot and reloads when a source file chan
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('Telegram dashboard summary and progress endpoints do not load WhatsApp dashboard data', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-dashboard-fast-path-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const progressFile = path.join(directory, 'telegram_progress.json');
+  const lessonsFile = path.join(directory, 'lessons.json');
+  fs.writeFileSync(progressFile, JSON.stringify({
+    'telegram:-1001:10': {
+      name: 'Telegram learner',
+      grade: 'grade_3_secondary',
+      telegramChatId: '-1001',
+      telegramUserId: 10,
+      currentLessonIndex: 0,
+      currentLessonId: 'lesson_1',
+      status: 'awaiting_task',
+      groupJoinedAt: new Date().toISOString(),
+      deliveredAt: new Date().toISOString()
+    }
+  }));
+  fs.writeFileSync(lessonsFile, JSON.stringify({
+    grade_3_secondary: {
+      name: 'Third Secondary',
+      lessons: [{ id: 'lesson_1', title: 'Lesson One' }]
+    }
+  }));
+  let memberCountCalls = 0;
+  const server = createAdminDashboardServer({
+    readData: () => {
+      throw new Error('Telegram-only endpoints must not read WhatsApp dashboard data.');
+    },
+    telegramProgressFile: progressFile,
+    lessonsFile,
+    telegramGroupId: '-1001',
+    telegramMemberCountProvider: async groupId => {
+      assert.equal(groupId, '-1001');
+      memberCountCalls += 1;
+      return 245;
+    },
+    paymentLedgerFile: path.join(directory, 'payment_ledger.json'),
+    telegramLessonSkipRequestsFile: path.join(directory, 'telegram_skips.json'),
+    whatsappLessonSkipRequestsFile: path.join(directory, 'whatsapp_skips.json')
+  });
+  t.after(async () => {
+    if (server.listening) await new Promise(resolve => server.close(resolve));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}/api/admin`;
+
+  const [overviewResponse, progressResponse] = await Promise.all([
+    fetch(`${origin}/telegram-overview?timeZone=UTC`),
+    fetch(`${origin}/telegram-progress?timeZone=UTC`)
+  ]);
+  assert.equal(overviewResponse.status, 200);
+  assert.equal(progressResponse.status, 200);
+  const overview = await overviewResponse.json();
+  const progress = await progressResponse.json();
+  assert.equal(overview.telegramStudents, 1);
+  assert.equal(overview.awaitingTask, 1);
+  assert.equal(progress.students.length, 1);
+  assert.equal(progress.students[0].platform, 'Telegram');
+
+  const statsResponse = await fetch(`${origin}/telegram-stats?timeZone=UTC`);
+  assert.equal(statsResponse.status, 200);
+  const stats = await statsResponse.json();
+  assert.equal(stats.totalGroupMembers, 245);
+  assert.equal(stats.trackedLearners, 1);
+  assert.equal(stats.joinsToday, 1);
+  assert.equal(stats.dailyStats.length, 30);
+  assert.equal(stats.dailyStats.at(-1).joins, 1);
+  assert.equal(stats.dailyStats.at(-1).activeLearners, 1);
+  await fetch(`${origin}/telegram-stats?timeZone=UTC`);
+  assert.equal(memberCountCalls, 1);
+
+  const invalidTimeZoneResponse = await fetch(`${origin}/telegram-overview?timeZone=Not%2FAZone`);
+  assert.equal(invalidTimeZoneResponse.status, 400);
 });
 
 const sampleData = {
@@ -169,12 +246,16 @@ test('student progress identifies a configured next lesson for WhatsApp and Tele
 });
 
 test('dashboard queues validated lesson skips for both platforms and exposes queue state', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-skip-api-'));
+  const directory = fs.mkdtempSync(path.join(process.cwd(), '.dashboard-skip-api-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const firstVideoFile = path.join(directory, 'lesson_1.mp4');
   const videoFile = path.join(directory, 'lesson_2.mp4');
+  const lessonsFile = path.join(directory, 'lessons.json');
   const whatsappQueueFile = path.join(directory, 'whatsapp-skip.json');
   const telegramQueueFile = path.join(directory, 'telegram-skip.json');
+  const telegramProgressFile = path.join(directory, 'telegram-progress.json');
   const agentStatusFile = path.join(directory, 'agent_status.json');
+  fs.writeFileSync(firstVideoFile, 'video 1');
   fs.writeFileSync(videoFile, 'video');
   fs.writeFileSync(agentStatusFile, JSON.stringify({
     connectionState: 'connected',
@@ -186,7 +267,13 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
       grade_3_secondary: {
         name: 'Third Secondary',
         lessons: [
-          { id: 'lesson_1', title: 'Lesson One' },
+          {
+            id: 'lesson_1',
+            title: 'Lesson One',
+            videoFile: firstVideoFile,
+            taskMessage: 'Answer question one.',
+            answerKey: ['Answer one']
+          },
           {
             id: 'lesson_2',
             title: 'Lesson Two',
@@ -216,9 +303,13 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
       }
     }
   };
+  fs.writeFileSync(telegramProgressFile, JSON.stringify(data.telegramProgress));
+  fs.writeFileSync(lessonsFile, JSON.stringify(data.lessons));
   const server = createAdminDashboardServer({
     readData: () => data,
     agentStatusFile,
+    lessonsFile,
+    telegramProgressFile,
     whatsappLessonSkipRequestsFile: whatsappQueueFile,
     telegramLessonSkipRequestsFile: telegramQueueFile
   });
@@ -255,6 +346,33 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   const progress = await progressResponse.json();
   assert.equal(progress.students.find(student => student.platform === 'WhatsApp').skipRequest.status, 'queued');
   assert.equal(progress.students.find(student => student.platform === 'Telegram').skipRequest.status, 'queued');
+  const telegramSkipRequest = JSON.parse(fs.readFileSync(telegramQueueFile, 'utf8'))[0];
+  new LessonSkipQueue(telegramQueueFile).complete(telegramSkipRequest.id, 'sent');
+
+  const telegramProgressResponse = await fetch(`${origin}/api/admin/telegram-progress?timeZone=UTC`);
+  assert.equal(telegramProgressResponse.status, 200);
+  const telegramStudents = await telegramProgressResponse.json();
+  const telegramStudent = telegramStudents.students[0];
+  assert.deepEqual(telegramStudent.availableLessons.map(lesson => lesson.id), ['lesson_1', 'lesson_2']);
+  const sendLessonResponse = await fetch(`${origin}/api/admin/progress/send-lesson`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jid: telegramStudent.jid,
+      currentLessonId: telegramStudent.currentLessonId,
+      lessonId: 'lesson_1'
+    })
+  });
+  assert.equal(sendLessonResponse.status, 202);
+  assert.equal((await sendLessonResponse.json()).lessonId, 'lesson_1');
+  const queuedLesson = JSON.parse(fs.readFileSync(telegramQueueFile, 'utf8'))
+    .find(request => request.requestType === 'send_lesson');
+  assert.equal(queuedLesson.nextLessonId, 'lesson_1');
+  const sendStatusResponse = await fetch(`${origin}/api/admin/telegram-progress?timeZone=UTC`);
+  const sendStatus = await sendStatusResponse.json();
+  assert.equal(sendStatus.students[0].sendLessonRequest.status, 'queued');
+  const conflictingSkip = await postSkip('Telegram', 'telegram:-100123:44');
+  assert.equal(conflictingSkip.status, 409);
 
   data.progress['1001@s.whatsapp.net'].currentLessonId = 'lesson_2';
   data.progress['1001@s.whatsapp.net'].currentLessonIndex = 1;
@@ -1363,21 +1481,32 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
   t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
   const paymentLedgerFile = path.join(temporaryDirectory, 'student_payment_ledger.json');
   const enrolledAt = '2026-01-01T12:00:00.000Z';
-  const studentKey = '1001@s.whatsapp.net';
+  const studentKey = 'telegram:-100123:44';
+  const telegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
   const data = {
     ...sampleData,
-    progress: {
+    lessons: {
+      grade_3_secondary: {
+        name: 'Third Secondary',
+        lessons: [{ id: 'lesson_1', title: 'Lesson One' }]
+      }
+    },
+    telegramProgress: {
       [studentKey]: {
         grade: 'grade_3_secondary',
         currentLessonIndex: 0,
         status: 'awaiting_task',
         enrolledAt,
-        deliveredAt: enrolledAt
+        deliveredAt: enrolledAt,
+        telegramChatId: '-100123',
+        telegramUserId: 44
       }
     }
   };
+  fs.writeFileSync(telegramProgressFile, JSON.stringify(data.telegramProgress));
   const server = createAdminDashboardServer({
     readData: () => data,
+    telegramProgressFile,
     paymentLedgerFile
   });
 
@@ -2654,12 +2783,12 @@ test('student workbook API reports current data and downloads an Excel file', as
   }
 });
 
-test('dashboard event stream pushes contact gender updates', async () => {
+test('dashboard event stream pushes Telegram progress updates', async () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-events-test-'));
-  const contactGenderFile = path.join(temporaryDirectory, 'contact_gender.json');
+  const telegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
   const server = createAdminDashboardServer({
     readData: () => sampleData,
-    contactGenderFile
+    telegramProgressFile
   });
   const controller = new AbortController();
   let reader;
@@ -2677,13 +2806,13 @@ test('dashboard event stream pushes contact gender updates', async () => {
     const initialEvent = decoder.decode((await reader.read()).value);
     assert.match(initialEvent, /event: connected/);
 
-    fs.writeFileSync(contactGenderFile, JSON.stringify({ '1001': 'female' }));
+    fs.writeFileSync(telegramProgressFile, JSON.stringify({ 'telegram:-100123:44': {} }));
     const update = await Promise.race([
       reader.read().then(result => decoder.decode(result.value)),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for dashboard update.')), 2_000))
     ]);
     assert.match(update, /event: dashboard-update/);
-    assert.match(update, /contact_gender\.json/);
+    assert.match(update, /telegram_progress\.json/);
   } finally {
     controller.abort();
     if (reader) await reader.cancel().catch(() => {});
@@ -3115,6 +3244,62 @@ test('curriculum API endpoints allow viewing, saving, uploading video, and manag
     const fileContent = JSON.parse(fs.readFileSync(testLessonsFile, 'utf8'));
     assert.equal(fileContent.grade_3_secondary.lessons.length, 2);
 
+    const changeLesson = async ({
+      sourceType,
+      sourceLessonId = 'lesson_2',
+      lessonId = sourceLessonId,
+      targetType = sourceType
+    }) => fetch(`${origin}/api/admin/curriculum/lesson`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gradeKey: 'grade_3_secondary',
+        sourceGradeKey: 'grade_3_secondary',
+        sourceType,
+        sourceLessonId,
+        isStandalone: targetType === 'standalone',
+        collectionId: targetType === 'treasure_island' ? targetType : null,
+        lesson: {
+          id: lessonId,
+          title: 'Lesson 2: Past Simple',
+          videoFile: 'media/lessons/grade_3_secondary/lesson_2.mp4',
+          taskMessage: '1. Conjugate verb.',
+          answerKey: ['1. went']
+        }
+      })
+    });
+    const renameResponse = await changeLesson({
+      sourceType: 'sequential',
+      sourceLessonId: 'lesson_2',
+      lessonId: 'lesson_3'
+    });
+    assert.equal(renameResponse.status, 200);
+    let updatedCurriculum = JSON.parse(fs.readFileSync(testLessonsFile, 'utf8')).grade_3_secondary;
+    assert.equal(updatedCurriculum.lessons.some(lesson => lesson.id === 'lesson_2'), false);
+    assert.equal(updatedCurriculum.lessons.some(lesson => lesson.id === 'lesson_3'), true);
+
+    const standaloneResponse = await changeLesson({
+      sourceType: 'sequential',
+      sourceLessonId: 'lesson_3',
+      lessonId: 'lesson_3',
+      targetType: 'standalone'
+    });
+    assert.equal(standaloneResponse.status, 200);
+    updatedCurriculum = JSON.parse(fs.readFileSync(testLessonsFile, 'utf8')).grade_3_secondary;
+    assert.equal(updatedCurriculum.lessons.some(lesson => lesson.id === 'lesson_3'), false);
+    assert.equal(updatedCurriculum.standaloneLessons[0].id, 'lesson_3');
+
+    const sequentialResponse = await changeLesson({
+      sourceType: 'standalone',
+      sourceLessonId: 'lesson_3',
+      lessonId: 'lesson_3',
+      targetType: 'sequential'
+    });
+    assert.equal(sequentialResponse.status, 200);
+    updatedCurriculum = JSON.parse(fs.readFileSync(testLessonsFile, 'utf8')).grade_3_secondary;
+    assert.equal(updatedCurriculum.standaloneLessons.length, 0);
+    assert.equal(updatedCurriculum.lessons.some(lesson => lesson.id === 'lesson_3'), true);
+
     const treasureUploadRes = await fetch(`${origin}/api/admin/curriculum/video`, {
       method: 'POST',
       headers: {
@@ -3158,15 +3343,15 @@ test('curriculum API endpoints allow viewing, saving, uploading video, and manag
       },
       body: JSON.stringify({
         gradeKey: 'grade_3_secondary',
-        lessonIds: ['lesson_2', 'lesson_1']
+        lessonIds: ['lesson_3', 'lesson_1']
       })
     });
     assert.equal(reorderRes.status, 200);
     const reorderData = await reorderRes.json();
-    assert.equal(reorderData.lessons[0].id, 'lesson_2');
+    assert.equal(reorderData.lessons[0].id, 'lesson_3');
 
     // 6. DELETE /api/admin/curriculum/lesson
-    const deleteRes = await fetch(`${origin}/api/admin/curriculum/lesson?gradeKey=grade_3_secondary&lessonId=lesson_2`, {
+    const deleteRes = await fetch(`${origin}/api/admin/curriculum/lesson?gradeKey=grade_3_secondary&lessonId=lesson_3`, {
       method: 'DELETE',
       headers: { Origin: origin }
     });
@@ -3186,4 +3371,69 @@ test('curriculum API endpoints allow viewing, saving, uploading video, and manag
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
+});
+
+test('answer-key generation API is local-dashboard-only and returns drafts without saving lessons', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'answer-key-api-test-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const lessonsFile = path.join(directory, 'lessons.json');
+  fs.writeFileSync(lessonsFile, JSON.stringify({ grade_3_secondary: { lessons: [] } }));
+  const calls = [];
+  const server = createAdminDashboardServer({
+    lessonsFile,
+    generateAnswerKey: async (taskMessage, notes) => {
+      calls.push({ taskMessage, notes });
+      return {
+        answers: [{
+          questionNumber: 1,
+          answer: 'goes',
+          explanation: 'Third-person singular takes -es here.',
+          confidence: 'high'
+        }]
+      };
+    }
+  });
+  t.after(async () => {
+    if (server.listening) await new Promise(resolve => server.close(resolve));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/admin/curriculum/generate-answer-key`;
+
+  const denied = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taskMessage: '1. She ___ (go).' })
+  });
+  assert.equal(denied.status, 403);
+  assert.equal(calls.length, 0);
+
+  const invalidRequest = await fetch(url, {
+    method: 'POST',
+    headers: { Origin: `http://127.0.0.1:${server.address().port}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taskMessage: '  ' })
+  });
+  assert.equal(invalidRequest.status, 400);
+  assert.equal(calls.length, 0);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Origin: `http://127.0.0.1:${server.address().port}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      taskMessage: '1. She ___ (go).',
+      notes: 'Present simple'
+    })
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    answers: [{
+      questionNumber: 1,
+      answer: 'goes',
+      explanation: 'Third-person singular takes -es here.',
+      confidence: 'high'
+    }]
+  });
+  assert.deepEqual(calls, [{ taskMessage: '1. She ___ (go).', notes: 'Present simple' }]);
+  assert.deepEqual(JSON.parse(fs.readFileSync(lessonsFile, 'utf8')), {
+    grade_3_secondary: { lessons: [] }
+  });
 });

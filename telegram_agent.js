@@ -50,8 +50,10 @@ const DEFAULT_OFFSET_FILE = path.join(DATA_DIR, 'telegram_update_offset.json');
 const TELEGRAM_MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const TELEGRAM_PAYMENT_REMINDER_LESSONS = 5;
 const TELEGRAM_MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
+const IGNORED_TELEGRAM_USER_IDS = new Set(['6413779313']);
 const LONG_POLL_SECONDS = 25;
 const NETWORK_TIMEOUT_MS = 35_000;
+const TELEGRAM_UPLOAD_TIMEOUT_MS = 180_000;
 const POLL_RETRY_DELAY_MS = 5_000;
 
 function saveJsonAtomically(filePath, value) {
@@ -98,6 +100,20 @@ function getTelegramAnnouncementPreferenceCommand(text) {
     .exec(text.trim())?.[1]?.toLowerCase() || null;
   if (command === null) return null;
   return command.endsWith('_on');
+}
+
+function getTelegramCelebrationPreferenceCommand(text) {
+  const command = /^\/celebrations_(on|off)(?:@[a-z0-9_]+)?(?:\s|$)/i
+    .exec(text.trim())?.[1]?.toLowerCase() || null;
+  return command === null ? null : command === 'on';
+}
+
+function getLessonCelebrationMessage(studentName, lessonTitle) {
+  return `عايز أحتفل معاكم
+🎉 برافو يا ${studentName}!
+جاوبت تمرين الحصة ${lessonTitle} كامل وكل إجاباتك صحيحة 👏🌟
+
+يلا نستمر كدا بي نفس التركيز، وعقبال الشهادة يا رب! 💪`;
 }
 
 function isGroupChat(chat) {
@@ -159,7 +175,7 @@ export class TelegramBotApi {
     const isForm = parameters instanceof FormData;
     const options = {
       method: 'POST',
-      signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+      signal: AbortSignal.timeout(upload ? TELEGRAM_UPLOAD_TIMEOUT_MS : NETWORK_TIMEOUT_MS),
       ...(isForm
         ? { body: parameters }
         : {
@@ -174,8 +190,9 @@ export class TelegramBotApi {
     let response;
     try {
       response = await this.fetchImpl(url, options);
-    } catch {
-      throw new Error(`Telegram ${method} request failed before a response was received.`);
+    } catch (error) {
+      const reason = error?.cause?.code || error?.name || 'network error';
+      throw new Error(`Telegram ${method} request failed before a response was received (${reason}).`);
     }
 
     let payload;
@@ -304,6 +321,11 @@ export class TelegramLessonAgent {
   async handleUpdate(update) {
     const message = update?.message;
     if (!message) return;
+    if (Number.isSafeInteger(message.from?.id) &&
+        IGNORED_TELEGRAM_USER_IDS.has(String(message.from.id))) {
+      this.logger.info(`[Telegram] Ignoring messages from configured admin user ${message.from.id}.`);
+      return;
+    }
     if (message.chat?.type === 'private') {
       await this.handlePrivateUpdate(message);
       return;
@@ -588,6 +610,21 @@ export class TelegramLessonAgent {
       );
       return;
     }
+    const celebrationOptIn = getTelegramCelebrationPreferenceCommand(text);
+    if (celebrationOptIn !== null) {
+      state.telegramCelebrationsOptIn = celebrationOptIn;
+      state.telegramCelebrationsOptInAt = celebrationOptIn
+        ? new Date().toISOString()
+        : null;
+      this.saveProgress();
+      await this.bot.sendMessage(
+        String(message.chat.id),
+        celebrationOptIn
+          ? 'رجعنا الاحتفال باسمك في القروب. لما تحل تمرين الحصة كامل وكل إجاباتك تكون صحيحة حنحتفل بيك. أرسل /celebrations_off لو غيرت رأيك.'
+          : 'تم إيقاف الاحتفال باسمك في القروب. تقدر ترجع في أي وقت بإرسال /celebrations_on.'
+      );
+      return;
+    }
     if (isPaymentStatusCommand(text)) {
       const payment = this.paymentLedger.getCurrent(
         studentKey,
@@ -601,7 +638,7 @@ export class TelegramLessonAgent {
       await this.runStudentOperation(studentKey, async () => {
         await this.bot.sendMessage(
           String(message.chat.id),
-          'أهلين بيك 😍 اتسجلت معانا خلاص. حنرسل ليك الدرس في الخاص، وخليك معانا بالاستمرارية وإن شاء الله تحقق النتيجة البتتمناها!'
+          'أهلين بيك 😍 اتسجلت معانا خلاص. حنرسل ليك الدرس في الخاص، وخليك معانا بالاستمرارية وإن شاء الله تحقق النتيجة البتتمناها!\n\nحنحتفل باسمك في القروب لما تحل تمرين الحصة كامل وكل إجاباتك صحيحة 🎉 لو ما داير اسمك يظهر، أرسل /celebrations_off في الخاص. تقدر ترجع الاحتفال في أي وقت بـ /celebrations_on.'
         );
         try {
           await this.startOrResumeLesson(String(message.chat.id), studentKey, message.message_id);
@@ -843,17 +880,26 @@ export class TelegramLessonAgent {
       return false;
     }
 
-    const next = this.lessonManager.getNextSequentialLesson(state.grade, state.currentLessonId);
-    const lesson = next.status === 'ready'
-      ? this.lessonManager.lessonsConfig[state.grade]?.lessons?.[next.lessonIndex]
-      : null;
+    const gradeLessons = this.lessonManager.lessonsConfig[state.grade]?.lessons || [];
+    let lessonIndex;
+    let lesson;
+    if (request.requestType === 'send_lesson') {
+      lessonIndex = gradeLessons.findIndex(candidate => candidate?.id === request.nextLessonId);
+      lesson = gradeLessons[lessonIndex];
+    } else {
+      const next = this.lessonManager.getNextSequentialLesson(state.grade, state.currentLessonId);
+      lessonIndex = next.lessonIndex;
+      lesson = next.status === 'ready' ? gradeLessons[lessonIndex] : null;
+    }
     if (!lesson || lesson.id !== request.nextLessonId || !isReadyLesson(lesson)) {
       this.lessonSkipQueue.complete(
         request.id,
         'failed',
-        'The configured next lesson changed or is no longer ready.'
+        request.requestType === 'send_lesson'
+          ? 'The requested lesson changed or is no longer ready.'
+          : 'The configured next lesson changed or is no longer ready.'
       );
-      this.logger.info(`[Telegram] Could not find the requested next lesson for ${request.studentKey}.`);
+      this.logger.info(`[Telegram] Could not find the requested lesson for ${request.studentKey}.`);
       return false;
     }
 
@@ -862,11 +908,11 @@ export class TelegramLessonAgent {
         request.chatId,
         request.studentKey,
         state.grade,
-        next.lessonIndex,
+        lessonIndex,
         lesson
       );
       this.lessonSkipQueue.complete(request.id, 'sent');
-      this.logger.info(`[Telegram] Delivered ${lesson.id} to ${request.studentKey} after an admin skip.`);
+      this.logger.info(`[Telegram] Delivered ${lesson.id} to ${request.studentKey} by admin request.`);
       return true;
     } catch (error) {
       this.lessonSkipQueue.complete(request.id, 'failed', error.message);
@@ -1298,6 +1344,21 @@ export class TelegramLessonAgent {
       allCorrectMessage,
       messageId
     );
+    if (state.telegramCelebrationsOptIn !== false &&
+        state.correctQuestionNumbers.length === lesson.answerKey.length &&
+        state.resolvedQuestionNumbers.length === 0 &&
+        this.groupId) {
+      try {
+        await this.bot.sendMessage(
+          String(this.groupId),
+          getLessonCelebrationMessage(state.name || studentName, lesson.title || lesson.id)
+        );
+      } catch (error) {
+        this.logger.error(
+          `[Telegram] Could not announce a lesson achievement for ${studentKey}: ${error.message}`
+        );
+      }
+    }
     state.lessonsCompleted = (state.lessonsCompleted || 0) + 1;
     state.status = 'awaiting_content';
     this.saveProgress();

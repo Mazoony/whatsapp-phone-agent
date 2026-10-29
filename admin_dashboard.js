@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DashboardAuth } from './dashboard_auth.js';
+import { generateLessonAnswerKey } from './answer_key_generator.js';
 import { getPhoneJid } from './phonebook.js';
 import { getConversationJids, getConversationMessages } from './conversation_history.js';
 import {
@@ -132,29 +133,6 @@ const BROADCAST_STATE_FILE = path.join(ROOT_DIR, 'data', 'broadcast_state.json')
 const TELEGRAM_USER_BROADCAST_REQUESTS_FILE = path.join(ROOT_DIR, 'data', 'telegram_user_broadcasts.json');
 const TELEGRAM_USER_BROADCAST_STATE_FILE = path.join(ROOT_DIR, 'data', 'telegram_user_broadcast_state.json');
 const MESSAGE_REQUESTS_FILE = path.join(ROOT_DIR, 'data', 'message_requests.json');
-const DASHBOARD_WATCHED_FILES = new Set([
-  HISTORY_FILE,
-  CONTACTS_FILE,
-  PROGRESS_FILE,
-  TELEGRAM_PROGRESS_FILE,
-  LESSONS_FILE,
-  FOLLOWUP_STATE_FILE,
-  BROADCAST_REQUESTS_FILE,
-  BROADCAST_STATE_FILE,
-  TELEGRAM_USER_BROADCAST_REQUESTS_FILE,
-  TELEGRAM_USER_BROADCAST_STATE_FILE,
-  MESSAGE_REQUESTS_FILE,
-  SCHEDULED_LESSONS_FILE,
-  AGENT_STATUS_FILE,
-  AGENT_QR_FILE,
-  AGENT_MEDIA_ACTIVITY_FILE,
-  TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE,
-  TELEGRAM_UPDATE_QUEUE_FILE,
-  TELEGRAM_AGENT_CONTROL_FILE,
-  WHATSAPP_PRESENCE_FILE,
-  BLOCKED_NUMBERS_FILE,
-  CONTACT_PAYMENT_LABELS_FILE
-].map(filePath => path.resolve(filePath)));
 const DASHBOARD_DATA_SOURCE_FILES = [
   HISTORY_FILE,
   CONTACTS_FILE,
@@ -338,6 +316,32 @@ function latestMessage(messages = []) {
     const latestTimestamp = timestampMs(latest?.timestamp);
     return currentTimestamp > latestTimestamp ? message : latest;
   }, null);
+}
+
+function getReadyTelegramLessons(gradeKey, lessons) {
+  const gradeLessons = lessons?.[gradeKey]?.lessons;
+  if (!Array.isArray(gradeLessons)) return [];
+  return gradeLessons.flatMap((lesson, lessonIndex) => {
+    if (typeof lesson?.id !== 'string' ||
+        typeof lesson.videoFile !== 'string' ||
+        typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
+        !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0) return [];
+    const videoPath = path.resolve(ROOT_DIR, lesson.videoFile);
+    const relativePath = path.relative(ROOT_DIR, videoPath);
+    if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) return [];
+    try {
+      const stats = fs.statSync(videoPath);
+      if (!stats.isFile() || stats.size === 0) return [];
+    } catch (error) {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    }
+    return [{
+      id: lesson.id,
+      title: lesson.title || lesson.id,
+      lessonIndex
+    }];
+  });
 }
 
 function displayName(contact, jid) {
@@ -614,6 +618,7 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       jid: key,
       platform: 'Telegram',
       name: student.name || (student.telegramUsername ? `@${student.telegramUsername}` : `Telegram user ${student.telegramUserId || ''}`),
+      grade: student.grade,
       gradeName: data.lessons[student.grade]?.name || student.grade,
       status: student.status || 'awaiting_content',
       paymentKey: key,
@@ -1834,7 +1839,7 @@ export function createAdminDashboardServer({
   whatsappPresenceRequestsFile = WHATSAPP_PRESENCE_REQUESTS_FILE,
   contactsFile = CONTACTS_FILE,
   followUpStateFile = FOLLOWUP_STATE_FILE,
-  studentWorkbookFile = readData === readDashboardData ? STUDENT_WORKBOOK_FILE : null,
+  studentWorkbookFile = null,
   lessonsFile = LESSONS_FILE,
   lessonMediaDirectory = LESSON_MEDIA_DIR,
   scheduledLessonsFile = SCHEDULED_LESSONS_FILE,
@@ -1845,10 +1850,12 @@ export function createAdminDashboardServer({
   telegramAgentControlFile = TELEGRAM_AGENT_CONTROL_FILE,
   telegramProgressFile = TELEGRAM_PROGRESS_FILE,
   telegramGroupId = process.env.TELEGRAM_GROUP_ID,
+  telegramMemberCountProvider = null,
   telegramUserBroadcastFiles = {
     requests: TELEGRAM_USER_BROADCAST_REQUESTS_FILE,
     state: TELEGRAM_USER_BROADCAST_STATE_FILE
   },
+  generateAnswerKey = generateLessonAnswerKey,
   whatsappLessonSkipRequestsFile = WHATSAPP_LESSON_SKIP_REQUESTS_FILE,
   telegramLessonSkipRequestsFile = TELEGRAM_LESSON_SKIP_REQUESTS_FILE
 } = {}) {
@@ -2005,40 +2012,122 @@ export function createAdminDashboardServer({
     };
     return cachedDashboardData;
   };
+  const getTelegramProgressSnapshot = (timeZone, now = Date.now()) => {
+    const data = {
+      history: {},
+      contacts: {},
+      progress: {},
+      telegramProgress: readJsonFileOr(telegramProgressFile, {}),
+      lessons: readJsonFile(lessonsFile)
+    };
+    const progress = listDashboardStudentProgress(data, now, timeZone);
+    const latestSkipRequests = new Map();
+    const latestSendRequests = new Map();
+    for (const request of lessonSkipQueues.Telegram.read()) {
+      if (request.requestType === 'send_lesson') {
+        latestSendRequests.set(request.studentKey, request);
+      } else {
+        latestSkipRequests.set(request.studentKey, request);
+      }
+    }
+    return {
+      ...progress,
+      students: progress.students.map(student => {
+        const request = latestSkipRequests.get(student.jid);
+        const sendRequest = latestSendRequests.get(student.jid);
+        return {
+          ...student,
+          availableLessons: getReadyTelegramLessons(student.grade, data.lessons),
+          skipRequest: request?.currentLessonId === student.currentLessonId
+            ? {
+                status: request.status,
+                error: request.error,
+                nextLessonTitle: request.nextLessonTitle
+              }
+            : null,
+          sendLessonRequest: sendRequest
+            ? {
+                status: sendRequest.status,
+                error: sendRequest.error,
+                nextLessonId: sendRequest.nextLessonId,
+                nextLessonTitle: sendRequest.nextLessonTitle
+              }
+            : null
+        };
+      })
+    };
+  };
+  let telegramMemberCountCache = {
+    count: null,
+    updatedAt: null,
+    checkedAt: 0
+  };
+  const getTelegramGroupMemberCount = async () => {
+    if (Date.now() - telegramMemberCountCache.checkedAt < 60_000) {
+      return telegramMemberCountCache;
+    }
+
+    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    if (typeof telegramMemberCountProvider !== 'function' &&
+        (!token || !telegramGroupId)) {
+      telegramMemberCountCache = {
+        count: null,
+        updatedAt: null,
+        checkedAt: Date.now()
+      };
+      return telegramMemberCountCache;
+    }
+
+    try {
+      const count = typeof telegramMemberCountProvider === 'function'
+        ? await telegramMemberCountProvider(telegramGroupId)
+        : await (async () => {
+            const response = await fetch(
+              `https://api.telegram.org/bot${token}/getChatMemberCount`,
+              {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ chat_id: telegramGroupId }),
+                signal: AbortSignal.timeout(10_000)
+              }
+            );
+            const payload = await response.json();
+            if (!response.ok || payload?.ok !== true) {
+              throw new Error('Telegram did not return the group member count.');
+            }
+            return payload.result;
+          })();
+      if (!Number.isInteger(count) || count < 0) {
+        throw new Error('Telegram returned an invalid group member count.');
+      }
+      telegramMemberCountCache = {
+        count,
+        updatedAt: new Date().toISOString(),
+        checkedAt: Date.now()
+      };
+    } catch (error) {
+      console.error('[Admin Dashboard] Could not fetch Telegram group member count:', error.message);
+      telegramMemberCountCache = {
+        ...telegramMemberCountCache,
+        checkedAt: Date.now()
+      };
+    }
+    return telegramMemberCountCache;
+  };
   const eventClients = new Set();
   const pendingChanges = new Set();
   const watchedFiles = new Set([
-    ...DASHBOARD_WATCHED_FILES,
-    agentStatusFile,
-    agentQrFile,
-    agentLogFile,
     telegramAgentLogFile,
-    agentMediaActivityFile,
     telegramAgentMediaActivityFile,
-    incomingChatQueueFile,
     telegramUpdateQueueFile,
     telegramAgentControlFile,
-    chatReadStateFile,
-    whatsappChatActivityFile,
-    contactSyncRequestsFile,
-    contactSyncStatusFile,
-    paymentLabelsFile,
-    whatsappPresenceFile,
-    blockedContactsFile,
-    contactGenderFile,
-    contactsFile,
     lessonsFile,
     telegramProgressFile,
     telegramUserBroadcastFiles.requests,
     telegramUserBroadcastFiles.state,
-    messageRequestsFile,
-    scheduledLessonsFile,
     paymentLedgerFile,
     telegramAgentStatusFile,
-    whatsappLessonSkipRequestsFile,
     telegramLessonSkipRequestsFile,
-    broadcastFiles.requests,
-    broadcastFiles.state
   ].map(filePath => path.resolve(filePath)));
   const watchedDirectories = new Map();
   for (const filePath of watchedFiles) {
@@ -2187,6 +2276,99 @@ export function createAdminDashboardServer({
       eventClients.add(res);
       res.write(`event: connected\ndata: ${JSON.stringify({ connectedAt: new Date().toISOString() })}\n\n`);
       req.on('close', () => eventClients.delete(res));
+      return;
+    }
+
+    if (req.method === 'GET' &&
+        ['/api/admin/telegram-overview', '/api/admin/telegram-progress'].includes(requestUrl.pathname)) {
+      const timeZone = requestUrl.searchParams.get('timeZone') || 'UTC';
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone });
+      } catch {
+        sendJson(res, 400, { error: 'A valid time zone is required.' });
+        return;
+      }
+
+      try {
+        const now = Date.now();
+        const progress = getTelegramProgressSnapshot(timeZone, now);
+        if (requestUrl.pathname === '/api/admin/telegram-progress') {
+          sendJson(res, 200, progress);
+          return;
+        }
+
+        const today = calendarDateKey(now, timeZone);
+        const weekCutoff = now - 7 * 24 * 60 * 60 * 1000;
+        const joinedStudents = progress.students.filter(student => student.joinedAt);
+        const lessonCounts = Object.values(readJsonFile(lessonsFile))
+          .reduce((count, grade) => count + (Array.isArray(grade.lessons) ? grade.lessons.length : 0), 0);
+        sendJson(res, 200, {
+          telegramStudents: progress.students.length,
+          telegramJoinedToday: joinedStudents.filter(student =>
+            calendarDateKey(Date.parse(student.joinedAt), timeZone) === today).length,
+          telegramJoinedLast7Days: joinedStudents.filter(student =>
+            Date.parse(student.joinedAt) >= weekCutoff).length,
+          awaitingTask: progress.insights.statusCounts.awaiting_task,
+          awaitingReattempt: progress.insights.statusCounts.awaiting_reattempt,
+          completed: progress.insights.statusCounts.completed,
+          configuredLessons: lessonCounts
+        });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load Telegram dashboard data:', error.message);
+        sendJson(res, 500, { error: 'Could not load Telegram dashboard data.' });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-stats') {
+      const timeZone = requestUrl.searchParams.get('timeZone') || 'UTC';
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone });
+      } catch {
+        sendJson(res, 400, { error: 'A valid time zone is required.' });
+        return;
+      }
+
+      try {
+        const now = Date.now();
+        const progress = getTelegramProgressSnapshot(timeZone, now);
+        getTelegramGroupMemberCount().then(memberCount => {
+          const activeByDate = new Map(
+            progress.insights.engagementTrend.map(day => [day.date, day.telegramActiveStudents])
+          );
+          const joinsByDate = new Map();
+          for (const student of progress.students) {
+            if (!student.joinedAt) continue;
+            const date = calendarDateKey(Date.parse(student.joinedAt), timeZone);
+            joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
+          }
+          const dailyStats = getRecentCalendarDates(now, 30, timeZone).map(date => ({
+            date,
+            joins: joinsByDate.get(date) || 0,
+            activeLearners: activeByDate.get(date) || 0
+          }));
+          const today = calendarDateKey(now, timeZone);
+          sendJson(res, 200, {
+            totalGroupMembers: memberCount.count,
+            memberCountUpdatedAt: memberCount.updatedAt,
+            memberCountStatus: memberCount.count === null
+              ? process.env.TELEGRAM_BOT_TOKEN?.trim() && telegramGroupId
+                ? 'unavailable'
+                : 'not_configured'
+              : 'available',
+            trackedLearners: progress.total,
+            joinsToday: joinsByDate.get(today) || 0,
+            joinsLast7Days: dailyStats.slice(-7).reduce((total, day) => total + day.joins, 0),
+            dailyStats
+          });
+        }).catch(error => {
+          console.error('[Admin Dashboard] Could not load Telegram statistics:', error.message);
+          sendJson(res, 500, { error: 'Could not load Telegram statistics.' });
+        });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not load Telegram statistics:', error.message);
+        sendJson(res, 500, { error: 'Could not load Telegram statistics.' });
+      }
       return;
     }
 
@@ -2458,6 +2640,40 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/curriculum/generate-answer-key') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Answer keys can only be generated from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(async body => {
+        if (typeof body?.taskMessage !== 'string' ||
+            (typeof body?.notes !== 'undefined' && typeof body.notes !== 'string')) {
+          sendJson(res, 400, { error: 'Lesson questions and optional supporting notes are required.' });
+          return;
+        }
+        if (!body.taskMessage.trim() || body.taskMessage.length > 12_000 ||
+            (body.notes || '').length > 8_000) {
+          sendJson(res, 400, { error: 'Questions must be 1-12,000 characters; supporting notes may be up to 8,000 characters.' });
+          return;
+        }
+        try {
+          sendJson(res, 200, await generateAnswerKey(body.taskMessage, body.notes || ''));
+        } catch (error) {
+          console.error('[Admin Dashboard] Could not generate a lesson answer key:', error.message);
+          sendJson(res, 502, { error: error.message });
+        }
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not read an answer-key request:', error.message);
+        const invalidInput = error.message === 'Request body is too large.' ||
+          error.message === 'Request body must contain valid JSON.';
+        sendJson(res, invalidInput ? 400 : 500, {
+          error: invalidInput ? error.message : 'Could not process the answer-key request.'
+        });
+      });
+      return;
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/api/admin/curriculum/lesson') {
       if (!isSameOriginLoopbackRequest(req)) {
         sendJson(res, 403, { error: 'Curriculum updates must come from this local dashboard.' });
@@ -2469,6 +2685,9 @@ export function createAdminDashboardServer({
           lesson: body.lesson,
           isStandalone: body.isStandalone === true,
           collectionId: typeof body.collectionId === 'string' ? body.collectionId : null,
+          sourceGradeKey: typeof body.sourceGradeKey === 'string' ? body.sourceGradeKey : body.gradeKey,
+          sourceType: typeof body.sourceType === 'string' ? body.sourceType : null,
+          sourceLessonId: typeof body.sourceLessonId === 'string' ? body.sourceLessonId : null,
           filePath: lessonsFile
         });
         scheduleChange(path.basename(lessonsFile));
@@ -3397,11 +3616,10 @@ export function createAdminDashboardServer({
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/payment-ledger') {
       try {
-        const data = readDataWithBlockedContacts();
-        const students = listDashboardStudentProgress(data).students
+        const students = getTelegramProgressSnapshot('UTC').students
           .filter(student => student.paymentKey && student.enrolledAt)
           .map(student => ({
-            platform: student.platform,
+            platform: 'Telegram',
             studentKey: student.paymentKey,
             name: student.name,
             gradeName: student.gradeName,
@@ -3487,8 +3705,7 @@ export function createAdminDashboardServer({
           sendJson(res, 400, { error: 'A student and valid payment status are required.' });
           return;
         }
-        const data = readDataWithBlockedContacts();
-        const student = listDashboardStudentProgress(data).students.find(item =>
+        const student = getTelegramProgressSnapshot('UTC').students.find(item =>
           item.paymentKey === body.studentKey);
         if (!student) {
           sendJson(res, 404, { error: 'Student was not found in the current progress list.' });
@@ -3530,7 +3747,12 @@ export function createAdminDashboardServer({
           return;
         }
 
-        const data = readDataWithBlockedContacts();
+        const data = body.platform === 'Telegram'
+          ? {
+              lessons: readJsonFile(lessonsFile),
+              telegramProgress: readJsonFileOr(telegramProgressFile, {})
+            }
+          : readDataWithBlockedContacts();
         const student = body.platform === 'WhatsApp'
           ? data.progress?.[body.jid]
           : data.telegramProgress?.[body.jid];
@@ -3571,7 +3793,7 @@ export function createAdminDashboardServer({
         }
 
         const queue = lessonSkipQueues[body.platform];
-        const { request, alreadyQueued } = queue.enqueue({
+        const { request, alreadyQueued, conflict } = queue.enqueue({
           platform: body.platform,
           studentKey: body.jid,
           jid: body.platform === 'WhatsApp' ? body.jid : null,
@@ -3584,6 +3806,10 @@ export function createAdminDashboardServer({
           lessonIndex: nextLesson.lessonIndex,
           nextLessonTitle: nextLesson.lessonTitle
         });
+        if (conflict) {
+          sendJson(res, 409, { error: 'Another lesson request is already queued for this student.' });
+          return;
+        }
         if (!alreadyQueued) scheduleChange(path.basename(
           body.platform === 'WhatsApp'
             ? whatsappLessonSkipRequestsFile
@@ -3606,13 +3832,84 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/progress/send-lesson') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Lesson delivery must be requested from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (!body || typeof body.jid !== 'string' || !body.jid || body.jid.length > 200 ||
+            typeof body.currentLessonId !== 'string' ||
+            typeof body.lessonId !== 'string' || !body.lessonId) {
+          sendJson(res, 400, { error: 'A Telegram student, current lesson ID, and destination lesson ID are required.' });
+          return;
+        }
+
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+        const student = telegramProgress[body.jid];
+        if (!student || student.currentLessonId !== body.currentLessonId) {
+          sendJson(res, 409, { error: 'The student progress changed. Refresh the progress table and try again.' });
+          return;
+        }
+        if (typeof student.telegramChatId === 'undefined' ||
+            typeof student.telegramUserId === 'undefined' ||
+            body.jid !== `telegram:${student.telegramChatId}:${student.telegramUserId}`) {
+          sendJson(res, 409, { error: 'This Telegram student does not have a valid group destination.' });
+          return;
+        }
+
+        const lessons = readJsonFile(lessonsFile);
+        const selectedLesson = getReadyTelegramLessons(student.grade, lessons)
+          .find(lesson => lesson.id === body.lessonId);
+        if (!selectedLesson) {
+          sendJson(res, 409, { error: 'The selected lesson is not fully configured with a video, exercise, and answer key.' });
+          return;
+        }
+
+        const { request, alreadyQueued, conflict } = lessonSkipQueues.Telegram.enqueue({
+          requestType: 'send_lesson',
+          platform: 'Telegram',
+          studentKey: body.jid,
+          chatId: String(student.telegramChatId),
+          userId: String(student.telegramUserId),
+          gradeKey: student.grade,
+          currentLessonId: student.currentLessonId || '',
+          nextLessonId: selectedLesson.id,
+          lessonIndex: selectedLesson.lessonIndex,
+          nextLessonTitle: selectedLesson.title
+        });
+        if (conflict) {
+          sendJson(res, 409, { error: 'Another lesson request is already queued for this student.' });
+          return;
+        }
+        if (!alreadyQueued) scheduleChange(path.basename(telegramLessonSkipRequestsFile));
+        sendJson(res, 202, {
+          requestId: request.id,
+          status: request.status,
+          alreadyQueued,
+          lessonId: request.nextLessonId,
+          lessonTitle: request.nextLessonTitle
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not queue a lesson delivery:', error.message);
+        const invalidInput = error.message === 'Request body is too large.' ||
+          error.message === 'Request body must contain valid JSON.';
+        sendJson(res, invalidInput ? 400 : 500, {
+          error: invalidInput ? error.message : 'Could not queue the lesson delivery.'
+        });
+      });
+      return;
+    }
+
     if (req.method !== 'GET') {
       sendJson(res, 405, { error: 'Method not allowed' });
       return;
     }
 
     try {
-      const data = readDataWithBlockedContacts();
+      const data = requestUrl.pathname.startsWith('/api/admin/curriculum')
+        ? { lessons: readJsonFile(lessonsFile) }
+        : readDataWithBlockedContacts();
       if (requestUrl.pathname === '/api/admin/overview') {
         const timeZone = requestUrl.searchParams.get('timeZone') || 'UTC';
         try {

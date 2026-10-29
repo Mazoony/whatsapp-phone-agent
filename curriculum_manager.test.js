@@ -264,3 +264,118 @@ test('Treasure Island lessons are managed in a separate Grade 3 Secondary collec
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('editing a lesson can move it between sequential, standalone, and collection types', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'curriculum-lesson-type-change-'));
+  const filePath = path.join(tmpDir, 'lessons.json');
+  fs.writeFileSync(filePath, JSON.stringify({
+    grade_3_secondary: {
+      name: 'Grade 3 Secondary',
+      lessons: [{
+        id: 'lesson_1',
+        title: 'Lesson One',
+        videoFile: 'media/lessons/grade_3_secondary/lesson_1.mp4',
+        taskMessage: 'Exercise',
+        answerKey: ['Answer']
+      }]
+    }
+  }), 'utf8');
+
+  const lesson = {
+    id: 'lesson_1',
+    title: 'Updated Lesson One',
+    videoFile: 'media/lessons/grade_3_secondary/lesson_1.mp4',
+    taskMessage: 'Updated exercise',
+    answerKey: ['Updated answer']
+  };
+  const save = (sourceType, targetType) => saveLesson({
+    gradeKey: 'grade_3_secondary',
+    sourceGradeKey: 'grade_3_secondary',
+    sourceType,
+    isStandalone: targetType === 'standalone',
+    collectionId: targetType === 'treasure_island' ? 'treasure_island' : null,
+    lesson,
+    filePath
+  });
+
+  try {
+    save('sequential', 'standalone');
+    let grade = JSON.parse(fs.readFileSync(filePath, 'utf8')).grade_3_secondary;
+    assert.deepEqual(grade.lessons, []);
+    assert.equal(grade.standaloneLessons[0].title, 'Updated Lesson One');
+
+    save('standalone', 'treasure_island');
+    grade = JSON.parse(fs.readFileSync(filePath, 'utf8')).grade_3_secondary;
+    assert.deepEqual(grade.standaloneLessons, []);
+    assert.equal(grade.collections.treasure_island.lessons[0].id, 'lesson_1');
+
+    save('treasure_island', 'sequential');
+    grade = JSON.parse(fs.readFileSync(filePath, 'utf8')).grade_3_secondary;
+    assert.equal(grade.lessons[0].title, 'Updated Lesson One');
+    assert.deepEqual(grade.collections.treasure_island.lessons, []);
+
+    grade.lessons.push({ ...lesson, id: 'lesson_2' });
+    grade.standaloneLessons = [{ ...lesson, id: 'lesson_2' }];
+    fs.writeFileSync(filePath, JSON.stringify({ grade_3_secondary: grade }), 'utf8');
+    assert.throws(() => saveLesson({
+      gradeKey: 'grade_3_secondary',
+      sourceType: 'standalone',
+      lesson: { ...lesson, id: 'lesson_2' },
+      filePath
+    }), /already exists/);
+    grade = JSON.parse(fs.readFileSync(filePath, 'utf8')).grade_3_secondary;
+    assert.equal(grade.standaloneLessons[0].id, 'lesson_2');
+    assert.equal(grade.lessons.filter(item => item.id === 'lesson_2').length, 1);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('editing a lesson can change its ID and rejects an ID already used in its destination', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'curriculum-lesson-id-change-'));
+  const filePath = path.join(tmpDir, 'lessons.json');
+  fs.writeFileSync(filePath, JSON.stringify({
+    grade_3_secondary: {
+      lessons: [
+        { id: 'lesson_1', title: 'First', taskMessage: 'Q', answerKey: ['A'] },
+        { id: 'lesson_2', title: 'Second', taskMessage: 'Q', answerKey: ['A'] }
+      ]
+    }
+  }), 'utf8');
+
+  try {
+    saveLesson({
+      gradeKey: 'grade_3_secondary',
+      sourceType: 'sequential',
+      sourceLessonId: 'lesson_1',
+      lesson: {
+        id: 'lesson_3',
+        title: 'Renamed First',
+        taskMessage: 'Updated question',
+        answerKey: ['Updated answer']
+      },
+      filePath
+    });
+
+    let lessons = JSON.parse(fs.readFileSync(filePath, 'utf8')).grade_3_secondary.lessons;
+    assert.deepEqual(lessons.map(item => item.id), ['lesson_3', 'lesson_2']);
+    assert.equal(lessons[0].title, 'Renamed First');
+
+    assert.throws(() => saveLesson({
+      gradeKey: 'grade_3_secondary',
+      sourceType: 'sequential',
+      sourceLessonId: 'lesson_3',
+      lesson: {
+        id: 'lesson_2',
+        title: 'Duplicate',
+        taskMessage: 'Question',
+        answerKey: ['Answer']
+      },
+      filePath
+    }), /already exists/);
+    lessons = JSON.parse(fs.readFileSync(filePath, 'utf8')).grade_3_secondary.lessons;
+    assert.deepEqual(lessons.map(item => item.id), ['lesson_3', 'lesson_2']);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
