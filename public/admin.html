@@ -506,6 +506,9 @@
     .payment-ledger-amount input:first-child { width: 90px; }
     .payment-ledger-amount input:last-child { width: 60px; }
     .payment-ledger-actions select { flex: 1; }
+    .payment-receipt-preview { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 112px; color: var(--green); font-size: 10px; font-weight: 650; text-decoration: none; }
+    .payment-receipt-preview img { display: block; width: 96px; height: 72px; object-fit: cover; border: 1px solid var(--line); border-radius: 6px; background: #f5f7f5; }
+    .payment-receipt-preview:hover img, .payment-receipt-preview:focus-visible img { border-color: var(--green); }
     .pagination { display: flex; justify-content: center; align-items: center; gap: 11px; padding: 12px; color: var(--muted); font-size: 11px; }
     .pagination button { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 5px 9px; }
     .error { margin: 14px 0; padding: 11px 13px; border: 1px solid #f1cccc; background: #fff5f4; border-radius: 9px; color: var(--red); font-size: 12px; }
@@ -4101,7 +4104,7 @@
             details.transactionId ? `Ref: ${details.transactionId}` : '',
             details.adminNote,
             details.receiptId
-              ? `<a class="btn-micro" href="/api/admin/payment-receipts/${encodeURIComponent(details.receiptId)}" target="_blank" rel="noopener noreferrer">View receipt image</a>`
+              ? `<a class="payment-receipt-preview" href="/api/admin/payment-receipts/${encodeURIComponent(details.receiptId)}" target="_blank" rel="noopener noreferrer" aria-label="Open receipt image for ${escapeHtml(student.name)}"><img src="/api/admin/payment-receipts/${encodeURIComponent(details.receiptId)}" alt="Student payment receipt" loading="lazy"><span>View full receipt</span></a>`
               : ''
           ].filter(Boolean).map(item =>
             item.startsWith('<a ') ? item : escapeHtml(item)).join(' · ');

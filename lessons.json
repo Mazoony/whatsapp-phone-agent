@@ -213,6 +213,31 @@
           "Samoa",
           "44"
         ]
+      },
+      {
+        "id": "lesson_9",
+        "title": "Treasure Island_Lesson_2 About_The_Book",
+        "videoFile": "media/lessons/grade_3_secondary/Treasure_Island_-_About_the_Book_-_Lesson_3.mp4",
+        "caption": "🎬 فيديو الحصة | مستر مازن (eShool)",
+        "introMessage": "يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇",
+        "taskMessage": "1. When did the story Treasure Island take place?\n2. What is Treasure Island about?\n3. What did pirates do when they take a treasure?\n4. When was Robert Louis Stevenson born?\n5. Whose the treasur of the story?\n6. What did pirates do to the sailors?\n7. What happens to pirates if they are caught?\n8. What did the ships carry?\n9. Where did ships come from?\n10. Where did the ships go to?\n11. Name two real pirates\n*True or False*\n1. Treasure Island is a real place in the UK (...........)\n2. Pirates killed people but didn't kill each others  (........)\n3. Long John Silver is not a real person (.........)\n4. People didn't like to talk about pirates?",
+        "answerKey": [
+          "In the middle of the eighteenth century",
+          "Pirates who stole ships",
+          "Bury it in an island",
+          "1850",
+          "Captain Flint",
+          "Kill each others",
+          "Hanged",
+          "Gold, silver and goods",
+          "South America",
+          "Spain",
+          "Henry Morgan / Blackbeard / Mary Read",
+          "F",
+          "F",
+          "T",
+          "F"
+        ]
       }
     ],
     "standaloneLessons": [],
