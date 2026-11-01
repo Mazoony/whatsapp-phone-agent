@@ -44,9 +44,20 @@ import {
   getDueLessonAnswerReminders,
   LESSON_ANSWER_REMINDER_CHECK_INTERVAL_MS,
   LESSON_ANSWER_REMINDER_MESSAGE,
+  markLessonAnswerReminderSuppressed,
   markLessonAnswerReminderSent
 } from './lesson_answer_reminders.js';
 import { recordTelegramLessonAnnouncementOptIn } from './telegram_announcement_recipients.js';
+import {
+  DAILY_MOTIVATION_REMINDER_MESSAGE,
+  formatWeeklyGoalMessage,
+  getDueStudentMotivationMessages,
+  getStudentGoalCommand,
+  getStudentLocalDate,
+  getStudentReminderCommand,
+  STUDENT_MOTIVATION_CHECK_INTERVAL_MS,
+  STUDENT_MOTIVATION_TIME_ZONE
+} from './student_motivation.js';
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(APP_DIR, 'data');
@@ -67,6 +78,10 @@ function saveJsonAtomically(filePath, value) {
   const temporaryPath = `${filePath}.${process.pid}.tmp`;
   fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), 'utf8');
   fs.renameSync(temporaryPath, filePath);
+}
+
+function getStudentMilestoneMessage(lessonsCompleted) {
+  return `🎉 برافو عليك! كملت ${lessonsCompleted} حصص بنجاح.\n\nتقدمك واضح، وخطوة صغيرة كل يوم بتقربك من هدفك. واصل بالوتيرة المناسبة ليك 🌟`;
 }
 
 function readJsonFile(filePath, fallback) {
@@ -187,11 +202,23 @@ function getTelegramStudentHelpMessage() {
   return `مساعدة استخدام بوت الدروس 📚
 
 • أول مرة: افتح المحادثة الخاصة مع @eSchoolsdBot واضغط Start.
+
 • أرسل /lesson في القروب عشان أرسل ليك الحصة في الخاص، أو أرسلها هناك عشان أواصل معاك.
+
 • أرسل إجابات التمرين كنص في الخاص. لو في إجابات محتاجة تصحيح، حأحدد أرقام الأسئلة البتحتاج تعيدها.
+
 • أرسل /lesson في الخاص عشان أستلم الحصة الحالية مرة تانية.
+
 • أرسل /previous للرجوع للحصة السابقة، أو /next للانتقال للحصة الجاية. الحصص التي تستلمها تُحفظ في سجل دروسك.
+
 • أرسل /payment لمعرفة حالة الدفع، أو /paid لإرسال بلاغ للمراجعة. أرسل صورة الإيصال في الخاص.
+
+• في الخاص أرسل /goal لاختيار هدف أسبوعي من 1 إلى 7 حصص. حأرسل ليك ملخصًا كل يوم اثنين الساعة 6 مساءً بتوقيت السودان، وتقدر توقفه بـ /goal_off.
+
+• في الخاص أرسل /reminder 18:30 لاختيار زمن تذكير يومي اختياري (بتوقيت السودان)، أو /reminder_off لإيقافه. تذكير التمرين بعد 8 ساعات يظل منفصلًا.
+
+• الاحتفال باسمك في القروب اختياري: أرسل في الخاص /celebrations_on للموافقة أو /celebrations_off لإيقافه.
+
 • أرسل /help في أي وقت لعرض المساعدة تاني.`;
 }
 
@@ -330,6 +357,7 @@ export class TelegramLessonAgent {
     paymentLedger = createStudentPaymentLedger(STUDENT_PAYMENT_LEDGER_FILE),
     paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
     scanReceipt = scanPaymentReceipt,
+    motivationTimeZone = STUDENT_MOTIVATION_TIME_ZONE,
     logger = console
   }) {
     if (!bot || typeof bot.sendMessage !== 'function' || typeof bot.sendVideo !== 'function') {
@@ -349,6 +377,7 @@ export class TelegramLessonAgent {
     this.paymentLedger = paymentLedger;
     this.paymentReceiptImageDirectory = paymentReceiptImageDirectory;
     this.scanReceipt = scanReceipt;
+    this.motivationTimeZone = motivationTimeZone;
     this.logger = logger;
     this.processingLessonSkips = false;
     this.processingAnswerReminders = false;
@@ -700,7 +729,8 @@ export class TelegramLessonAgent {
       );
       return;
     }
-    const [studentKey, state] = found;
+    const [studentKey, initialState] = found;
+    let state = initialState;
     state.telegramPrivateChatId = String(message.chat.id);
     this.saveProgress();
     this.saveProgress();
@@ -734,6 +764,70 @@ export class TelegramLessonAgent {
       );
       return;
     }
+    const goalCommand = getStudentGoalCommand(text);
+    if (goalCommand) {
+      this.recordStudentActivity(studentKey, state.telegramChatId, message.from);
+      state = this.progress[studentKey];
+      if (goalCommand.action === 'invalid') {
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          'أرسل هدفك كعدد من 1 إلى 7، مثال: /goal 3. أرسل /goal_off لو داير توقف الملخص الأسبوعي.'
+        );
+      } else if (goalCommand.action === 'off') {
+        delete state.weeklyLessonGoal;
+        delete state.weeklyGoalMessageSentFor;
+        this.saveProgress();
+        await this.bot.sendMessage(String(message.chat.id), 'تم إيقاف ملخص الهدف الأسبوعي. تقدر تختار هدف جديد في أي وقت بإرسال /goal 3.');
+      } else if (goalCommand.action === 'set') {
+        state.weeklyLessonGoal = goalCommand.goal;
+        this.saveProgress();
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          `تم تسجيل هدفك: ${goalCommand.goal} ${goalCommand.goal === 1 ? 'حصة' : 'حصص'} في الأسبوع 🌟 حأرسل ليك ملخصًا لطيفًا كل يوم اثنين الساعة 6 مساءً بتوقيت السودان. غيّر الهدف بإرسال /goal 1 إلى /goal 7، أو أوقفه بـ /goal_off.`
+        );
+      } else {
+        const currentGoal = state.weeklyLessonGoal;
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          Number.isInteger(currentGoal)
+            ? `هدفك الحالي ${currentGoal} ${currentGoal === 1 ? 'حصة' : 'حصص'} في الأسبوع. أرسل /goal 1 إلى /goal 7 لتغييره، أو /goal_off لإيقافه.`
+            : 'اختار هدفًا واقعيًا من 1 إلى 7 حصص في الأسبوع، مثال: /goal 3. حأرسل ليك ملخصًا كل يوم اثنين الساعة 6 مساءً بتوقيت السودان، وتقدر تغيّر الهدف أو توقفه في أي وقت.'
+        );
+      }
+      return;
+    }
+    const reminderCommand = getStudentReminderCommand(text);
+    if (reminderCommand) {
+      this.recordStudentActivity(studentKey, state.telegramChatId, message.from);
+      state = this.progress[studentKey];
+      if (reminderCommand.action === 'invalid') {
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          'اكتب الزمن بصيغة 24 ساعة، مثال: /reminder 18:30. أرسل /reminder_off لإيقاف التذكير.'
+        );
+      } else if (reminderCommand.action === 'off') {
+        delete state.dailyMotivationReminderTime;
+        delete state.dailyMotivationReminderSentFor;
+        this.saveProgress();
+        await this.bot.sendMessage(String(message.chat.id), 'تم إيقاف تذكير الحصة اليومي. تقدر تختار زمن جديد بإرسال /reminder 18:30.');
+      } else if (reminderCommand.action === 'set') {
+        state.dailyMotivationReminderTime = reminderCommand.time;
+        delete state.dailyMotivationReminderSentFor;
+        this.saveProgress();
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          `تم ضبط تذكيرك اليومي على ${reminderCommand.time} بتوقيت السودان. حأذكرك بلطف لو عندك تمرين منتظر وما كنت نشطت اليوم. أرسل /reminder_off لإيقافه.`
+        );
+      } else {
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          state.dailyMotivationReminderTime
+            ? `زمن تذكيرك اليومي ${state.dailyMotivationReminderTime} بتوقيت السودان. أرسل /reminder 18:30 لتغييره أو /reminder_off لإيقافه.`
+            : 'ما عندك تذكير يومي مفعّل. اختار زمنًا بصيغة 24 ساعة، مثال: /reminder 18:30.'
+        );
+      }
+      return;
+    }
     if (isPaymentStatusCommand(text)) {
       const payment = this.paymentLedger.getCurrent(
         studentKey,
@@ -763,7 +857,7 @@ export class TelegramLessonAgent {
       await this.runStudentOperation(studentKey, async () => {
         await this.bot.sendMessage(
           String(message.chat.id),
-          'أهلين بيك 😍 اتسجلت معانا خلاص. حنرسل ليك الدرس في الخاص، وخليك معانا بالاستمرارية وإن شاء الله تحقق النتيجة البتتمناها!\n\nحنحتفل باسمك في القروب لما تحل تمرين الحصة كامل وكل إجاباتك صحيحة 🎉 لو ما داير اسمك يظهر، أرسل /celebrations_off في الخاص. تقدر ترجع الاحتفال في أي وقت بـ /celebrations_on.'
+          'أهلين بيك 😍 اتسجلت معانا خلاص. حنرسل ليك الدرس في الخاص، وخليك معانا بالاستمرارية وإن شاء الله تحقق النتيجة البتتمناها!\n\nالاحتفال باسمك في القروب اختياري. لو موافق، أرسل /celebrations_on في الخاص؛ وتقدر توقفه في أي وقت بـ /celebrations_off.'
         );
         try {
           await this.startOrResumeLesson(String(message.chat.id), studentKey, message.message_id);
@@ -1427,6 +1521,15 @@ export class TelegramLessonAgent {
               .find(candidate => candidate.studentKey === reminder.studentKey);
             if (!currentReminder) return;
             const student = currentReminder.student;
+            const today = getStudentLocalDate(now, this.motivationTimeZone);
+            if (student.motivationMessageSentFor === today) {
+              markLessonAnswerReminderSuppressed(currentReminder);
+              this.saveProgress();
+              this.logger.info(
+                `[Telegram] Skipped a duplicate motivation reminder for ${currentReminder.studentKey}; one was already sent today.`
+              );
+              return;
+            }
             const privateChatId = student.telegramPrivateChatId;
             if (!privateChatId) {
               if (student.privateReminderUnavailableForDeliveryAt !== currentReminder.deliveredAt) {
@@ -1440,6 +1543,7 @@ export class TelegramLessonAgent {
             }
             await this.bot.sendMessage(privateChatId, LESSON_ANSWER_REMINDER_MESSAGE);
             markLessonAnswerReminderSent(currentReminder);
+            student.motivationMessageSentFor = today;
             delete student.privateReminderUnavailableForDeliveryAt;
             this.saveProgress();
             this.logger.info(
@@ -1454,6 +1558,44 @@ export class TelegramLessonAgent {
       }
     } finally {
       this.processingAnswerReminders = false;
+    }
+  }
+
+  async processDueStudentMotivationMessages(now = Date.now()) {
+    const messages = getDueStudentMotivationMessages(
+      this.progress,
+      now,
+      this.motivationTimeZone
+    );
+    for (const reminder of messages) {
+      try {
+        await this.runStudentOperation(reminder.studentKey, async () => {
+          const student = this.progress[reminder.studentKey];
+          if (!student?.telegramPrivateChatId) return;
+          if (reminder.type === 'weekly_goal') {
+            if (student.weeklyGoalMessageSentFor === reminder.weekStart) return;
+            await this.bot.sendMessage(
+              student.telegramPrivateChatId,
+              formatWeeklyGoalMessage(reminder.completed, reminder.goal)
+            );
+            student.weeklyGoalMessageSentFor = reminder.weekStart;
+          } else {
+            if (student.dailyMotivationReminderSentFor === reminder.date ||
+                student.weeklyGoalMessageSentFor === reminder.date) return;
+            await this.bot.sendMessage(
+              student.telegramPrivateChatId,
+              DAILY_MOTIVATION_REMINDER_MESSAGE
+            );
+            student.dailyMotivationReminderSentFor = reminder.date;
+            student.motivationMessageSentFor = reminder.date;
+          }
+          this.saveProgress();
+        });
+      } catch (error) {
+        this.logger.error(
+          `[Telegram] Could not send a motivation message to ${reminder.studentKey}: ${error.message}`
+        );
+      }
     }
   }
 
@@ -1590,9 +1732,13 @@ export class TelegramLessonAgent {
         ? ` ما قدرت أتأكد من إجابة السؤال ${[...uncertainQuestionNumbers].join('، ')}، وما اعتبرتها غلط. وضّحها أو أرسلها تاني عشان أراجعها.`
         : '';
       const list = remainingQuestionNumbers.join('، ');
+      const completedQuestionCount = new Set([
+        ...state.correctQuestionNumbers,
+        ...state.resolvedQuestionNumbers
+      ]).size;
       await this.bot.sendMessage(
         chatId,
-        `${correctionFeedback}${correctionFeedback ? ' ' : ''}حفظت الإجابات الصحيحة.${incorrectFeedback}${uncertaintyFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
+        `${correctionFeedback}${correctionFeedback ? ' ' : ''}تقدمك ${completedQuestionCount} من ${lesson.answerKey.length} أسئلة. حفظت الإجابات الصحيحة.${incorrectFeedback}${uncertaintyFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
         messageId
       );
       return;
@@ -1609,7 +1755,7 @@ export class TelegramLessonAgent {
       allCorrectMessage,
       messageId
     );
-    if (state.telegramCelebrationsOptIn !== false &&
+    if (state.telegramCelebrationsOptIn === true &&
         state.correctQuestionNumbers.length === lesson.answerKey.length &&
         state.resolvedQuestionNumbers.length === 0 &&
         this.groupId) {
@@ -1637,8 +1783,23 @@ export class TelegramLessonAgent {
         : 0) + 1
     };
     state.lessonsCompleted = (state.lessonsCompleted || 0) + 1;
+    const completionTimestamps = Array.isArray(state.lessonCompletionTimestamps)
+      ? state.lessonCompletionTimestamps.filter(timestamp =>
+          Number.isFinite(Date.parse(timestamp)))
+      : [];
+    completionTimestamps.push(new Date().toISOString());
+    state.lessonCompletionTimestamps = completionTimestamps.slice(-365);
     state.status = 'awaiting_content';
     this.saveProgress();
+    if ([3, 10, 20, 50].includes(state.lessonsCompleted)) {
+      try {
+        await this.bot.sendMessage(chatId, getStudentMilestoneMessage(state.lessonsCompleted));
+      } catch (error) {
+        this.logger.error(
+          `[Telegram] Could not send a lesson milestone to ${studentKey}: ${error.message}`
+        );
+      }
+    }
     if (state.lessonsCompleted === TELEGRAM_PAYMENT_REMINDER_LESSONS) {
       await this.bot.sendMessage(
         chatId,
@@ -1709,6 +1870,12 @@ export async function startTelegramPolling({
   }, LESSON_ANSWER_REMINDER_CHECK_INTERVAL_MS);
   agent.processDueLessonAnswerReminders?.().catch(error =>
     logger.error(`[Telegram] Lesson answer reminder processing failed: ${error.message}`));
+  const motivationTimer = setInterval(() => {
+    agent.processDueStudentMotivationMessages?.().catch(error =>
+      logger.error(`[Telegram] Student motivation processing failed: ${error.message}`));
+  }, STUDENT_MOTIVATION_CHECK_INTERVAL_MS);
+  agent.processDueStudentMotivationMessages?.().catch(error =>
+    logger.error(`[Telegram] Student motivation processing failed: ${error.message}`));
   const mediaRetryTimer = setInterval(() => {
     agent.processPendingMediaRetries?.().catch(error =>
       logger.error(`[Telegram] Media retry processing failed: ${error.message}`));
@@ -1765,6 +1932,7 @@ export async function startTelegramPolling({
   } finally {
     clearInterval(lessonSkipTimer);
     clearInterval(answerReminderTimer);
+    clearInterval(motivationTimer);
     clearInterval(mediaRetryTimer);
     await updateWorker;
     onStatus('disconnected');

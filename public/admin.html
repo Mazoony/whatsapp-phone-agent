@@ -859,7 +859,7 @@
             <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
           </article>
           <article class="panel roster-insight-panel">
-            <h3>Students to check in with</h3>
+            <h3>Students who may need support</h3>
             <p class="activity-summary" id="progress-follow-up-summary">Loading follow-up priorities…</p>
             <div class="roster-follow-up-list" id="progress-follow-up-list" aria-live="polite"></div>
           </article>
@@ -1187,7 +1187,7 @@
             <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
           </article>
           <article class="panel roster-insight-panel">
-            <h3>Students to check in with</h3>
+            <h3>Students who may need support</h3>
             <p class="activity-summary" id="progress-follow-up-summary-page">Loading follow-up priorities…</p>
             <div class="roster-follow-up-list" id="progress-follow-up-list-page" aria-live="polite"></div>
           </article>
@@ -1647,11 +1647,47 @@
       });
     }
 
+    function repositionOpenLessonPickers(event) {
+      document.querySelectorAll('[data-send-lesson-picker].is-open').forEach(picker => {
+        const trigger = picker.querySelector('.send-lesson-picker-trigger');
+        const menu = picker.querySelector('.send-lesson-menu');
+        if (event?.target === menu) return;
+
+        const triggerRect = trigger.getBoundingClientRect();
+        if (triggerRect.bottom <= 0 || triggerRect.top >= window.innerHeight) {
+          picker.classList.remove('is-open');
+          trigger.setAttribute('aria-expanded', 'false');
+          menu.hidden = true;
+          menu.classList.remove('is-floating');
+          menu.removeAttribute('style');
+          return;
+        }
+
+        const desiredHeight = Math.min(menu.scrollHeight, 260);
+        const spaceBelow = window.innerHeight - triggerRect.bottom - 12;
+        const spaceAbove = triggerRect.top - 12;
+        const placeBelow = spaceBelow >= Math.min(desiredHeight, 180) ||
+          spaceBelow >= spaceAbove;
+        const availableHeight = Math.max(80, placeBelow ? spaceBelow : spaceAbove);
+        const menuHeight = Math.min(desiredHeight, availableHeight);
+        const left = Math.min(
+          Math.max(8, triggerRect.left),
+          Math.max(8, window.innerWidth - triggerRect.width - 8)
+        );
+        menu.style.left = `${left}px`;
+        menu.style.top = `${placeBelow
+          ? triggerRect.bottom + 5
+          : Math.max(8, triggerRect.top - menuHeight - 5)}px`;
+        menu.style.width = `${Math.min(triggerRect.width, window.innerWidth - 16)}px`;
+        menu.style.maxHeight = `${menuHeight}px`;
+      });
+    }
+
     document.addEventListener('click', event => {
       if (!event.target.closest('[data-send-lesson-picker]')) closeOpenLessonPickers();
     });
-    document.addEventListener('scroll', closeOpenLessonPickers, true);
-    window.addEventListener('resize', closeOpenLessonPickers);
+    document.addEventListener('scroll', repositionOpenLessonPickers, true);
+    window.addEventListener('resize', repositionOpenLessonPickers);
 
     function openDashboardDialog(options) {
       const result = dashboardDialogQueue.then(() => new Promise(resolve => {
@@ -2937,7 +2973,7 @@
           <svg class="student-insight-telegram-line" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true"><polyline points="${telegramLinePoints}"></polyline></svg>
         </div>` : '<div class="empty">No tracked student engagement data.</div>';
       const followUps = insights?.followUpStudents || [];
-      followUpSummary.textContent = `${followUps.length.toLocaleString()} students are awaiting a task or reattempt with no recorded student message or lesson delivery for at least 7 days.`;
+      followUpSummary.textContent = `${followUps.length.toLocaleString()} students have a pending exercise and no recorded activity for at least 7 days. Open a student to check in personally; the inactivity filter below can find others.`;
       followUpList.innerHTML = followUps.length ? followUps.slice(0, 10).map(student => {
         const content = `
           <span><strong>${escapeHtml(student.name)}</strong><br><small>${escapeHtml(student.platform || 'WhatsApp')} · ${escapeHtml(student.gradeName)} · ${escapeHtml(student.lessonTitle || 'Lesson pending')}</small></span>
@@ -3284,21 +3320,9 @@
           picker.classList.add('is-open');
           trigger.setAttribute('aria-expanded', 'true');
           menu.hidden = false;
-          const triggerRect = trigger.getBoundingClientRect();
           menu.classList.add('is-floating');
-          menu.style.left = `${triggerRect.left}px`;
           menu.style.top = '0px';
-          menu.style.width = `${triggerRect.width}px`;
-          const desiredHeight = Math.min(menu.scrollHeight, 260);
-          const spaceBelow = window.innerHeight - triggerRect.bottom - 12;
-          const spaceAbove = triggerRect.top - 12;
-          const placeBelow = spaceBelow >= Math.min(desiredHeight, 180) ||
-            spaceBelow >= spaceAbove;
-          const availableHeight = Math.max(80, placeBelow ? spaceBelow : spaceAbove);
-          menu.style.maxHeight = `${Math.min(desiredHeight, availableHeight)}px`;
-          menu.style.top = `${placeBelow
-            ? triggerRect.bottom + 5
-            : Math.max(8, triggerRect.top - menu.offsetHeight - 5)}px`;
+          repositionOpenLessonPickers();
           const selected = menu.querySelector('[aria-selected="true"]');
           (selected || menu.querySelector('.send-lesson-option'))?.focus();
         };

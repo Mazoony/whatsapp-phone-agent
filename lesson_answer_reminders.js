@@ -2,7 +2,7 @@ export const LESSON_ANSWER_REMINDER_DELAY_MS = 8 * 60 * 60 * 1000;
 export const LESSON_ANSWER_REMINDER_CHECK_INTERVAL_MS = 60 * 1000;
 
 export const LESSON_ANSWER_REMINDER_MESSAGE =
-  'سلام,\n\nقلت أذكرك تشتغل التمرين عشان نمش للحصة البعديها\n\nو نحقق الدرجة العايزنها إن شاء الله\n\nو قليل دائم, خير من كثير منقطع\n\nكل التوفيق يا رب';
+  'سلام,\n\nقلت أذكرك تشتغل التمرين عشان نمش للحصة البعديها\n\nحدد زمن يومي للحصة ولو عشرة دقايق\n\nو نحقق الدرجة العايزنها إن شاء الله\n\nو قليل دائم, خير من كثير منقطع\n\nكل التوفيق يا رب';
 
 export function getDueLessonAnswerReminders(
   progress,
@@ -47,7 +47,8 @@ export function getDueLessonAnswerReminders(
       now - reminder.deliveredAtMs > delayMs &&
       reminder.entries.every(({ student }) => student.status === 'awaiting_task') &&
       reminder.entries.every(({ student }) =>
-        student.answerReminderSentForDeliveryAt !== reminder.deliveredAt))
+        student.answerReminderSentForDeliveryAt !== reminder.deliveredAt &&
+        student.answerReminderSuppressedForDeliveryAt !== reminder.deliveredAt))
     .map(({ deliveredAtMs, ...reminder }) => ({
       ...reminder,
       ...reminder.entries[0]
@@ -62,5 +63,14 @@ export function markLessonAnswerReminderSent(reminder, sentAt = new Date().toISO
   for (const { student } of reminder.entries) {
     student.answerReminderSentForDeliveryAt = reminder.deliveredAt;
     student.answerReminderSentAt = new Date(sentAt).toISOString();
+  }
+}
+
+export function markLessonAnswerReminderSuppressed(reminder) {
+  if (!reminder || !Array.isArray(reminder.entries)) {
+    throw new TypeError('A valid due lesson reminder is required.');
+  }
+  for (const { student } of reminder.entries) {
+    student.answerReminderSuppressedForDeliveryAt = reminder.deliveredAt;
   }
 }

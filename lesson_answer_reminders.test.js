@@ -4,6 +4,7 @@ import {
   getDueLessonAnswerReminders,
   LESSON_ANSWER_REMINDER_DELAY_MS,
   LESSON_ANSWER_REMINDER_MESSAGE,
+  markLessonAnswerReminderSuppressed,
   markLessonAnswerReminderSent
 } from './lesson_answer_reminders.js';
 
@@ -68,6 +69,26 @@ test('lesson reminder is sent only once and handles duplicate WhatsApp JID recor
   assert.equal(getDueLessonAnswerReminders(progress, now, { getIdentity: identity }).length, 0);
 });
 
+test('a configured motivation reminder suppresses the same lesson reminder permanently', () => {
+  const deliveredAt = '2026-10-20T00:00:00.000Z';
+  const student = {
+    status: 'awaiting_task',
+    currentLessonId: 'lesson_1',
+    deliveredAt
+  };
+  const progress = { student };
+  const [reminder] = getDueLessonAnswerReminders(
+    progress,
+    Date.parse(deliveredAt) + LESSON_ANSWER_REMINDER_DELAY_MS + 1
+  );
+  markLessonAnswerReminderSuppressed(reminder);
+
+  assert.equal(getDueLessonAnswerReminders(
+    progress,
+    Date.parse('2026-10-21T00:01:00.000Z')
+  ).length, 0);
+});
+
 test('a newer lesson delivery or a submission invalidates an older reminder', () => {
   const oldDelivery = '2026-10-19T00:00:00.000Z';
   const newDelivery = '2026-10-20T00:00:00.000Z';
@@ -108,7 +129,19 @@ test('a stale WhatsApp alias cannot trigger a reminder after another alias accep
   ).length, 0);
 });
 
-test('reminder includes brief English and Arabic text', () => {
-  assert.match(LESSON_ANSWER_REMINDER_MESSAGE, /تمرين الحصة لسه منتظر إجابتك/);
+test('reminder includes the daily study-time encouragement', () => {
+  assert.equal(LESSON_ANSWER_REMINDER_MESSAGE, [
+    'سلام,',
+    '',
+    'قلت أذكرك تشتغل التمرين عشان نمش للحصة البعديها',
+    '',
+    'حدد زمن يومي للحصة ولو عشرة دقايق',
+    '',
+    'و نحقق الدرجة العايزنها إن شاء الله',
+    '',
+    'و قليل دائم, خير من كثير منقطع',
+    '',
+    'كل التوفيق يا رب'
+  ].join('\n'));
   assert.doesNotMatch(LESSON_ANSWER_REMINDER_MESSAGE, /Reminder:/);
 });
