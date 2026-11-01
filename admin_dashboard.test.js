@@ -1484,6 +1484,7 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
   const enrolledAt = '2026-01-01T12:00:00.000Z';
   const studentKey = 'telegram:-100123:44';
   const telegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
+  const paymentNotifications = [];
   const data = {
     ...sampleData,
     lessons: {
@@ -1500,7 +1501,8 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
         enrolledAt,
         deliveredAt: enrolledAt,
         telegramChatId: '-100123',
-        telegramUserId: 44
+        telegramUserId: 44,
+        telegramPrivateChatId: '44'
       }
     }
   };
@@ -1509,7 +1511,10 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     readData: () => data,
     telegramProgressFile,
     paymentLedgerFile,
-    paymentReceiptImageDirectory
+    paymentReceiptImageDirectory,
+    telegramPaymentNotifier: async (chatId, text) => {
+      paymentNotifications.push({ chatId, text });
+    }
   });
 
   try {
@@ -1545,6 +1550,10 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(reviewed.payment.status, 'paid');
     assert.equal(reviewed.payment.amount, 17000);
     assert.equal(reviewed.payment.currency, 'SDG');
+    assert.deepEqual(reviewed.notification, { sent: true, reason: 'sent' });
+    assert.equal(paymentNotifications.length, 1);
+    assert.equal(paymentNotifications[0].chatId, '44');
+    assert.match(paymentNotifications[0].text, /تم تأكيد دفعك/);
 
     const receiptId = 'c0a80123-4567-489a-8bcd-0123456789ab';
     const receiptImage = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
@@ -1564,6 +1573,23 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(paidHistory.payments[0].amount, 17000);
     assert.equal(paidHistory.payments[0].currency, 'SDG');
     assert.equal(paidHistory.payments[0].paidAt, reviewed.payment.paidAt);
+
+    const alreadyPaidResponse = await fetch(ledgerUrl, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        studentKey,
+        status: 'paid',
+        amount: 17000,
+        currency: 'SDG'
+      })
+    });
+    assert.equal(alreadyPaidResponse.status, 200);
+    const alreadyPaid = await alreadyPaidResponse.json();
+    assert.deepEqual(alreadyPaid.notification, { sent: true, reason: 'sent' });
+    assert.equal(paymentNotifications.length, 2);
+    assert.equal(paymentNotifications[1].chatId, '44');
+    assert.match(paymentNotifications[1].text, /تم تأكيد دفعك/);
 
     const receiptImageResponse = await fetch(
       `${origin}/api/admin/payment-receipts/${receiptId}`

@@ -103,6 +103,7 @@ import {
 } from './lesson_skip_queue.js';
 import {
   createStudentPaymentLedger,
+  formatStudentPaymentStatus,
   PAYMENT_STATUSES,
   STUDENT_PAYMENT_LEDGER_FILE
 } from './student_payment_ledger.js';
@@ -1895,6 +1896,7 @@ export function createAdminDashboardServer({
   paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
   telegramGroupId = process.env.TELEGRAM_GROUP_ID,
   telegramMemberCountProvider = null,
+  telegramPaymentNotifier = null,
   telegramUserBroadcastFiles = {
     requests: TELEGRAM_USER_BROADCAST_REQUESTS_FILE,
     state: TELEGRAM_USER_BROADCAST_STATE_FILE
@@ -2444,7 +2446,7 @@ export function createAdminDashboardServer({
         sendJson(res, 403, { error: 'Telegram queue controls must come from this local dashboard.' });
         return;
       }
-      readRequestBody(req).then(body => {
+      readRequestBody(req).then(async body => {
         if (typeof body?.paused !== 'boolean') {
           sendJson(res, 400, { error: 'A boolean paused value is required.' });
           return;
@@ -3816,7 +3818,7 @@ export function createAdminDashboardServer({
         sendJson(res, 403, { error: 'Payment records can only be changed from this local dashboard.' });
         return;
       }
-      readRequestBody(req).then(body => {
+      readRequestBody(req).then(async body => {
         if (!body || typeof body.studentKey !== 'string' || !body.studentKey.trim() ||
             !PAYMENT_STATUSES.includes(body.status)) {
           sendJson(res, 400, { error: 'A student and valid payment status are required.' });
@@ -3840,7 +3842,42 @@ export function createAdminDashboardServer({
           ...(Object.hasOwn(body, 'note') ? { note: body.note } : {})
         });
         scheduleChange(path.basename(paymentLedgerFile));
-        sendJson(res, 200, { payment });
+        let notification = { sent: false, reason: 'not_needed' };
+        if (body.status === 'paid') {
+          const progress = readJsonFileOr(telegramProgressFile, {});
+          const privateChatId = progress[body.studentKey]?.telegramPrivateChatId;
+          if (!privateChatId) {
+            notification = { sent: false, reason: 'private_chat_not_started' };
+          } else {
+            const text = `السلام عليكم ${student.name}،\n${formatStudentPaymentStatus(payment)}\nشكراً ليك، وربنا يوفقك في دراستك 📚`;
+            try {
+              if (telegramPaymentNotifier) {
+                await telegramPaymentNotifier(String(privateChatId), text);
+              } else {
+                const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+                if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not configured.');
+                const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({ chat_id: String(privateChatId), text }),
+                  signal: AbortSignal.timeout(10_000)
+                });
+                const result = await response.json();
+                if (!response.ok || result?.ok !== true) {
+                  throw new Error(result?.description || 'Telegram rejected the message.');
+                }
+              }
+              notification = { sent: true, reason: 'sent' };
+            } catch (error) {
+              console.error(
+                `[Admin Dashboard] Payment confirmed for ${body.studentKey}, but Telegram notification failed:`,
+                error.message
+              );
+              notification = { sent: false, reason: 'delivery_failed' };
+            }
+          }
+        }
+        sendJson(res, 200, { payment, notification });
       }).catch(error => {
         console.error('[Admin Dashboard] Could not update student payment status:', error.message);
         const invalidInput = /Payment amount|Currency must|Payment status|Student identifier|enrollment date|review date/.test(error.message);

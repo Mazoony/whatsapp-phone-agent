@@ -239,6 +239,9 @@
     .payment-calendar-panel { padding: 16px; }
     .payment-calendar-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
     .payment-calendar-toolbar button { border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px; color: var(--ink); background: white; font: inherit; font-size: 12px; }
+    .payment-calendar-nav { display: flex; align-items: center; gap: 8px; }
+    .payment-calendar-nav .pagination.button { padding: 6px 10px; color: var(--ink); }
+    .payment-calendar-nav button:disabled { opacity: .45; cursor: not-allowed; }
     .payment-calendar-month { font-size: 15px; font-weight: 750; }
     .payment-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
     .payment-summary-stat { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
@@ -1135,11 +1138,16 @@
         </div>
         <article class="panel payment-calendar-panel" style="margin-bottom:16px">
           <div class="section-heading" style="margin-bottom:12px">
-            <div><h3 style="margin:0">Telegram payments this month</h3><p style="margin:4px 0 0">Totals include only payments confirmed as paid.</p></div>
+            <div><h3 style="margin:0">Telegram payment history</h3><p style="margin:4px 0 0">Browse confirmed payments by the month they were marked paid.</p></div>
+            <div class="payment-calendar-nav">
+              <button class="pagination button" id="telegram-payment-month-previous" type="button" aria-label="Previous month">‹</button>
+              <strong class="payment-calendar-month" id="telegram-payment-month-label" aria-live="polite"></strong>
+              <button class="pagination button" id="telegram-payment-month-next" type="button" aria-label="Next month">›</button>
+            </div>
           </div>
           <div class="payment-summary-grid" aria-label="Monthly Telegram payment totals">
             <div class="payment-summary-stat">
-              <span class="payment-summary-label">Students paid this month</span>
+              <span class="payment-summary-label">Students paid</span>
               <strong class="payment-summary-value" id="telegram-payment-month-student-count">0</strong>
             </div>
             <div class="payment-summary-stat">
@@ -1157,6 +1165,18 @@
             </div>
           </div>
         </article>
+        <article class="panel table-wrap">
+          <div class="section-heading" style="padding:14px 14px 0;margin-bottom:0">
+            <div><h3 style="margin:0">Confirmed payments for selected month</h3></div>
+          </div>
+          <table>
+            <thead><tr><th>Student</th><th>Grade</th><th>Paid on</th><th>Amount</th></tr></thead>
+            <tbody id="telegram-payment-history-rows"><tr><td colspan="4" class="empty">Loading payment history…</td></tr></tbody>
+          </table>
+        </article>
+        <div class="section-heading" style="margin-top:20px">
+          <div><h3 style="margin:0">Current payment status</h3><p style="margin:4px 0 0">Review or update each student's current 30-day payment period.</p></div>
+        </div>
         <article class="panel table-wrap">
           <table>
             <thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Payment period</th><th>Status</th><th>Amount</th><th>Evidence / reference</th><th>Actions</th></tr></thead>
@@ -1593,6 +1613,7 @@
     let paymentCalendarSelectedDate = new Date();
     let paymentCalendarPayments = [];
     let telegramPaymentHistory = [];
+    let telegramPaymentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const PAYMENT_MONTHLY_AMOUNT_SDG = 17000;
     const PAYMENT_USD_RATE_STORAGE_KEY = 'eshool-payment-sdg-per-usd';
     let paymentSdgPerUsd = '';
@@ -4021,12 +4042,11 @@
     }
 
     function renderTelegramPaymentSummary() {
-      const currentMonth = new Date();
       const monthPayments = telegramPaymentHistory.filter(payment => {
         const paidAt = new Date(payment.paidAt);
         return !Number.isNaN(paidAt.getTime()) &&
-          paidAt.getFullYear() === currentMonth.getFullYear() &&
-          paidAt.getMonth() === currentMonth.getMonth();
+          paidAt.getFullYear() === telegramPaymentMonth.getFullYear() &&
+          paidAt.getMonth() === telegramPaymentMonth.getMonth();
       });
       const paidStudents = new Set(monthPayments.map(payment => payment.studentKey).filter(Boolean));
       const totalsByCurrency = new Map();
@@ -4042,8 +4062,16 @@
       }
 
       const formatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+      const monthFormatter = new Intl.DateTimeFormat(undefined, {
+        month: 'long',
+        year: 'numeric'
+      });
       const currencyTotals = [...totalsByCurrency.entries()]
         .sort(([left], [right]) => left.localeCompare(right));
+      $('#telegram-payment-month-label').textContent = monthFormatter.format(telegramPaymentMonth);
+      const currentMonth = new Date();
+      const currentMonthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      $('#telegram-payment-month-next').disabled = telegramPaymentMonth >= currentMonthStart;
       $('#telegram-payment-month-student-count').textContent =
         formatter.format(paidStudents.size);
       $('#telegram-payment-month-total').textContent = currencyTotals.length
@@ -4071,6 +4099,22 @@
         : unsupportedCurrencies.length
           ? `USD equivalent excludes: ${unsupportedCurrencies.join(', ')}.`
           : '';
+      $('#telegram-payment-history-rows').innerHTML = monthPayments.length
+        ? monthPayments.map(payment => {
+          const amount = Number(payment.amount);
+          const hasRecordedAmount = Number.isFinite(amount) && amount > 0;
+          const currency = hasRecordedAmount
+            ? (payment.currency || 'SDG').toUpperCase()
+            : 'SDG';
+          const collected = hasRecordedAmount ? amount : PAYMENT_MONTHLY_AMOUNT_SDG;
+          return `<tr>
+            <td>${escapeHtml(payment.name || payment.studentKey || 'Student')}</td>
+            <td>${escapeHtml(payment.gradeName || '—')}</td>
+            <td>${escapeHtml(formatDate(payment.paidAt))}</td>
+            <td>${formatter.format(collected)} ${escapeHtml(currency)}${hasRecordedAmount ? '' : '<br><small>Estimated · amount not recorded</small>'}</td>
+          </tr>`;
+        }).join('')
+        : '<tr><td colspan="4" class="empty">No confirmed payments for this month.</td></tr>';
     }
 
     async function loadPaymentCalendar() {
@@ -4135,7 +4179,7 @@
           button.disabled = true;
           button.textContent = 'Saving…';
           try {
-            await api('/api/admin/payment-ledger', {
+            const result = await api('/api/admin/payment-ledger', {
               method: 'POST',
               body: JSON.stringify({
                 studentKey: row.dataset.paymentLedgerKey,
@@ -4145,6 +4189,13 @@
               })
             });
             await loadPaymentLedger();
+            if (result.notification?.reason === 'private_chat_not_started') {
+              showError('Payment was marked as paid, but the student was not notified. They need to open @eSchoolsdBot and press Start in a private chat first.');
+            } else if (result.notification?.reason === 'delivery_failed') {
+              showError('Payment was marked as paid, but Telegram could not deliver the confirmation message. Check the Telegram bot connection and logs.');
+            } else if (nextStatus === 'paid' && !result.notification) {
+              showError('Payment was marked as paid, but this dashboard server is outdated and did not send a notification. Restart the dashboard and try saving again.');
+            }
           } catch (error) {
             button.disabled = false;
             button.textContent = 'Save';
@@ -4562,6 +4613,25 @@
     });
     $('#payment-ledger-refresh').addEventListener('click', () => {
       loadPaymentLedger().catch(error => showError(`Could not refresh payment ledger: ${error.message}`));
+    });
+    $('#telegram-payment-month-previous').addEventListener('click', () => {
+      telegramPaymentMonth = new Date(
+        telegramPaymentMonth.getFullYear(),
+        telegramPaymentMonth.getMonth() - 1,
+        1
+      );
+      renderTelegramPaymentSummary();
+    });
+    $('#telegram-payment-month-next').addEventListener('click', () => {
+      const currentMonth = new Date();
+      const currentMonthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      if (telegramPaymentMonth >= currentMonthStart) return;
+      telegramPaymentMonth = new Date(
+        telegramPaymentMonth.getFullYear(),
+        telegramPaymentMonth.getMonth() + 1,
+        1
+      );
+      renderTelegramPaymentSummary();
     });
     $('#payment-calendar-next').addEventListener('click', () => {
       paymentCalendarMonth = new Date(
