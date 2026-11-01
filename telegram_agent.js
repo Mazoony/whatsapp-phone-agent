@@ -88,6 +88,11 @@ function isLessonCommand(text) {
   return /^\/lesson(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
 }
 
+function getLessonNavigationCommand(text) {
+  const command = /^\/(previous|next)(?:@[a-z0-9_]+)?(?:\s|$)/i.exec(text.trim())?.[1];
+  return command?.toLowerCase() || null;
+}
+
 function isHelpCommand(text) {
   return /^\/help(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
 }
@@ -151,17 +156,31 @@ function taskFailureMessage() {
   return 'ما قدرت أصحح إجابتك هسي بسبب مشكلة فنية. ما اتسجلت كغلط؛ أرسلها تاني بعد شوية.';
 }
 
-function privateLessonStartMessage() {
-  return `خش هنا
-
-@eSchoolsdBot
-
-و أضغط start
-
-و خش القروب رسل
-/lesson
-
-الدروس طوالي بتترسل ليك في الخاص`;
+function getNewStudentInstructions(users) {
+  const mentions = users.map(user => ({
+    name: getStudentName(user),
+    user
+  }));
+  const textPrefix = 'أهلاً ';
+  let text = textPrefix;
+  const entities = [];
+  mentions.forEach((mention, index) => {
+    if (index > 0) text += '، ';
+    const offset = text.length;
+    text += mention.name;
+    entities.push({
+      type: 'text_mention',
+      offset,
+      length: mention.name.length,
+      user: mention.user
+    });
+  });
+  const plural = mentions.length > 1;
+  text += ` 👋\n\nعشان تبدأ${plural ? 'وا' : ''} الدروس:
+١. ${plural ? 'افتحوا' : 'افتح'} المحادثة الخاصة مع @eSchoolsdBot واضغط${plural ? 'وا' : ''} Start.
+٢. بعد الضغط على Start، ${plural ? 'أرسلوا' : 'أرسل'} /lesson في القروب.
+الدروس حتوصلك${plural ? 'م' : ''} في الخاص.`;
+  return { text, entities };
 }
 
 function getTelegramStudentHelpMessage() {
@@ -171,6 +190,7 @@ function getTelegramStudentHelpMessage() {
 • أرسل /lesson في القروب عشان أرسل ليك الحصة في الخاص، أو أرسلها هناك عشان أواصل معاك.
 • أرسل إجابات التمرين كنص في الخاص. لو في إجابات محتاجة تصحيح، حأحدد أرقام الأسئلة البتحتاج تعيدها.
 • أرسل /lesson في الخاص عشان أستلم الحصة الحالية مرة تانية.
+• أرسل /previous للرجوع للحصة السابقة، أو /next للانتقال للحصة الجاية. الحصص التي تستلمها تُحفظ في سجل دروسك.
 • أرسل /payment لمعرفة حالة الدفع، أو /paid لإرسال بلاغ للمراجعة. أرسل صورة الإيصال في الخاص.
 • أرسل /help في أي وقت لعرض المساعدة تاني.`;
 }
@@ -273,10 +293,11 @@ export class TelegramBotApi {
     return buffer;
   }
 
-  sendMessage(chatId, text, replyToMessageId) {
+  sendMessage(chatId, text, replyToMessageId, entities) {
     return this.request('sendMessage', {
       chat_id: chatId,
       text,
+      ...(Array.isArray(entities) && entities.length ? { entities } : {}),
       ...(replyToMessageId ? { reply_parameters: { message_id: replyToMessageId } } : {})
     });
   }
@@ -382,10 +403,14 @@ export class TelegramLessonAgent {
         ? eventDate.toISOString()
         : new Date().toISOString();
       let recorded = false;
+      const studentsToWelcome = [];
       for (const user of message.new_chat_members) {
         if (!Number.isSafeInteger(user?.id) || user.is_bot) continue;
         const studentKey = getProgressKey(chatId, user.id);
         const previous = this.progress[studentKey] || {};
+        if (!previous.telegramPrivateChatId && !previous.onboardingInstructionsSentAt) {
+          studentsToWelcome.push({ user, studentKey });
+        }
         this.progress[studentKey] = {
           ...previous,
           grade: previous.grade || this.defaultGrade,
@@ -399,6 +424,28 @@ export class TelegramLessonAgent {
         recorded = true;
       }
       if (recorded) this.saveProgress();
+      if (studentsToWelcome.length) {
+        const instructions = getNewStudentInstructions(
+          studentsToWelcome.map(({ user }) => user)
+        );
+        try {
+          await this.bot.sendMessage(
+            chatId,
+            instructions.text,
+            message.message_id,
+            instructions.entities
+          );
+          const sentAt = new Date().toISOString();
+          for (const { studentKey } of studentsToWelcome) {
+            this.progress[studentKey].onboardingInstructionsSentAt = sentAt;
+          }
+          this.saveProgress();
+        } catch (error) {
+          this.logger.error(
+            `[Telegram] Could not send new-student instructions in group ${chatId}: ${error.message}`
+          );
+        }
+      }
       return;
     }
     if (!Number.isSafeInteger(message.from?.id)) {
@@ -522,11 +569,16 @@ export class TelegramLessonAgent {
           if (isPrivateChatUnavailable(error)) {
             delete this.progress[studentKey].telegramPrivateChatId;
             this.saveProgress();
+            const instructions = getNewStudentInstructions([message.from]);
             await this.bot.sendMessage(
               chatId,
-              privateLessonStartMessage(),
-              message.message_id
+              instructions.text,
+              message.message_id,
+              instructions.entities
             );
+            this.progress[studentKey].onboardingInstructionsSentAt =
+              new Date().toISOString();
+            this.saveProgress();
             return;
           }
           await this.sendPrivateNotice(
@@ -688,6 +740,22 @@ export class TelegramLessonAgent {
         state.enrolledAt || state.joinedAt || state.deliveredAt
       );
       await this.bot.sendMessage(String(message.chat.id), formatStudentPaymentStatus(payment));
+      return;
+    }
+
+    const navigationCommand = getLessonNavigationCommand(text);
+    if (navigationCommand) {
+      await this.runStudentOperation(studentKey, async () => {
+        this.recordStudentActivity(studentKey, state.telegramChatId, message.from);
+        const currentState = this.progress[studentKey];
+        currentState.telegramPrivateChatId = String(message.chat.id);
+        await this.navigateLesson(
+          String(message.chat.id),
+          studentKey,
+          navigationCommand,
+          message.message_id
+        );
+      });
       return;
     }
 
@@ -1067,6 +1135,71 @@ export class TelegramLessonAgent {
     await this.deliverLesson(chatId, studentKey, grade, next.lessonIndex, lesson, messageId);
   }
 
+  recordLessonHistory(state, lessonId) {
+    const history = Array.isArray(state.lessonHistory)
+      ? state.lessonHistory.filter((id, index, entries) =>
+          typeof id === 'string' && id.trim() && entries.indexOf(id) === index)
+      : [];
+    if (!history.includes(lessonId)) history.push(lessonId);
+    state.lessonHistory = history;
+  }
+
+  async navigateLesson(chatId, studentKey, direction, messageId) {
+    this.lessonManager.refreshLessonsConfig?.();
+    const state = this.progress[studentKey];
+    const grade = state.grade || this.defaultGrade;
+    const lessons = this.lessonManager.lessonsConfig[grade]?.lessons || [];
+    const currentLessonId = state.currentLessonId ||
+      (Number.isInteger(state.currentLessonIndex)
+        ? lessons[state.currentLessonIndex]?.id
+        : null);
+    const currentNumber = /^lesson_(\d+)$/.exec(currentLessonId || '');
+    if (!currentNumber) {
+      await this.bot.sendMessage(chatId, 'أرسل /lesson أول عشان تبدأ سجل دروسك.', messageId);
+      return;
+    }
+
+    let lessonIndex;
+    if (direction === 'previous') {
+      const previous = this.lessonManager.getPreviousSequentialLesson(grade, currentLessonId);
+      if (previous.status !== 'ready') {
+        await this.bot.sendMessage(chatId, 'ما في حصة سابقة جاهزة قبل الحصة الحالية.', messageId);
+        return;
+      }
+      lessonIndex = previous.lessonIndex;
+    } else {
+      const next = this.lessonManager.getNextSequentialLesson(grade, currentLessonId);
+      if (next.status !== 'ready') {
+        await this.bot.sendMessage(
+          chatId,
+          next.status === 'completed'
+            ? 'ما في حصة جاية متوفرة حالياً. كملت كل الدروس الجاهزة.'
+            : 'الحصة الجاية لسه ما جاهزة. حأرسلها ليك أول ما يجهز محتواها.',
+          messageId
+        );
+        return;
+      }
+      lessonIndex = next.lessonIndex;
+    }
+
+    const lesson = lessons[lessonIndex];
+    if (!isReadyLesson(lesson)) {
+      await this.bot.sendMessage(chatId, 'الحصة المطلوبة ما جاهزة هسي. أرسل /lesson بعد ما يكتمل محتواها.', messageId);
+      return;
+    }
+
+    this.recordLessonHistory(state, currentLessonId);
+    this.saveProgress();
+    try {
+      await this.deliverLesson(chatId, studentKey, grade, lessonIndex, lesson, messageId);
+    } catch (error) {
+      this.logger.error(
+        `[Telegram] Could not navigate to ${lesson.id} for ${studentKey}: ${error.message}`
+      );
+      await this.bot.sendMessage(chatId, 'ما قدرت أرسل الحصة المطلوبة هسي. جرّب تاني بعد شوية.', messageId);
+    }
+  }
+
   async deliverLesson(chatId, studentKey, grade, lessonIndex, lesson, replyToMessageId) {
     const videoPath = this.videoPathResolver(lesson.videoFile);
     const videoStats = fs.statSync(videoPath);
@@ -1092,27 +1225,79 @@ export class TelegramLessonAgent {
     await this.bot.sendMessage(deliveryChatId, lesson.taskMessage, replyToMessageId);
 
     const previous = this.progress[studentKey] || {};
+    const lessonTaskProgress = previous.lessonTaskProgress &&
+      typeof previous.lessonTaskProgress === 'object' &&
+      !Array.isArray(previous.lessonTaskProgress)
+      ? { ...previous.lessonTaskProgress }
+      : {};
+    if (previous.currentLessonId && typeof previous.taskVersion === 'string') {
+      lessonTaskProgress[previous.currentLessonId] = {
+        taskVersion: previous.taskVersion,
+        status: previous.status,
+        correctQuestionNumbers: Array.isArray(previous.correctQuestionNumbers)
+          ? [...previous.correctQuestionNumbers]
+          : [],
+        resolvedQuestionNumbers: Array.isArray(previous.resolvedQuestionNumbers)
+          ? [...previous.resolvedQuestionNumbers]
+          : [],
+        retryQuestionNumbers: Array.isArray(previous.retryQuestionNumbers)
+          ? [...previous.retryQuestionNumbers]
+          : []
+      };
+    }
+    const lessonHistory = Array.isArray(previous.lessonHistory)
+      ? [...previous.lessonHistory]
+      : [];
+    if (!lessonHistory.includes(lesson.id)) lessonHistory.push(lesson.id);
+    const previousLesson = this.lessonManager.lessonsConfig[previous.grade || grade]
+      ?.lessons?.[previous.currentLessonIndex];
+    const previousAnswers = new Set([
+      ...(Array.isArray(previous.correctQuestionNumbers)
+        ? previous.correctQuestionNumbers
+        : []),
+      ...(Array.isArray(previous.resolvedQuestionNumbers)
+        ? previous.resolvedQuestionNumbers
+        : [])
+    ]);
+    const previousTaskCompleted = Array.isArray(previousLesson?.answerKey) &&
+      previousLesson.answerKey.length > 0 &&
+      previousLesson.answerKey.every((_, index) => previousAnswers.has(index + 1));
+    if (previousTaskCompleted && previous.currentLessonId) {
+      lessonTaskProgress[previous.currentLessonId] = {
+        taskVersion: previous.taskVersion,
+        status: 'awaiting_task',
+        correctQuestionNumbers: [],
+        resolvedQuestionNumbers: [],
+        retryQuestionNumbers: []
+      };
+    }
     const sameActiveLesson = previous.currentLessonId === lesson.id &&
       previous.taskVersion === getLessonTaskVersion(lesson);
+    const savedTaskProgress = lessonTaskProgress[lesson.id];
+    const canRestoreTaskProgress = !sameActiveLesson &&
+      savedTaskProgress?.taskVersion === getLessonTaskVersion(lesson);
+    const taskProgress = sameActiveLesson
+      ? previous
+      : canRestoreTaskProgress
+        ? savedTaskProgress
+        : {};
     this.progress[studentKey] = {
       ...previous,
       grade,
+      lessonHistory,
+      lessonTaskProgress,
       currentLessonIndex: lessonIndex,
       currentLessonId: lesson.id,
-      status: 'awaiting_task',
+      status: taskProgress.status === 'awaiting_reattempt'
+        ? 'awaiting_reattempt'
+        : 'awaiting_task',
       deliveredAt: new Date().toISOString(),
       joinedAt: previous.joinedAt || new Date().toISOString(),
       lessonsCompleted: previous.lessonsCompleted || 0,
       taskVersion: getLessonTaskVersion(lesson),
-      correctQuestionNumbers: sameActiveLesson
-        ? previous.correctQuestionNumbers || []
-        : [],
-      resolvedQuestionNumbers: sameActiveLesson
-        ? previous.resolvedQuestionNumbers || []
-        : [],
-      retryQuestionNumbers: sameActiveLesson
-        ? previous.retryQuestionNumbers || []
-        : []
+      correctQuestionNumbers: taskProgress.correctQuestionNumbers || [],
+      resolvedQuestionNumbers: taskProgress.resolvedQuestionNumbers || [],
+      retryQuestionNumbers: taskProgress.retryQuestionNumbers || []
     };
     this.saveProgress();
   }

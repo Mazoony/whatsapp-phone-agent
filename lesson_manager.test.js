@@ -138,6 +138,21 @@ test('resolves configured lesson video paths from the app directory', () => {
   }
 });
 
+test('finds the previous ready sequential lesson by lesson number', () => {
+  const previous = lessonManager.getPreviousSequentialLesson(
+    'grade_3_secondary',
+    'lesson_2'
+  );
+  assert.equal(previous.status, 'ready');
+  assert.equal(
+    lessonManager.lessonsConfig.grade_3_secondary.lessons[previous.lessonIndex].id,
+    'lesson_1'
+  );
+  assert.deepEqual(lessonManager.getPreviousSequentialLesson('grade_3_secondary', 'lesson_1'), {
+    status: 'completed'
+  });
+});
+
 test('orders available third-secondary videos numerically and waits at the first unconfigured lesson', () => {
   assert.deepEqual(lessonManager.getLessonVideoNumbers('grade_3_secondary'), [1, 2, 3, 4, 5, 6, 8, 9, 10]);
   assert.deepEqual(lessonManager.getNextSequentialLesson('grade_3_secondary', 'lesson_1'), {

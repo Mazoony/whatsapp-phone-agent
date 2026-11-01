@@ -61,6 +61,12 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
       return currentIndex + 1 < lessons.length
         ? { status: 'ready', lessonIndex: currentIndex + 1 }
         : { status: 'completed' };
+    },
+    getPreviousSequentialLesson: (_grade, currentLessonId) => {
+      const currentIndex = lessons.findIndex(lesson => lesson.id === currentLessonId);
+      return currentIndex > 0
+        ? { status: 'ready', lessonIndex: currentIndex - 1 }
+        : { status: 'completed' };
     }
   };
   const sent = [];
@@ -70,9 +76,15 @@ function createFixture(t, { scanReceipt, privateChatError, refreshLessonsConfig 
   const mediaRetryRequestsFile = path.join(directory, 'telegram_agent_media_retry_requests.json');
   let currentPrivateChatError = privateChatError;
   const bot = {
-    sendMessage: async (chatId, text, replyToMessageId) => {
+    sendMessage: async (chatId, text, replyToMessageId, entities) => {
       if (currentPrivateChatError && String(chatId) === '44') throw currentPrivateChatError;
-      sent.push({ type: 'text', chatId, text, replyToMessageId });
+      sent.push({
+        type: 'text',
+        chatId,
+        text,
+        replyToMessageId,
+        ...(entities ? { entities } : {})
+      });
     },
     sendVideo: async (chatId, video, caption, replyToMessageId) => {
       if (currentPrivateChatError && String(chatId) === '44') throw currentPrivateChatError;
@@ -213,6 +225,8 @@ test('Telegram /help explains lesson and payment commands in the group', async t
   assert.equal(sent[0].chatId, '-100123');
   assert.match(sent[0].text, /أرسل \/lesson في القروب/);
   assert.match(sent[0].text, /إجابات التمرين كنص في الخاص/);
+  assert.match(sent[0].text, /\/previous/);
+  assert.match(sent[0].text, /\/next/);
   assert.match(sent[0].text, /\/payment/);
   assert.equal(sent[0].replyToMessageId, 18);
 });
@@ -322,7 +336,7 @@ test('Telegram tracks failed lesson video delivery and retries it from the media
   assert.equal(sent.filter(message => message.type === 'video').length, 1);
 });
 
-test('Telegram records group member names and join dates from service messages', async t => {
+test('Telegram welcomes new group members with a tagged private-chat setup instruction', async t => {
   const { agent, sent } = createFixture(t);
   const joinedAtSeconds = 1_797_000_000;
   await agent.handleUpdate({
@@ -351,7 +365,35 @@ test('Telegram records group member names and join dates from service messages',
   assert.equal(student.groupJoinedAt, new Date(joinedAtSeconds * 1000).toISOString());
   assert.equal(student.status, 'awaiting_content');
   assert.equal(agent.progress['telegram:-100123:99'], undefined);
-  assert.equal(sent.length, 0);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].chatId, '-100123');
+  assert.equal(sent[0].replyToMessageId, 91);
+  assert.match(sent[0].text, /أهلاً Maha Ahmed/);
+  assert.match(sent[0].text, /افتح المحادثة الخاصة مع @eSchoolsdBot واضغط Start/);
+  assert.match(sent[0].text, /أرسل \/lesson في القروب/);
+  assert.deepEqual(sent[0].entities, [{
+    type: 'text_mention',
+    offset: sent[0].text.indexOf('Maha Ahmed'),
+    length: 'Maha Ahmed'.length,
+    user: {
+      id: 44,
+      first_name: 'Maha',
+      last_name: 'Ahmed',
+      username: 'maha_ahmed'
+    }
+  }]);
+  assert.ok(student.onboardingInstructionsSentAt);
+
+  await agent.handleUpdate({
+    update_id: 90,
+    message: {
+      message_id: 92,
+      date: joinedAtSeconds,
+      chat: { id: -100123, type: 'supergroup' },
+      new_chat_members: [{ id: 44, first_name: 'Maha', last_name: 'Ahmed' }]
+    }
+  });
+  assert.equal(sent.length, 1);
 });
 
 test('Telegram directs unregistered private contacts to the lessons group without mentioning payment', async t => {
@@ -427,10 +469,16 @@ test('Telegram asks students to start the private chat before sending lessons th
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].chatId, '-100123');
+  assert.match(sent[0].text, /أهلاً Student 44/);
   assert.match(sent[0].text, /@eSchoolsdBot/);
-  assert.match(sent[0].text, /و أضغط start/);
-  assert.match(sent[0].text, /\/lesson/);
-  assert.match(sent[0].text, /الدروس طوالي بتترسل ليك في الخاص/);
+  assert.match(sent[0].text, /اضغط Start/);
+  assert.match(sent[0].text, /\/lesson في القروب/);
+  assert.deepEqual(sent[0].entities, [{
+    type: 'text_mention',
+    offset: sent[0].text.indexOf('Student 44'),
+    length: 'Student 44'.length,
+    user: { id: 44, first_name: 'Student 44', is_bot: false }
+  }]);
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, undefined);
   assert.equal(agent.progress['telegram:-100123:44'].telegramPrivateChatId, undefined);
 
@@ -457,6 +505,81 @@ test('Telegram /lesson in private resends the active video and task privately', 
   assert.equal(sent[1].chatId, '44');
   assert.equal(sent[1].text, 'Answer question 1.');
   assert.equal(sent[1].replyToMessageId, 18);
+});
+
+test('Telegram private /previous and /next navigate lessons and persist lesson history', async t => {
+  const { agent, directory, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  assert.deepEqual(agent.progress['telegram:-100123:44'].lessonHistory, ['lesson_1']);
+
+  await agent.handleUpdate(privateUpdate({ text: '/next', messageId: 20 }));
+  let student = agent.progress['telegram:-100123:44'];
+  assert.equal(student.currentLessonId, 'lesson_2');
+  assert.equal(student.currentLessonIndex, 1);
+  assert.equal(student.status, 'awaiting_task');
+  assert.equal(student.lessonsCompleted, 0);
+  assert.deepEqual(student.lessonHistory, ['lesson_1', 'lesson_2']);
+  assert.deepEqual(sent.slice(-2).map(message => message.type), ['video', 'text']);
+  assert.equal(sent.at(-1).text, 'Answer question 2.');
+
+  await agent.handleUpdate(privateUpdate({ text: '/previous', messageId: 21 }));
+  student = agent.progress['telegram:-100123:44'];
+  assert.equal(student.currentLessonId, 'lesson_1');
+  assert.deepEqual(student.lessonHistory, ['lesson_1', 'lesson_2']);
+  assert.equal(sent.at(-1).text, 'Answer question 1.');
+
+  await agent.handleUpdate(privateUpdate({ text: '/next', messageId: 22 }));
+  student = agent.progress['telegram:-100123:44'];
+  assert.equal(student.currentLessonId, 'lesson_2');
+  assert.deepEqual(student.lessonHistory, ['lesson_1', 'lesson_2']);
+  assert.equal(student.lessonsCompleted, 0);
+  const persisted = JSON.parse(fs.readFileSync(
+    path.join(directory, 'telegram_progress.json'),
+    'utf8'
+  ));
+  assert.deepEqual(persisted['telegram:-100123:44'].lessonHistory, ['lesson_1', 'lesson_2']);
+});
+
+test('Telegram lesson navigation restores previously saved task answers', async t => {
+  const { agent, sent } = createFixture(t);
+  const lesson = agent.lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  lesson.taskMessage = 'Answer questions 1 and 2.';
+  lesson.answerKey = ['answer 1', 'answer 2'];
+  agent.evaluateTask = async () => ({
+    isTaskSubmission: true,
+    allCorrect: false,
+    answeredQuestionNumbers: [1],
+    correctQuestionNumbers: [1],
+    uncertainQuestionNumbers: [],
+    incorrectAnswers: []
+  });
+
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  await agent.handleUpdate(privateUpdate({ text: 'answer 1' }));
+  assert.deepEqual(agent.progress['telegram:-100123:44'].correctQuestionNumbers, [1]);
+
+  await agent.handleUpdate(privateUpdate({ text: '/next' }));
+  await agent.handleUpdate(privateUpdate({ text: '/previous' }));
+
+  const student = agent.progress['telegram:-100123:44'];
+  assert.equal(student.currentLessonId, 'lesson_1');
+  assert.equal(student.status, 'awaiting_reattempt');
+  assert.deepEqual(student.correctQuestionNumbers, [1]);
+  assert.deepEqual(student.retryQuestionNumbers, []);
+});
+
+test('Telegram private lesson navigation reports when no previous or next lesson is available', async t => {
+  const { agent, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+
+  await agent.handleUpdate(privateUpdate({ text: '/previous' }));
+  assert.match(sent.at(-1).text, /ما في حصة سابقة جاهزة/);
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
+
+  await agent.handleUpdate(privateUpdate({ text: '/next' }));
+  await agent.handleUpdate(privateUpdate({ text: '/next' }));
+  assert.match(sent.at(-1).text, /ما في حصة جاية متوفرة/);
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_2');
 });
 
 test('Telegram /number privately sends that lesson and makes it active', async t => {
@@ -1300,6 +1423,13 @@ test('Telegram Bot API sends JSON requests and multipart lesson videos', async (
   });
 
   await api.getUpdates(9);
+  const mention = {
+    type: 'text_mention',
+    offset: 7,
+    length: 10,
+    user: { id: 44, is_bot: false, first_name: 'Student' }
+  };
+  await api.sendMessage('-100123', 'Welcome Student', 6, [mention]);
   await api.sendVideo('-100123', Buffer.from('video'), 'Lesson 1', 7);
   assert.equal(requests[0].options.headers['content-type'], 'application/json');
   assert.deepEqual(JSON.parse(requests[0].options.body), {
@@ -1307,11 +1437,17 @@ test('Telegram Bot API sends JSON requests and multipart lesson videos', async (
     timeout: 25,
     allowed_updates: ['message']
   });
-  assert.match(requests[1].options.body.get('video').type, /video\/mp4/);
-  assert.equal(requests[1].options.body.get('chat_id'), '-100123');
-  assert.equal(requests[1].options.body.get('caption'), 'Lesson 1');
+  assert.deepEqual(JSON.parse(requests[1].options.body), {
+    chat_id: '-100123',
+    text: 'Welcome Student',
+    entities: [mention],
+    reply_parameters: { message_id: 6 }
+  });
+  assert.match(requests[2].options.body.get('video').type, /video\/mp4/);
+  assert.equal(requests[2].options.body.get('chat_id'), '-100123');
+  assert.equal(requests[2].options.body.get('caption'), 'Lesson 1');
   assert.equal(
-    requests[1].options.body.get('reply_parameters'),
+    requests[2].options.body.get('reply_parameters'),
     JSON.stringify({ message_id: 7 })
   );
   assert.match(requests[0].url, /\/getUpdates$/);

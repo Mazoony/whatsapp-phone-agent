@@ -619,6 +619,34 @@ class LessonManager {
     return { status: laterVideoExists ? 'awaiting_content' : 'completed' };
   }
 
+  getPreviousSequentialLesson(gradeKey, currentLessonId) {
+    const currentNumber = /^lesson_(\d+)$/.exec(currentLessonId || '');
+    if (!currentNumber) {
+      throw new Error(`Cannot determine lesson order from "${currentLessonId}".`);
+    }
+    const previousNumber = Number(currentNumber[1]) - 1;
+    if (previousNumber < 1) return { status: 'completed' };
+    const lessons = this.lessonsConfig[gradeKey]?.lessons || [];
+    const lessonIndex = lessons.findIndex(lesson => {
+      if (lesson.id !== `lesson_${previousNumber}` ||
+          typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
+          !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0 ||
+          typeof lesson.videoFile !== 'string') {
+        return false;
+      }
+      try {
+        const stats = fs.statSync(resolveLessonVideoPath(lesson.videoFile));
+        return stats.isFile() && stats.size > 0;
+      } catch (error) {
+        if (error.code === 'ENOENT') return false;
+        throw error;
+      }
+    });
+    return lessonIndex >= 0
+      ? { status: 'ready', lessonIndex }
+      : { status: 'completed' };
+  }
+
   getNextLessonToDeliver(jid, gradeKey, phoneJid = null) {
     const student = this.getStudent(jid, phoneJid);
     if (!student || student.status === 'consulting') {
