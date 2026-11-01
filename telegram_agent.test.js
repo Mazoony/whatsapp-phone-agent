@@ -366,6 +366,28 @@ test('Telegram privately celebrates lesson milestones and records completion dat
     message.text.includes('كملت 3 حصص بنجاح')));
 });
 
+test('Telegram accepts a typo-corrected answer and shows the right spelling privately', async t => {
+  const { agent, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  agent.evaluateTask = async () => ({
+    isTaskSubmission: true,
+    allCorrect: true,
+    answeredQuestionNumbers: [1],
+    correctQuestionNumbers: [1],
+    uncertainQuestionNumbers: [],
+    incorrectAnswers: [],
+    correctedAnswers: [{ questionNumber: 1, correctSpelling: 'correct answer' }]
+  });
+
+  await agent.handleUpdate(privateUpdate({ text: '1: corect answer' }));
+
+  const response = sent.filter(message =>
+    message.chatId === '44' && message.text?.includes('الكتابة الصحيحة')).at(-1);
+  assert.ok(response);
+  assert.match(response.text, /السؤال 1: إجابتك صحيحة؛ الكتابة الصحيحة «correct answer»/);
+  assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
+});
+
 test('Telegram does not announce a group achievement before explicit student opt-in', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));

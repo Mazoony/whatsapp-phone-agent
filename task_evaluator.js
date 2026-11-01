@@ -102,7 +102,8 @@ export async function evaluateStudentTask(
     questionNumber,
     parseAnswerKey(lesson.answerKey[questionNumber - 1])
   ]));
-  const exactMatches = findExactNumberedAnswers(studentSubmission, pending, parsedAnswers);
+  const { correctQuestionNumbers: exactMatches, correctedAnswers } =
+    findNumberedAnswers(studentSubmission, pending, parsedAnswers);
   const remainingPending = pending.filter(number => !exactMatches.has(number));
   const remainingSubmission = studentSubmission.split(/\r?\n/)
     .filter((_, index, lines) => !exactMatches.has(
@@ -120,6 +121,7 @@ export async function evaluateStudentTask(
       correctQuestionNumbers,
       uncertainQuestionNumbers: [],
       incorrectAnswers: [],
+      ...(correctedAnswers.length ? { correctedAnswers } : {}),
       feedback: getTaskFeedback(true, correctQuestionNumbers.length === pending.length)
     };
   }
@@ -176,7 +178,7 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
         if (keyIndex > 0) {
           console.log(`[Grader] Used API key ${keyIndex + 1} for task evaluation.`);
         }
-        return combineExactMatches(parsed, exactMatches, pending);
+        return combineExactMatches(parsed, exactMatches, pending, correctedAnswers);
       } catch (err) {
         lastError = err;
         console.warn(`[Grader Warning] Model ${modelName} with API key ${keyIndex + 1} grading failed:`, err.message);
@@ -195,7 +197,7 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
       throw new Error('Ollama returned task grading in an invalid format.');
     }
     console.log('[Grader] Task evaluated using local Ollama.');
-    return combineExactMatches(parsed, exactMatches, pending);
+    return combineExactMatches(parsed, exactMatches, pending, correctedAnswers);
   } catch (localError) {
     console.error('[Grader Error] Gemini and local Ollama failed:', localError.message, lastError?.message || '');
     throw new Error(`Could not evaluate the student's task: ${localError.message}`);
@@ -267,6 +269,65 @@ function normalizeAnswer(answer) {
     .trim();
 }
 
+function getTypoDistanceThreshold(answer) {
+  const normalized = normalizeAnswer(answer).replace(/\s/g, '');
+  if (/^\d+$/.test(normalized)) return 0;
+  const length = normalized.length;
+  if (length >= 24) return 2;
+  if (length >= 5) return 1;
+  return 0;
+}
+
+function getEditDistance(left, right, limit) {
+  if (Math.abs(left.length - right.length) > limit) return limit + 1;
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    let rowMinimum = leftIndex;
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + Number(left[leftIndex - 1] !== right[rightIndex - 1])
+      );
+      rowMinimum = Math.min(rowMinimum, current[rightIndex]);
+    }
+    if (rowMinimum > limit) return limit + 1;
+    previous = current;
+  }
+  return previous[right.length];
+}
+
+function isMinorSpellingTypo(candidate, expected) {
+  const normalizedCandidate = normalizeAnswer(candidate);
+  const normalizedExpected = normalizeAnswer(expected);
+  if (!normalizedCandidate || !normalizedExpected ||
+      normalizedCandidate === normalizedExpected ||
+      getTypoDistanceThreshold(expected) === 0) return false;
+  const candidateWords = normalizedCandidate.split(' ');
+  const expectedWords = normalizedExpected.split(' ');
+  if (candidateWords.length !== expectedWords.length) return false;
+
+  let totalDistance = 0;
+  for (let index = 0; index < expectedWords.length; index += 1) {
+    if (candidateWords[index] === expectedWords[index]) continue;
+    if (expectedWords[index].length < 5) return false;
+    const remainingLimit = getTypoDistanceThreshold(expected) - totalDistance;
+    if (remainingLimit <= 0) return false;
+    const distance = getEditDistance(
+      candidateWords[index],
+      expectedWords[index],
+      remainingLimit
+    );
+    if (distance > remainingLimit) {
+      return false;
+    }
+    totalDistance += distance;
+    if (totalDistance > getTypoDistanceThreshold(expected)) return false;
+  }
+  return totalDistance > 0;
+}
+
 function parseNumberedAnswer(line) {
   const match = /^\s*(\d{1,3})\s*[.)/:=-]\s*(.+?)\s*$/.exec(line);
   return match
@@ -274,26 +335,40 @@ function parseNumberedAnswer(line) {
     : null;
 }
 
-function findExactNumberedAnswers(submission, pending, parsedAnswers) {
+function findNumberedAnswers(submission, pending, parsedAnswers) {
   const pendingSet = new Set(pending);
   const candidates = new Map();
-  for (const line of submission.split(/\r?\n/)) {
+  const lines = submission.split(/\r?\n/);
+  for (const line of lines) {
     const parsed = parseNumberedAnswer(line);
-    if (!parsed || !pendingSet.has(parsed.questionNumber)) continue;
-    const matches = [
-      parsedAnswers.get(parsed.questionNumber).expectedAnswer,
-      ...parsedAnswers.get(parsed.questionNumber).acceptedAnswers
-    ].some(answer => normalizeAnswer(answer) === normalizeAnswer(parsed.answer));
-    if (!matches) continue;
-    candidates.set(parsed.questionNumber, (candidates.get(parsed.questionNumber) || 0) + 1);
+    const questionNumber = parsed?.questionNumber ??
+      (pending.length === 1 && lines.length === 1 ? pending[0] : null);
+    if (!questionNumber || !pendingSet.has(questionNumber)) continue;
+    const submittedAnswer = parsed?.answer ?? line.trim();
+    const answerOptions = [
+      parsedAnswers.get(questionNumber).expectedAnswer,
+      ...parsedAnswers.get(questionNumber).acceptedAnswers
+    ];
+    const exactAnswer = answerOptions.find(answer =>
+      normalizeAnswer(answer) === normalizeAnswer(submittedAnswer));
+    const correctedAnswer = exactAnswer ? null : answerOptions.find(answer =>
+      isMinorSpellingTypo(submittedAnswer, answer));
+    if (!exactAnswer && !correctedAnswer) continue;
+    const existing = candidates.get(questionNumber) || { count: 0, correctedAnswer: null };
+    existing.count += 1;
+    if (correctedAnswer) existing.correctedAnswer = answerOptions[0];
+    candidates.set(questionNumber, existing);
   }
-  return new Map([...candidates]
-    .filter(([, count]) => count === 1)
-    .map(([number]) => [number, true]));
+  const matched = [...candidates].filter(([, match]) => match.count === 1);
+  return {
+    correctQuestionNumbers: new Set(matched.map(([number]) => number)),
+    correctedAnswers: matched.flatMap(([questionNumber, match]) =>
+      match.correctedAnswer ? [{ questionNumber, correctSpelling: match.correctedAnswer }] : [])
+  };
 }
 
-function combineExactMatches(result, exactMatches, pending) {
-  const exactCorrect = [...exactMatches.keys()];
+function combineExactMatches(result, exactMatches, pending, correctedAnswers = []) {
+  const exactCorrect = [...exactMatches];
   const answeredQuestionNumbers = [...new Set([
     ...exactCorrect,
     ...result.answeredQuestionNumbers
@@ -308,6 +383,7 @@ function combineExactMatches(result, exactMatches, pending) {
   const allCorrect = pending.every(number => correctQuestionNumbers.includes(number));
   return {
     ...result,
+    ...(correctedAnswers.length ? { correctedAnswers } : {}),
     isTaskSubmission: result.isTaskSubmission || exactCorrect.length > 0,
     allCorrect,
     answeredQuestionNumbers,

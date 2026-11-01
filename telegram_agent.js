@@ -1714,6 +1714,17 @@ export class TelegramLessonAgent {
           return `السؤال ${number}: الإجابة الصحيحة «${expectedAnswer.trim()}». ${conciseExplanation}`;
         }).join(' ')
       : '';
+    const spellingCorrectionFeedback = Array.isArray(result.correctedAnswers)
+      ? result.correctedAnswers
+        .filter(correction =>
+          Number.isInteger(correction.questionNumber) &&
+          pending.has(correction.questionNumber) &&
+          typeof correction.correctSpelling === 'string' &&
+          correction.correctSpelling.trim())
+        .map(correction =>
+          `السؤال ${correction.questionNumber}: إجابتك صحيحة؛ الكتابة الصحيحة «${correction.correctSpelling.trim()}».`)
+        .join(' ')
+      : '';
     if (remainingQuestionNumbers.length > 0 && correctedAfterRetry.size === 0) {
       state.status = 'awaiting_reattempt';
       this.saveProgress();
@@ -1738,7 +1749,7 @@ export class TelegramLessonAgent {
       ]).size;
       await this.bot.sendMessage(
         chatId,
-        `${correctionFeedback}${correctionFeedback ? ' ' : ''}تقدمك ${completedQuestionCount} من ${lesson.answerKey.length} أسئلة. حفظت الإجابات الصحيحة.${incorrectFeedback}${uncertaintyFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
+        `${correctionFeedback}${correctionFeedback ? ' ' : ''}${spellingCorrectionFeedback}${spellingCorrectionFeedback ? ' ' : ''}تقدمك ${completedQuestionCount} من ${lesson.answerKey.length} أسئلة. حفظت الإجابات الصحيحة.${incorrectFeedback}${uncertaintyFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
         messageId
       );
       return;
@@ -1752,7 +1763,9 @@ export class TelegramLessonAgent {
       : 'ممتاز! كل الإجابات صحيحة،\n\nيلا دا مستوى ناس الـ93 وفوق والله!\n\nخلينا نستمر كدا وحننبهر بالنتيجة.\n\nبجيك هسي الفيديو البعدو.';
     await this.bot.sendMessage(
       chatId,
-      allCorrectMessage,
+      spellingCorrectionFeedback
+        ? `${allCorrectMessage}\n\n${spellingCorrectionFeedback}`
+        : allCorrectMessage,
       messageId
     );
     if (state.telegramCelebrationsOptIn === true &&

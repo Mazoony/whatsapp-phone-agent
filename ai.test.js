@@ -565,16 +565,71 @@ test('task grading deterministically accepts exact numbered answers and listed a
   }
 });
 
-test('task grading checks only unmatched screenshot answers with AI', async () => {
+test('task grading accepts minor numbered spelling mistakes and returns the correct spelling', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => {
+    throw new Error('Unambiguous minor spelling mistakes must not require AI grading.');
+  };
+
+  try {
+    const result = await evaluateStudentTask({
+      taskMessage: 'Answer the questions about the author.',
+      answerKey: [
+        'Robert Louis Stevenson',
+        'Stephen Colbourn',
+        'Edinburgh / Scotland',
+        'Samoa',
+        'It was warm there'
+      ]
+    }, [
+      '1: Robert Louis Stevensn',
+      '2: Stephen Colborn',
+      '3: Edinbugh / Scotland',
+      '4: Samoaa',
+      '5: It was warm there'
+    ].join('\n'));
+
+    assert.deepEqual(result, {
+      isTaskSubmission: true,
+      allCorrect: true,
+      answeredQuestionNumbers: [1, 2, 3, 4, 5],
+      correctQuestionNumbers: [1, 2, 3, 4, 5],
+      uncertainQuestionNumbers: [],
+      incorrectAnswers: [],
+      correctedAnswers: [
+        { questionNumber: 1, correctSpelling: 'Robert Louis Stevenson' },
+        { questionNumber: 2, correctSpelling: 'Stephen Colbourn' },
+        { questionNumber: 3, correctSpelling: 'Edinburgh / Scotland' },
+        { questionNumber: 4, correctSpelling: 'Samoa' }
+      ],
+      feedback: 'صحيح، ممتاز.'
+    });
+    const unnumberedResult = await evaluateStudentTask({
+      taskMessage: 'Where did Stevenson die?',
+      answerKey: ['Samoa']
+    }, 'Samoaa');
+    assert.deepEqual(unnumberedResult.correctedAnswers, [
+      { questionNumber: 1, correctSpelling: 'Samoa' }
+    ]);
+    assert.deepEqual(unnumberedResult.correctQuestionNumbers, [1]);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading accepts obvious spelling typos before sending remaining answers to AI', async () => {
   const previousKeys = [...config.geminiApiKeys];
   const previousFetch = globalThis.fetch;
   config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
   globalThis.fetch = async (_url, options) => {
     const body = JSON.parse(options.body);
     const prompt = body.messages.at(-1).content;
-    assert.match(prompt, /expectedAnswer":"practicing"/);
+    assert.doesNotMatch(prompt, /expectedAnswer":"practicing"/);
     assert.match(prompt, /expectedAnswer":"postponing"/);
-    assert.ok(prompt.includes('STUDENT: "1/practiceing\n9/postpone"'));
+    assert.ok(prompt.includes('STUDENT: "9/postpone"'));
     assert.doesNotMatch(prompt, /2\/do/);
     assert.doesNotMatch(prompt, /8\/use/);
     return {
@@ -584,15 +639,10 @@ test('task grading checks only unmatched screenshot answers with AI', async () =
           content: JSON.stringify({
             isTaskSubmission: true,
             allCorrect: false,
-            answeredQuestionNumbers: [1, 9],
+            answeredQuestionNumbers: [9],
             correctQuestionNumbers: [],
             uncertainQuestionNumbers: [],
             incorrectAnswers: [
-              {
-                questionNumber: 1,
-                studentAnswer: 'practiceing',
-                explanation: 'راجعي طريقة كتابة صيغة ing.'
-              },
               {
                 questionNumber: 9,
                 studentAnswer: 'postpone',
@@ -639,9 +689,12 @@ test('task grading checks only unmatched screenshot answers with AI', async () =
     ].join('\n'));
 
     assert.deepEqual(result.answeredQuestionNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-    assert.deepEqual(result.correctQuestionNumbers, [2, 3, 4, 5, 6, 7, 8, 10, 11, 12]);
+    assert.deepEqual(result.correctQuestionNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12]);
     assert.deepEqual(result.uncertainQuestionNumbers, []);
-    assert.deepEqual(result.incorrectAnswers.map(answer => answer.questionNumber), [1, 9]);
+    assert.deepEqual(result.incorrectAnswers.map(answer => answer.questionNumber), [9]);
+    assert.deepEqual(result.correctedAnswers, [
+      { questionNumber: 1, correctSpelling: 'practicing' }
+    ]);
     assert.equal(result.allCorrect, false);
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
