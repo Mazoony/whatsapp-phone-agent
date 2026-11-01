@@ -3220,15 +3220,26 @@ test('curriculum API endpoints allow viewing, saving, uploading video, and manag
   fs.writeFileSync(testTelegramProgressFile, JSON.stringify({
     studentOne: {
       grade: 'grade_3_secondary',
-      lessonCompletionCounts: { lesson_1: 2 }
+      lessonCompletionCounts: { lesson_1: 2 },
+      currentLessonId: 'lesson_1',
+      status: 'awaiting_task'
     },
     studentTwo: {
       grade: 'grade_3_secondary',
-      lessonCompletionCounts: { lesson_1: 1 }
+      lessonCompletionCounts: { lesson_1: 1 },
+      currentLessonId: 'lesson_1',
+      status: 'awaiting_reattempt'
+    },
+    activeStudentWithoutCompletionHistory: {
+      grade: 'grade_3_secondary',
+      currentLessonId: 'lesson_1',
+      status: 'awaiting_task'
     },
     otherGradeStudent: {
       grade: 'grade_2_secondary',
-      lessonCompletionCounts: { lesson_1: 5 }
+      lessonCompletionCounts: { lesson_1: 5 },
+      currentLessonId: 'lesson_1',
+      status: 'awaiting_task'
     }
   }), 'utf8');
 
@@ -3259,6 +3270,7 @@ test('curriculum API endpoints allow viewing, saving, uploading video, and manag
     assert.equal(gradeData.lessons.length, 1);
     assert.equal(gradeData.lessons[0].completionCount, 3);
     assert.equal(gradeData.lessons[0].studentCount, 2);
+    assert.equal(gradeData.lessons[0].inProgressStudentCount, 3);
 
     const assignedVideoDeleteRes = await fetch(
       `${origin}/api/admin/curriculum/video?gradeKey=grade_3_secondary&relativePath=${encodeURIComponent('media/lessons/grade_3_secondary/lesson_1.mp4')}`,

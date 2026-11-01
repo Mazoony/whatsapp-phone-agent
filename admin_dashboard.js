@@ -217,9 +217,16 @@ function readJsonFileOr(filePath, fallback) {
 
 function addLessonCompletionStats(gradeCurriculum, studentsProgress) {
   const countsByLesson = new Map();
+  const inProgressByLesson = new Map();
   for (const student of Object.values(studentsProgress)) {
-    if (student?.grade !== gradeCurriculum.key ||
-        !student.lessonCompletionCounts ||
+    if (student?.grade !== gradeCurriculum.key) continue;
+    if (['awaiting_task', 'awaiting_reattempt'].includes(student.status) &&
+        typeof student.currentLessonId === 'string' &&
+        student.currentLessonId.trim()) {
+      const lessonId = student.currentLessonId.trim();
+      inProgressByLesson.set(lessonId, (inProgressByLesson.get(lessonId) || 0) + 1);
+    }
+    if (!student.lessonCompletionCounts ||
         typeof student.lessonCompletionCounts !== 'object' ||
         Array.isArray(student.lessonCompletionCounts)) continue;
     for (const [lessonId, count] of Object.entries(student.lessonCompletionCounts)) {
@@ -232,7 +239,8 @@ function addLessonCompletionStats(gradeCurriculum, studentsProgress) {
   }
   const addStats = lesson => ({
     ...lesson,
-    ...(countsByLesson.get(lesson.id) || { completionCount: 0, studentCount: 0 })
+    ...(countsByLesson.get(lesson.id) || { completionCount: 0, studentCount: 0 }),
+    inProgressStudentCount: inProgressByLesson.get(lesson.id) || 0
   });
   return {
     ...gradeCurriculum,

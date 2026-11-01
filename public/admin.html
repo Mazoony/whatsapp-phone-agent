@@ -409,6 +409,13 @@
     .roster-follow-up-item:hover { background: #f2f8f4; }
     .roster-follow-up-item small { color: var(--muted); white-space: nowrap; }
     .roster-follow-up-item .status { flex: 0 0 auto; }
+    .progress-filters { display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(145px, 1fr)) auto; align-items: end; gap: 10px; margin: 16px 0 8px; padding: 13px; }
+    .progress-filters label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 650; }
+    .progress-filters input, .progress-filters select { width: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: white; color: var(--ink); font: inherit; font-size: 11px; }
+    .progress-filter-count { color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .progress-row-highlight { outline: 2px solid #73b28e; outline-offset: -2px; background: #f0faf3; }
+    @media (max-width: 850px) { .progress-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 480px) { .progress-filters { grid-template-columns: 1fr; } }
     .activity-hourly-chart { overflow-x: auto; }
     .activity-hourly-chart svg { display: block; width: 100%; min-width: 600px; height: auto; }
     .activity-hourly-chart text { fill: var(--muted); font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
@@ -650,7 +657,7 @@
       .gender-statistics { gap: 8px; }
       .gender-stat { padding: 12px; }
     }
-    @media (max-width: 420px) { .metrics { gap: 8px; } .metric { padding: 12px; } .metric-value { font-size: 22px; } .gender-statistics { grid-template-columns: 1fr; } .nav-item { font-size: 0; } .nav-icon { font-size: 15px; } }
+    @media (max-width: 420px) { .metrics { gap: 8px; } .metric { padding: 12px; } .metric-value { font-size: 22px; } .gender-statistics { grid-template-columns: 1fr; } aside { justify-content: flex-start; } .brand { display: none; } nav { flex: 0 0 auto; width: max-content; } .nav-item { flex: 0 0 auto; font-size: 10px; } .nav-icon { font-size: 14px; } }
     body.telegram-only #section-overview > :nth-child(n + 5),
     body.telegram-only #section-chats,
     body.telegram-only #section-es-contacts,
@@ -701,8 +708,8 @@
 
       <section class="section active" id="section-overview">
         <div class="metrics telegram-overview-metrics">
-          <button class="metric metric-button" data-go="progress" aria-label="View Telegram learners">
-            <span class="metric-top"><span>Telegram learners</span><span class="metric-icon">✈</span></span>
+          <button class="metric metric-button" data-go="progress" aria-label="View tracked Telegram learners">
+            <span class="metric-top"><span>Tracked Telegram learners</span><span class="metric-icon">✈</span></span>
             <span class="metric-value" id="metric-telegram-students">—</span>
             <span class="metric-foot" id="metric-telegram-joins">Joined today — · last 7 days —</span>
           </button>
@@ -726,6 +733,7 @@
           <div class="telegram-stats-chart" id="telegram-stats-chart" aria-live="polite">
             <p>Loading Telegram activity…</p>
           </div>
+          <p class="activity-note">Total group members includes everyone in the Telegram group. Tracked learners are accounts with a saved progress record; not every member has necessarily started a lesson. Telegram does not provide the bot a reliable list of which remaining members are students, so the dashboard does not show that difference as a count. Older join activity from before tracking began may be missing.</p>
           <div class="telegram-stats-legend" aria-label="Telegram graph legend">
             <span><i></i>Daily recorded group joins</span>
             <span><i class="telegram-active-key"></i>Active tracked learners</span>
@@ -1118,7 +1126,7 @@
         <div class="section-heading">
           <div>
             <h2>Student payment ledger</h2>
-            <p>Each payment period is 30 days from the student's enrollment date. Student claims and receipt scans stay pending until you review them.</p>
+            <p>Each payment period lasts 30 days from the student's enrollment date. Claims and receipt scans stay pending until you confirm them. Confirmation updates the ledger; students can check their status with /payment, but are not automatically messaged.</p>
           </div>
           <button class="pagination button" id="payment-ledger-refresh" type="button">Refresh</button>
         </div>
@@ -1185,6 +1193,33 @@
           </article>
         </div>
         <div class="panel table-wrap">
+          <div class="progress-filters" aria-label="Filter student progress">
+            <label for="progress-search">Find a student
+              <input id="progress-search" type="search" placeholder="Search name or lesson…" autocomplete="off">
+            </label>
+            <label for="progress-grade-filter">Grade
+              <select id="progress-grade-filter"><option value="">All grades</option></select>
+            </label>
+            <label for="progress-status-filter">Lesson status
+              <select id="progress-status-filter">
+                <option value="">All statuses</option>
+                <option value="awaiting_task">Awaiting exercise</option>
+                <option value="awaiting_reattempt">Needs another try</option>
+                <option value="completed">Completed</option>
+                <option value="awaiting_content">Waiting for lesson</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label for="progress-inactivity-filter">Student activity
+              <select id="progress-inactivity-filter">
+                <option value="">Any activity</option>
+                <option value="none">No activity recorded</option>
+                <option value="7">Inactive for 7+ days</option>
+                <option value="30">Inactive for 30+ days</option>
+              </select>
+            </label>
+            <span class="progress-filter-count" id="progress-filter-count" aria-live="polite">Loading students…</span>
+          </div>
           <table><thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Actions</th></tr></thead><tbody id="progress-rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
         </div>
       </section>
@@ -1336,7 +1371,7 @@
             <div class="modal-header">
               <div>
                 <h2 id="lesson-modal-title">Upload &amp; Configure Lesson</h2>
-                <p class="subheading">Set stage, video, WhatsApp intro, task exercises, and AI answer keys.</p>
+                <p class="subheading">Set stage, video, Telegram introduction, task exercises, and AI answer keys.</p>
               </div>
               <button class="modal-close" id="close-lesson-modal-btn" type="button" aria-label="Close">✕</button>
             </div>
@@ -2510,7 +2545,7 @@
         <div class="telegram-stat-card">
           <div class="telegram-stat-label">Tracked learners</div>
           <div class="telegram-stat-value">${stats.trackedLearners.toLocaleString()}</div>
-          <div class="telegram-stat-foot">Learners with saved lesson progress</div>
+          <div class="telegram-stat-foot">Telegram accounts with a saved progress record</div>
         </div>
         <div class="telegram-stat-card">
           <div class="telegram-stat-label">Joined today</div>
@@ -2889,7 +2924,7 @@
       }).join(' ');
       const activeStudents = insights?.activeStudentsLast7Days || 0;
       const messagesLast7Days = trend.slice(-7).reduce((total, day) => total + day.incomingMessages, 0);
-      summary.textContent = `${activeStudents.toLocaleString()} tracked students · ${messagesLast7Days.toLocaleString()} messages in the last 7 calendar days · 30-day daily trend (${timeZone}).`;
+      summary.textContent = `${activeStudents.toLocaleString()} students with saved progress active · ${messagesLast7Days.toLocaleString()} messages in the last 7 calendar days · 30-day daily trend (${timeZone}).`;
       chart.innerHTML = trend.length ? `
         <div class="student-insight-chart-wrap" role="img" aria-label="Daily active tracked students and incoming student messages over the last 30 days. Telegram active students use a separate scale.">
           <div class="student-insight-chart">
@@ -2908,7 +2943,7 @@
           <span><strong>${escapeHtml(student.name)}</strong><br><small>${escapeHtml(student.platform || 'WhatsApp')} · ${escapeHtml(student.gradeName)} · ${escapeHtml(student.lessonTitle || 'Lesson pending')}</small></span>
           <span><span class="status ${escapeHtml(student.status)}">${student.status === 'awaiting_reattempt' ? 'Reattempt' : 'Awaiting exercise'}</span><br><small>${student.daysSinceActivity}d since activity</small></span>`;
         return student.platform === 'Telegram'
-          ? `<div class="roster-follow-up-item">${content}</div>`
+          ? `<button class="roster-follow-up-item" type="button" data-open-progress="${escapeHtml(student.jid)}">${content}</button>`
           : `<button class="roster-follow-up-item" data-open-chat="${escapeHtml(student.jid)}">${content}</button>`;
       }).join('') : '<div class="empty">No overdue lesson follow-ups right now.</div>';
     }
@@ -2917,7 +2952,7 @@
       const days = enrollment?.dailyJoins || [];
       const maximum = Math.max(1, ...days.map(day => day.students));
       $('#telegram-enrollment-summary').textContent =
-        `${(enrollment?.totalStudents || 0).toLocaleString()} tracked learners · ${(enrollment?.joinedToday || 0).toLocaleString()} joined today · ${(enrollment?.joinedLast7Days || 0).toLocaleString()} in the last 7 calendar days · ${timeZone}. Join dates are recorded from when the bot is added to the group.`;
+        `${(enrollment?.totalStudents || 0).toLocaleString()} Telegram accounts with saved progress · ${(enrollment?.joinedToday || 0).toLocaleString()} joined today · ${(enrollment?.joinedLast7Days || 0).toLocaleString()} in the last 7 calendar days · ${timeZone}. Join dates are recorded from when the bot is added to the group.`;
       $('#telegram-join-chart').innerHTML = days.length ? days.map(day => {
         const height = day.students ? Math.max(3, day.students / maximum * 46) : 2;
         const label = new Intl.DateTimeFormat(undefined, {
@@ -3093,9 +3128,90 @@
         : 'Messages are sent individually through the WhatsApp agent.';
     }
 
+    function initializeProgressFilters(students) {
+      const gradeFilter = $('#progress-grade-filter');
+      const selectedGrade = gradeFilter.value;
+      const grades = new Map();
+      for (const student of students) {
+        const key = student.grade || student.gradeName || '__unknown';
+        grades.set(key, student.gradeName || 'Unknown grade');
+      }
+      gradeFilter.innerHTML = '<option value="">All grades</option>' +
+        [...grades].sort((left, right) => left[1].localeCompare(right[1]))
+          .map(([key, name]) => `<option value="${escapeHtml(key)}">${escapeHtml(name)}</option>`)
+          .join('');
+      gradeFilter.value = grades.has(selectedGrade) ? selectedGrade : '';
+
+      if (gradeFilter.dataset.filterInitialized === 'true') return;
+      for (const selector of [
+        '#progress-search',
+        '#progress-grade-filter',
+        '#progress-status-filter',
+        '#progress-inactivity-filter'
+      ]) {
+        $(selector).addEventListener('input', applyProgressFilters);
+        $(selector).addEventListener('change', applyProgressFilters);
+      }
+      gradeFilter.dataset.filterInitialized = 'true';
+    }
+
+    function applyProgressFilters() {
+      const query = $('#progress-search').value.trim().toLocaleLowerCase();
+      const grade = $('#progress-grade-filter').value;
+      const status = $('#progress-status-filter').value;
+      const inactivity = $('#progress-inactivity-filter').value;
+      const now = Date.now();
+      const rows = [...$('#progress-rows').querySelectorAll('[data-progress-student]')];
+      let visible = 0;
+      for (const row of rows) {
+        const activity = row.dataset.lastActivity ? Number(row.dataset.lastActivity) : null;
+        const matches = (!query || row.dataset.search.includes(query)) &&
+          (!grade || row.dataset.grade === grade) &&
+          (!status || row.dataset.status === status) &&
+          (inactivity === '' ||
+            (inactivity === 'none' && activity === null) ||
+            (inactivity !== 'none' && activity !== null &&
+              now - activity >= Number(inactivity) * 24 * 60 * 60 * 1000));
+        row.hidden = !matches;
+        if (matches) visible += 1;
+      }
+      const count = $('#progress-filter-count');
+      count.textContent = rows.length
+        ? `Showing ${visible.toLocaleString()} of ${rows.length.toLocaleString()} tracked learners`
+        : 'No tracked learners yet';
+      let emptyRow = $('#progress-filter-empty');
+      if (!emptyRow && rows.length) {
+        emptyRow = document.createElement('tr');
+        emptyRow.id = 'progress-filter-empty';
+        emptyRow.innerHTML = '<td colspan="12" class="empty">No students match these filters.</td>';
+        $('#progress-rows').append(emptyRow);
+      }
+      if (emptyRow) emptyRow.hidden = visible !== 0 || rows.length === 0;
+    }
+
+    function openProgressStudent(jid) {
+      for (const selector of [
+        '#progress-search',
+        '#progress-grade-filter',
+        '#progress-status-filter',
+        '#progress-inactivity-filter'
+      ]) $(selector).value = '';
+      activateSection('progress', { refreshProgress: false });
+      loadProgress().then(() => {
+        const row = [...$('#progress-rows').querySelectorAll('[data-progress-student]')]
+          .find(item => item.dataset.progressStudent === jid);
+        if (!row) return;
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.focus({ preventScroll: true });
+        row.classList.add('progress-row-highlight');
+        setTimeout(() => row.classList.remove('progress-row-highlight'), 2500);
+      }).catch(error => showError(`Could not open this student's progress: ${error.message}`));
+    }
+
     async function loadProgress() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const { students, insights } = await api(`/api/admin/telegram-progress?${new URLSearchParams({ timeZone })}`);
+      initializeProgressFilters(students);
       renderTelegramEnrollment(insights.telegramEnrollment, timeZone);
       renderRosterInsights(
         insights,
@@ -3136,8 +3252,19 @@
         const sendLessonAction = availableLessons.length
           ? `<div class="send-lesson-controls"><div class="send-lesson-picker" data-send-lesson-picker><span>Choose a lesson</span><button class="send-lesson-picker-trigger" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a lesson for ${escapeHtml(student.name)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-picker-value" data-selected-lesson>Select from curriculum…</span><span class="send-lesson-picker-chevron" aria-hidden="true">⌄</span></button><div class="send-lesson-menu" role="listbox" aria-label="Available lessons for ${escapeHtml(student.name)}" hidden>${availableLessons.map(lesson => `<button class="send-lesson-option" type="button" role="option" aria-selected="false" data-lesson-id="${escapeHtml(lesson.id)}"><span>${escapeHtml(lesson.title)}</span><span class="send-lesson-option-check" aria-hidden="true"></span></button>`).join('')}</div></div><button class="send-lesson-button" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-button-icon" aria-hidden="true">➤</span>${isSendingLesson ? sendRequest.status === 'processing' ? 'Sending…' : 'Queued…' : 'Send lesson'}</button>${sendRequest?.status === 'failed' ? `<small class="send-lesson-status">Last send failed: ${escapeHtml(sendRequest.error || 'delivery error')}</small>` : isSendingLesson ? '<small class="send-lesson-status">The selected lesson is being sent.</small>' : '<small class="send-lesson-status">This becomes their active lesson.</small>'}</div>`
           : '';
-        return `<tr><td>${escapeHtml(student.platform)}</td><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${skipAction || '—'}</div></td></tr>`;
+        const gradeKey = student.grade || student.gradeName || '__unknown';
+        const knownStatuses = ['awaiting_task', 'awaiting_reattempt', 'completed', 'awaiting_content'];
+        const progressStatus = knownStatuses.includes(student.status) ? student.status : 'other';
+        const activityTimestamp = typeof student.lastStudentActivityAt === 'number'
+          ? student.lastStudentActivityAt
+          : student.lastStudentActivityAt
+            ? Date.parse(student.lastStudentActivityAt)
+            : null;
+        const searchText = `${student.name} ${student.gradeName} ${student.lessonTitle || ''} ${student.platform}`
+          .toLocaleLowerCase();
+        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${skipAction || '—'}</div></td></tr>`;
       }).join('') : '<tr><td colspan="12" class="empty">No student progress recorded yet.</td></tr>';
+      applyProgressFilters();
       $('#progress-rows').querySelectorAll('[data-send-lesson-picker]').forEach(picker => {
         const trigger = picker.querySelector('.send-lesson-picker-trigger');
         const menu = picker.querySelector('.send-lesson-menu');
@@ -4302,7 +4429,7 @@
       }, 100);
     }
 
-    function activateSection(name) {
+    function activateSection(name, { refreshProgress = true } = {}) {
       document.querySelectorAll('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.section === name));
       const sectionName = name === 'agent' ? 'chats' : name;
       document.querySelectorAll('.section').forEach(section => section.classList.toggle('active', section.id === `section-${sectionName}`));
@@ -4311,7 +4438,7 @@
       $('#agent-queue-panel').hidden = name !== 'agent';
       $('#agent-conversation-panel').hidden = name !== 'agent';
       $('#chat-sort-controls').hidden = handledChatsOnly;
-      if (name === 'progress') {
+      if (name === 'progress' && refreshProgress) {
         loadProgress().catch(error => showError(`Could not load Telegram progress: ${error.message}`));
       }
       if (name === 'curriculum') {
@@ -4497,6 +4624,11 @@
       }
     }));
     document.addEventListener('click', event => {
+      const progressButton = event.target.closest('[data-open-progress]');
+      if (progressButton) {
+        openProgressStudent(progressButton.dataset.openProgress);
+        return;
+      }
       const button = event.target.closest('[data-open-chat]');
       if (button) {
         activateSection(handledChatsOnly ? 'agent' : 'chats');
@@ -5412,7 +5544,10 @@
       const studentCount = Number.isSafeInteger(lesson.studentCount)
         ? lesson.studentCount
         : 0;
-      return `<span class="metric-chip" title="Completion totals are recorded from this release onward; earlier per-lesson totals were not saved.">✅ Done ${completionCount} ${completionCount === 1 ? 'time' : 'times'} · ${studentCount} ${studentCount === 1 ? 'student' : 'students'}</span>`;
+      const inProgressStudentCount = Number.isSafeInteger(lesson.inProgressStudentCount)
+        ? lesson.inProgressStudentCount
+        : 0;
+      return `<span class="metric-chip" title="Completion totals are recorded from this release onward; earlier per-lesson totals were not saved. In-progress counts include students currently answering or correcting this lesson.">✅ Done ${completionCount} ${completionCount === 1 ? 'time' : 'times'} · ${studentCount} ${studentCount === 1 ? 'student' : 'students'} · 📖 In progress ${inProgressStudentCount}</span>`;
     }
 
     async function loadCurriculumOverview() {
@@ -6205,12 +6340,23 @@
           event.preventDefault();
           const formStatus = $('#lesson-form-status');
           const saveBtn = $('#save-lesson-btn');
+          const nextLessonId = $('#lesson-form-id').value.trim();
+          const previousLessonId = lessonForm.dataset.sourceLessonId;
+          if (previousLessonId && nextLessonId !== previousLessonId &&
+              !await dashboardConfirm(
+                `This changes "${$('#lesson-form-title').value.trim() || previousLessonId}" in ${$('#lesson-form-grade').selectedOptions[0].textContent} from ID "${previousLessonId}" to "${nextLessonId}". Students' saved progress still points to the old ID and will not be migrated automatically, which may interrupt their lesson progression. Keep the existing ID unless you intend to change it.`,
+                {
+                  title: 'Changing a lesson ID',
+                  confirmText: 'Change lesson ID',
+                  variant: 'warning'
+                }
+              )) return;
           formStatus.textContent = 'Saving lesson…';
           saveBtn.disabled = true;
 
           try {
             const gradeKey = $('#lesson-form-grade').value;
-            const id = $('#lesson-form-id').value.trim();
+            const id = nextLessonId;
             const lessonType = $('#lesson-form-type').value;
             const isStandalone = lessonType === 'standalone';
             const collectionId = lessonType === 'treasure_island' ? 'treasure_island' : null;

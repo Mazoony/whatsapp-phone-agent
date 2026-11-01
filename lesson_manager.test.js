@@ -18,6 +18,7 @@ const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 test('a correct submission immediately delivers the next numbered lesson', async () => {
   const jid = 'immediate-lesson-progression-test@s.whatsapp.net';
   const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  const allQuestionNumbers = lesson.answerKey.map((_, index) => index + 1);
   const nextLessonTask = lessonManager.lessonsConfig.grade_3_secondary.lessons
     .find(candidate => candidate.id === 'lesson_2').taskMessage;
   const originalProgress = lessonManager.progress[jid];
@@ -45,8 +46,10 @@ test('a correct submission immediately delivers the next numbered lesson', async
         content: JSON.stringify({
           isTaskSubmission: true,
           allCorrect: true,
-          answeredQuestionNumbers: [1],
-          correctQuestionNumbers: [1]
+          answeredQuestionNumbers: allQuestionNumbers,
+          correctQuestionNumbers: allQuestionNumbers,
+          uncertainQuestionNumbers: [],
+          incorrectAnswers: []
         })
       }
     })

@@ -2,7 +2,6 @@ node_modules/
 .env
 auth_info_baileys/
 data/
-media/lessons/grade_3_secondary/Treasure_Island_-_About_the_Book_-_Lesson_3.mp4
 .vscode/
 *.log
 .DS_Store

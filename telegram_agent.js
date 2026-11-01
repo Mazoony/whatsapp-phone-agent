@@ -55,6 +55,7 @@ const DEFAULT_OFFSET_FILE = path.join(DATA_DIR, 'telegram_update_offset.json');
 const TELEGRAM_MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const TELEGRAM_PAYMENT_REMINDER_LESSONS = 5;
 const TELEGRAM_MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
+const TELEGRAM_LESSON_REQUEST_COOLDOWN_MS = 2 * 60 * 1000;
 const IGNORED_TELEGRAM_USER_IDS = new Set(['6413779313']);
 const LONG_POLL_SECONDS = 25;
 const NETWORK_TIMEOUT_MS = 35_000;
@@ -85,6 +86,10 @@ function getStudentName(user) {
 
 function isLessonCommand(text) {
   return /^\/lesson(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
+}
+
+function isHelpCommand(text) {
+  return /^\/help(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
 }
 
 function getNumberedLessonCommand(text) {
@@ -157,6 +162,17 @@ function privateLessonStartMessage() {
 /lesson
 
 الدروس طوالي بتترسل ليك في الخاص`;
+}
+
+function getTelegramStudentHelpMessage() {
+  return `مساعدة استخدام بوت الدروس 📚
+
+• أول مرة: افتح المحادثة الخاصة مع @eSchoolsdBot واضغط Start.
+• أرسل /lesson في القروب عشان أرسل ليك الحصة في الخاص، أو أرسلها هناك عشان أواصل معاك.
+• أرسل إجابات التمرين كنص في الخاص. لو في إجابات محتاجة تصحيح، حأحدد أرقام الأسئلة البتحتاج تعيدها.
+• أرسل /lesson في الخاص عشان أستلم الحصة الحالية مرة تانية.
+• أرسل /payment لمعرفة حالة الدفع، أو /paid لإرسال بلاغ للمراجعة. أرسل صورة الإيصال في الخاص.
+• أرسل /help في أي وقت لعرض المساعدة تاني.`;
 }
 
 function isPrivateChatUnavailable(error) {
@@ -419,6 +435,11 @@ export class TelegramLessonAgent {
       return;
     }
 
+    if (isHelpCommand(text)) {
+      await this.bot.sendMessage(chatId, getTelegramStudentHelpMessage(), message.message_id);
+      return;
+    }
+
     if (isPaymentStatusCommand(text)) {
       const state = this.progress[studentKey];
       if (state?.telegramPrivateChatId) {
@@ -462,12 +483,35 @@ export class TelegramLessonAgent {
       await this.runStudentOperation(studentKey, async () => {
         this.recordStudentActivity(studentKey, chatId, message.from);
         const currentState = this.progress[studentKey];
+        const now = Date.now();
+        const lastLessonRequestAt = Date.parse(currentState.lastLessonRequestAt || '');
+        const sameRequestedLesson =
+          (currentState.lastLessonRequestLessonId || null) ===
+          (currentState.currentLessonId || null);
+        const pendingFirstDelivery = currentState.lastLessonRequestLessonId === null;
+        if ((sameRequestedLesson || pendingFirstDelivery) &&
+            Number.isFinite(lastLessonRequestAt) &&
+            now - lastLessonRequestAt < TELEGRAM_LESSON_REQUEST_COOLDOWN_MS &&
+            ['awaiting_task', 'awaiting_reattempt', 'awaiting_content'].includes(currentState.status)) {
+          await this.bot.sendMessage(
+            chatId,
+            'إنت مسجل معانا وطلبك وصل قبل شوية. افتح الخاص مع @eSchoolsdBot واضغط Start لو لسه، وراجع آخر رسالة هناك. لو داير تعيد إرسال الحصة، أرسل /lesson بعد دقيقتين.',
+            message.message_id
+          );
+          return;
+        }
         recordTelegramLessonAnnouncementOptIn(currentState);
         const privateChatId = String(message.from.id);
         currentState.telegramPrivateChatId = privateChatId;
+        currentState.lastLessonRequestAt = new Date(now).toISOString();
+        currentState.lastLessonRequestLessonId = currentState.currentLessonId || null;
         this.saveProgress();
         try {
           await this.startOrResumeLesson(privateChatId, studentKey);
+          const deliveredState = this.progress[studentKey];
+          deliveredState.lastLessonRequestAt = new Date().toISOString();
+          deliveredState.lastLessonRequestLessonId = deliveredState.currentLessonId || null;
+          this.saveProgress();
           await this.bot.sendMessage(
             chatId,
             'تمام، رديت عليك في الخاص. راجع المحادثة هناك، كل التوفيق يا رب.',
@@ -589,19 +633,25 @@ export class TelegramLessonAgent {
   async handlePrivateUpdate(message) {
     const userId = message.from?.id;
     if (!Number.isSafeInteger(userId) || message.from.is_bot) return;
+    const text = typeof message.text === 'string' ? message.text.trim() : '';
+    if (isHelpCommand(text)) {
+      await this.bot.sendMessage(String(message.chat.id), getTelegramStudentHelpMessage(), message.message_id);
+      return;
+    }
     const found = this.findTelegramStudent(userId);
     if (!found) {
       await this.bot.sendMessage(
         String(message.chat.id),
-        'أهلين بيك 😍 ما لقيت حسابك مسجل في مجموعة الدروس لسه. أدخل القروب وأرسل /lesson، وبعدها ارجع هنا واضغط Start عشان نأكد تسجيلك ونرسل ليك الدروس في الخاص.'
+        text && isLessonCommand(text)
+          ? 'حسابك ما اتربط بقروب الدروس لسه. أرسل /lesson مرة واحدة في القروب، وبعدها افتح الخاص واضغط Start. ما محتاج تكرر الأمر هنا.'
+          : 'حسابك ما اتربط بقروب الدروس لسه. أرسل /lesson في قروب الدروس، وبعدها افتح الخاص واضغط Start.'
       );
       return;
     }
-
     const [studentKey, state] = found;
     state.telegramPrivateChatId = String(message.chat.id);
     this.saveProgress();
-    const text = typeof message.text === 'string' ? message.text.trim() : '';
+    this.saveProgress();
     const announcementOptIn = getTelegramAnnouncementPreferenceCommand(text);
     if (announcementOptIn !== null) {
       state.telegramAnnouncementsOptIn = announcementOptIn;
@@ -1283,6 +1333,12 @@ export class TelegramLessonAgent {
       ? new Set(result.correctQuestionNumbers.filter(number =>
           answeredQuestionNumbers.includes(number)))
       : new Set();
+    const uncertainQuestionNumbers = new Set(
+      Array.isArray(result.uncertainQuestionNumbers)
+        ? result.uncertainQuestionNumbers.filter(number =>
+            answeredQuestionNumbers.includes(number) && !correctQuestionNumbers.has(number))
+        : []
+    );
     if (answeredQuestionNumbers.length === 0) {
       await this.bot.sendMessage(
         chatId,
@@ -1293,7 +1349,8 @@ export class TelegramLessonAgent {
     }
 
     const incorrectQuestionNumbers = answeredQuestionNumbers
-      .filter(number => !correctQuestionNumbers.has(number));
+      .filter(number =>
+        !correctQuestionNumbers.has(number) && !uncertainQuestionNumbers.has(number));
     const correctedAfterRetry = new Set(
       incorrectQuestionNumbers.filter(number => retryQuestionNumbers.has(number))
     );
@@ -1344,10 +1401,13 @@ export class TelegramLessonAgent {
             return `السؤال ${number}${excerpt ? `: «${excerpt}${answer.length > 160 ? '…' : ''}»` : ''}`;
           }).join('، ')}.`
         : '';
+      const uncertaintyFeedback = uncertainQuestionNumbers.size
+        ? ` ما قدرت أتأكد من إجابة السؤال ${[...uncertainQuestionNumbers].join('، ')}، وما اعتبرتها غلط. وضّحها أو أرسلها تاني عشان أراجعها.`
+        : '';
       const list = remainingQuestionNumbers.join('، ');
       await this.bot.sendMessage(
         chatId,
-        `${correctionFeedback}${correctionFeedback ? ' ' : ''}حفظت الإجابات الصحيحة.${incorrectFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
+        `${correctionFeedback}${correctionFeedback ? ' ' : ''}حفظت الإجابات الصحيحة.${incorrectFeedback}${uncertaintyFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
         messageId
       );
       return;

@@ -344,6 +344,7 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
         allCorrect: { type: 'boolean' },
         answeredQuestionNumbers: { type: 'array', items: { type: 'integer' } },
         correctQuestionNumbers: { type: 'array', items: { type: 'integer' } },
+        uncertainQuestionNumbers: { type: 'array', items: { type: 'integer' } },
         incorrectAnswers: {
           type: 'array',
           items: {
@@ -363,6 +364,7 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
         'allCorrect',
         'answeredQuestionNumbers',
         'correctQuestionNumbers',
+        'uncertainQuestionNumbers',
         'incorrectAnswers'
       ],
       additionalProperties: false
@@ -377,6 +379,7 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
             allCorrect: false,
             answeredQuestionNumbers: [1],
             correctQuestionNumbers: [],
+            uncertainQuestionNumbers: [],
             incorrectAnswers: [{
               questionNumber: 1,
               studentAnswer: 'He go to school.',
@@ -398,6 +401,7 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
       allCorrect: false,
       answeredQuestionNumbers: [1],
       correctQuestionNumbers: [],
+      uncertainQuestionNumbers: [],
       incorrectAnswers: [{
         questionNumber: 1,
         studentAnswer: 'He go to school.',
@@ -440,6 +444,7 @@ test('task grading accepts a single-word answer as a complete submission', async
             allCorrect: true,
             answeredQuestionNumbers: [1],
             correctQuestionNumbers: [1],
+            uncertainQuestionNumbers: [],
             incorrectAnswers: []
           })
         }
@@ -457,6 +462,7 @@ test('task grading accepts a single-word answer as a complete submission', async
       allCorrect: true,
       answeredQuestionNumbers: [1],
       correctQuestionNumbers: [1],
+      uncertainQuestionNumbers: [],
       incorrectAnswers: [],
       feedback: 'صحيح، ممتاز.'
     });
@@ -479,6 +485,7 @@ test('task grading gives Sudanese Arabic feedback for English submissions', asyn
           allCorrect: false,
           answeredQuestionNumbers: [1],
           correctQuestionNumbers: [],
+          uncertainQuestionNumbers: [],
           incorrectAnswers: [{
             questionNumber: 1,
             studentAnswer: 'The answer is wrong.',
@@ -496,6 +503,182 @@ test('task grading gives Sudanese Arabic feedback for English submissions', asyn
       answerKey: ['goes']
     }, 'The answer is wrong.');
     assert.equal(result.feedback, 'في إجابة محتاجة تصحيح. حاول تاني.');
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading deterministically accepts exact numbered answers and listed alternatives', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => {
+    throw new Error('Exact answer matching should not call an AI grader.');
+  };
+
+  try {
+    const answerKey = [
+      '1: practicing — also accepted: practising',
+      '2: do',
+      '3: visit',
+      '4: playing',
+      '5: meeting',
+      '6: clean',
+      '7: doing',
+      '8: use',
+      '9: postponing',
+      '10: run',
+      '11: waiting',
+      '12: play'
+    ];
+    const result = await evaluateStudentTask({
+      taskMessage: 'Complete each sentence with the correct form.',
+      answerKey
+    }, [
+      '1/practising',
+      '2/do',
+      '3/visit',
+      '4/playing',
+      '5/meeting',
+      '6/clean',
+      '7/doing',
+      '8/use',
+      '9/postponing',
+      '10/run',
+      '11/waiting',
+      '12/play'
+    ].join('\n'));
+
+    assert.deepEqual(result, {
+      isTaskSubmission: true,
+      allCorrect: true,
+      answeredQuestionNumbers: answerKey.map((_, index) => index + 1),
+      correctQuestionNumbers: answerKey.map((_, index) => index + 1),
+      uncertainQuestionNumbers: [],
+      incorrectAnswers: [],
+      feedback: 'صحيح، ممتاز.'
+    });
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading checks only unmatched screenshot answers with AI', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    const prompt = body.messages.at(-1).content;
+    assert.match(prompt, /expectedAnswer":"practicing"/);
+    assert.match(prompt, /expectedAnswer":"postponing"/);
+    assert.ok(prompt.includes('STUDENT: "1/practiceing\n9/postpone"'));
+    assert.doesNotMatch(prompt, /2\/do/);
+    assert.doesNotMatch(prompt, /8\/use/);
+    return {
+      ok: true,
+      json: async () => ({
+        message: {
+          content: JSON.stringify({
+            isTaskSubmission: true,
+            allCorrect: false,
+            answeredQuestionNumbers: [1, 9],
+            correctQuestionNumbers: [],
+            uncertainQuestionNumbers: [],
+            incorrectAnswers: [
+              {
+                questionNumber: 1,
+                studentAnswer: 'practiceing',
+                explanation: 'راجعي طريقة كتابة صيغة ing.'
+              },
+              {
+                questionNumber: 9,
+                studentAnswer: 'postpone',
+                explanation: 'بعد suggest بنستخدم الفعل بصيغة ing.'
+              }
+            ]
+          })
+        }
+      })
+    };
+  };
+
+  try {
+    const answerKey = [
+      '1: practicing — also accepted: practising',
+      '2: do',
+      '3: visit',
+      '4: playing',
+      '5: meeting',
+      '6: clean',
+      '7: doing',
+      '8: use',
+      '9: postponing',
+      '10: run',
+      '11: waiting',
+      '12: play'
+    ];
+    const result = await evaluateStudentTask({
+      taskMessage: 'Complete each sentence with the correct form.',
+      answerKey
+    }, [
+      '1/practiceing',
+      '2/do',
+      '3/visit',
+      '4/playing',
+      '5/meeting',
+      '6/clean',
+      '7/doing',
+      '8/use',
+      '9/postpone',
+      '10/run',
+      '11/waiting',
+      '12/play'
+    ].join('\n'));
+
+    assert.deepEqual(result.answeredQuestionNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    assert.deepEqual(result.correctQuestionNumbers, [2, 3, 4, 5, 6, 7, 8, 10, 11, 12]);
+    assert.deepEqual(result.uncertainQuestionNumbers, []);
+    assert.deepEqual(result.incorrectAnswers.map(answer => answer.questionNumber), [1, 9]);
+    assert.equal(result.allCorrect, false);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading keeps uncertain answers pending instead of reporting them wrong', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      message: {
+        content: JSON.stringify({
+          isTaskSubmission: true,
+          allCorrect: false,
+          answeredQuestionNumbers: [1],
+          correctQuestionNumbers: [],
+          uncertainQuestionNumbers: [1],
+          incorrectAnswers: []
+        })
+      }
+    })
+  });
+
+  try {
+    const result = await evaluateStudentTask({
+      taskMessage: 'Answer question 1.',
+      answerKey: ['an answer']
+    }, 'a possibly equivalent answer');
+    assert.deepEqual(result.answeredQuestionNumbers, [1]);
+    assert.deepEqual(result.correctQuestionNumbers, []);
+    assert.deepEqual(result.uncertainQuestionNumbers, [1]);
+    assert.deepEqual(result.incorrectAnswers, []);
+    assert.match(result.feedback, /ما اعتبرتها غلط/);
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
     globalThis.fetch = previousFetch;
