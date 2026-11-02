@@ -11,6 +11,7 @@ import {
   TelegramLessonAgent
 } from './telegram_agent.js';
 import { LessonSkipQueue } from './lesson_skip_queue.js';
+import { createTelegramStudentGenderStore } from './telegram_student_gender_store.js';
 import { createStudentPaymentLedger } from './student_payment_ledger.js';
 import { readAgentMediaActivities, writeAgentMediaActivity } from './agent_media_activity.js';
 import { enqueueAgentMediaRetry } from './agent_media_retry.js';
@@ -24,6 +25,7 @@ import {
   writeTelegramAgentStatus
 } from './telegram_agent_status.js';
 import { getStudentLocalDate } from './student_motivation.js';
+import { LESSON_ANSWER_REMINDER_MESSAGE } from './lesson_answer_reminders.js';
 
 function makeTemporaryDirectory() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-agent-test-'));
@@ -33,7 +35,8 @@ function createFixture(t, {
   scanReceipt,
   privateChatError,
   refreshLessonsConfig,
-  motivationTimeZone
+  motivationTimeZone,
+  evaluateTask
 } = {}) {
   const directory = makeTemporaryDirectory();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -104,7 +107,7 @@ function createFixture(t, {
     bot,
     groupId: '-100123',
     lessonManager,
-    evaluateTask: async (_lesson, submission, _studentName, { pendingQuestionNumbers } = {}) => {
+    evaluateTask: evaluateTask || (async (_lesson, submission, _studentName, { pendingQuestionNumbers } = {}) => {
       const correct = submission.toLowerCase() === 'correct answer';
       const answeredQuestionNumbers = pendingQuestionNumbers?.slice(0, 1) || [1];
       return {
@@ -120,7 +123,7 @@ function createFixture(t, {
               explanation: 'بعد الفاعل المفرد بنضيف s للفعل في المضارع البسيط.'
             }))
       };
-    },
+    }),
     videoPathResolver: videoFile => path.join(directory, videoFile),
     progressFile: path.join(directory, 'telegram_progress.json'),
     lessonSkipQueue,
@@ -364,6 +367,110 @@ test('Telegram privately celebrates lesson milestones and records completion dat
   assert.ok(sent.some(message =>
     message.chatId === '44' && message.type === 'text' &&
     message.text.includes('كملت 3 حصص بنجاح')));
+});
+
+test('Telegram admin task recheck grades the latest saved submission without treating it as a retry', async t => {
+  let acceptSavedSubmission = false;
+  const { agent, sent, lessonSkipQueue } = createFixture(t, {
+    evaluateTask: async (_lesson, submission, _studentName, { pendingQuestionNumbers } = {}) => {
+      const correct = acceptSavedSubmission && submission === 'incorrect answer';
+      const answeredQuestionNumbers = pendingQuestionNumbers?.slice(0, 1) || [1];
+      return {
+        isTaskSubmission: true,
+        allCorrect: correct,
+        answeredQuestionNumbers,
+        correctQuestionNumbers: correct ? answeredQuestionNumbers : [],
+        incorrectAnswers: correct
+          ? []
+          : answeredQuestionNumbers.map(questionNumber => ({
+              questionNumber,
+              studentAnswer: submission,
+              explanation: 'الإجابة ما مطابقة لمفتاح الدرس.'
+            }))
+      };
+    }
+  });
+  const studentKey = 'telegram:-100123:44';
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  await agent.handleUpdate(privateUpdate({ text: 'incorrect answer' }));
+
+  const student = agent.progress[studentKey];
+  assert.equal(student.status, 'awaiting_reattempt');
+  assert.equal(student.lastTaskSubmission.text, 'incorrect answer');
+  assert.equal(student.lastTaskSubmission.lessonId, 'lesson_1');
+  acceptSavedSubmission = true;
+  lessonSkipQueue.enqueue({
+    requestType: 'regrade_task',
+    platform: 'Telegram',
+    studentKey,
+    chatId: '-100123',
+    userId: '44',
+    gradeKey: student.grade,
+    currentLessonId: student.currentLessonId,
+    nextLessonId: student.currentLessonId,
+    nextLessonTitle: 'Recheck latest task answers'
+  });
+
+  await agent.processPendingLessonSkips();
+
+  assert.equal(agent.progress[studentKey].lessonsCompleted, 1);
+  assert.equal(agent.progress[studentKey].currentLessonId, 'lesson_2');
+  assert.equal(lessonSkipQueue.latestForStudent(studentKey).status, 'sent');
+  assert.ok(sent.some(message =>
+    message.type === 'text' && message.chatId === '44' &&
+    message.text.includes('راجع الأستاذ إجابتك مرة تانية')));
+});
+
+test('Telegram admin reminder sends the standard private reminder without changing lesson progress', async t => {
+  const { agent, sent, lessonSkipQueue } = createFixture(t);
+  const studentKey = 'telegram:-100123:44';
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  await agent.handleUpdate(privateUpdate({ text: '/start' }));
+  const student = agent.progress[studentKey];
+  const currentLessonId = student.currentLessonId;
+  const deliveredAt = student.deliveredAt;
+  lessonSkipQueue.enqueue({
+    requestType: 'manual_reminder',
+    platform: 'Telegram',
+    studentKey,
+    chatId: '-100123',
+    userId: '44',
+    gradeKey: student.grade,
+    currentLessonId,
+    nextLessonId: currentLessonId,
+    nextLessonTitle: 'Send private lesson reminder'
+  });
+
+  await agent.processPendingLessonSkips();
+
+  const reminder = sent.find(message =>
+    message.type === 'text' && message.chatId === '44' &&
+    message.text === LESSON_ANSWER_REMINDER_MESSAGE);
+  assert.ok(reminder);
+  assert.equal(student.currentLessonId, currentLessonId);
+  assert.equal(student.deliveredAt, deliveredAt);
+  assert.equal(student.answerReminderSentForDeliveryAt, deliveredAt);
+  assert.equal(student.motivationMessageSentFor, getStudentLocalDate(Date.now()));
+  assert.equal(lessonSkipQueue.latestForStudent(studentKey).status, 'sent');
+});
+
+test('Telegram bot uses feminine wording for clearly female names and supports a manual override', async t => {
+  const { agent, sent, directory } = createFixture(t);
+  agent.studentGenderStore = createTelegramStudentGenderStore(
+    path.join(directory, 'telegram_student_gender.json')
+  );
+  const update = groupUpdate({ text: '/lesson' });
+  update.message.from.first_name = 'مريم';
+  await agent.handleUpdate(update);
+
+  const studentKey = 'telegram:-100123:44';
+  assert.equal(agent.progress[studentKey].inferredGender, 'female');
+  await agent.bot.sendMessage('44', 'إنت مسجل معانا، أرسلها هسي.');
+  assert.equal(sent.at(-1).text, 'إنتي مسجلة معانا، أرسليها هسي.');
+
+  agent.studentGenderStore.set(studentKey, 'male');
+  await agent.bot.sendMessage('44', 'إنت مسجل معانا، أرسلها هسي.');
+  assert.equal(sent.at(-1).text, 'إنت مسجل معانا، أرسلها هسي.');
 });
 
 test('Telegram accepts a typo-corrected answer and shows the right spelling privately', async t => {

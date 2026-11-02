@@ -22,6 +22,11 @@ import {
 } from './contact_sync.js';
 import { inferContactGender } from './contact_gender.js';
 import { CONTACT_GENDER_FILE, createContactGenderStore } from './contact_gender_store.js';
+import { getTelegramStudentGender } from './telegram_student_gender.js';
+import {
+  createTelegramStudentGenderStore,
+  TELEGRAM_STUDENT_GENDER_FILE
+} from './telegram_student_gender_store.js';
 import {
   CONTACT_PAYMENT_LABELS_FILE,
   createContactPaymentLabelsStore
@@ -174,6 +179,74 @@ function calendarDateKey(timestamp, timeZone) {
     formatter.formatToParts(new Date(timestampMs(timestamp))).map(part => [part.type, part.value])
   );
   return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function getWeeklyLessonLeaderboard(progress, now, timeZone = 'Africa/Khartoum') {
+  const today = calendarDateKey(now, timeZone);
+  const todayUtc = new Date(`${today}T00:00:00.000Z`);
+  const daysSinceMonday = (todayUtc.getUTCDay() + 6) % 7;
+  const weekStartDate = new Date(todayUtc.getTime() - daysSinceMonday * 24 * 60 * 60 * 1000);
+  const weekStart = weekStartDate.toISOString().slice(0, 10);
+  const weekEndDate = new Date(weekStartDate.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const weekEnd = weekEndDate.toISOString().slice(0, 10);
+  const students = Object.values(progress || {}).flatMap(student => {
+    const completions = Array.isArray(student.lessonCompletionTimestamps)
+      ? student.lessonCompletionTimestamps.filter(timestamp => {
+          const parsed = Date.parse(timestamp);
+          if (!Number.isFinite(parsed) || parsed > now) return false;
+          const date = calendarDateKey(parsed, timeZone);
+          return date >= weekStart && date <= today;
+        }).length
+      : 0;
+    if (!completions) return [];
+    return [{
+      name: String(student.name || (student.telegramUsername ? `@${student.telegramUsername}` : 'Student'))
+        .replace(/[\u0000-\u001f\u007f]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80) || 'Student',
+      lessonsCompleted: completions
+    }];
+  }).sort((left, right) =>
+    right.lessonsCompleted - left.lessonsCompleted ||
+    left.name.localeCompare(right.name));
+
+  const dateFormatter = new Intl.DateTimeFormat('ar-SD', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long'
+  });
+  const formattedWeekStart = dateFormatter.format(weekStartDate);
+  const formattedWeekEnd = dateFormatter.format(weekEndDate);
+  const lines = [
+    '🏆 لوحة إنجازات الأسبوع',
+    `من ${formattedWeekStart} إلى ${formattedWeekEnd}`,
+    '',
+    'برافو للطلاب على اجتهادهم وإكمال الحصص هذا الأسبوع:'
+  ];
+  let visibleCount = 0;
+  for (const [index, student] of students.entries()) {
+    const rank = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+    const line = `${rank} ${student.name} — ${student.lessonsCompleted} حصة`;
+    const omittedCount = students.length - visibleCount - 1;
+    const suffix = omittedCount > 0
+      ? `\n\nو ${omittedCount} طالب/طلاب آخرين يستحقون التقدير 👏`
+      : '';
+    if (`${lines.join('\n')}\n${line}${suffix}`.length > 3800) break;
+    lines.push(line);
+    visibleCount += 1;
+  }
+  if (visibleCount < students.length && visibleCount > 0) {
+    lines.push('', `و ${students.length - visibleCount} طالب/طلاب آخرين يستحقون التقدير 👏`);
+  }
+  lines.push('', 'واصلوا التقدم، خطوة خطوة نحو النجاح 🌟');
+
+  return {
+    weekStart,
+    weekEnd,
+    students,
+    message: students.length ? lines.join('\n') : ''
+  };
 }
 
 function getRecentCalendarDates(now, days, timeZone) {
@@ -679,7 +752,15 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       incomingMessagesLast7Days: recent7.length,
       incomingMessagesLast30Days: recent30.length,
       activeDaysLast30Days: activeDatesLast30Days.size,
-      lessonsCompleted: student.lessonsCompleted || 0
+      lessonsCompleted: student.lessonsCompleted || 0,
+      lastTaskSubmissionAt: student.lastTaskSubmission?.submittedAt || null,
+      canRegradeTask: Boolean(
+        student.lastTaskSubmission?.lessonId === student.currentLessonId &&
+        student.lastTaskSubmission?.grade === student.grade &&
+        typeof student.lastTaskSubmission?.text === 'string' &&
+        student.telegramPrivateChatId &&
+        ['awaiting_task', 'awaiting_reattempt'].includes(student.status)
+      )
     };
   });
   students.push(...telegramStudents);
@@ -1893,10 +1974,12 @@ export function createAdminDashboardServer({
   telegramUpdateQueueFile = TELEGRAM_UPDATE_QUEUE_FILE,
   telegramAgentControlFile = TELEGRAM_AGENT_CONTROL_FILE,
   telegramProgressFile = TELEGRAM_PROGRESS_FILE,
+  telegramStudentGenderFile = TELEGRAM_STUDENT_GENDER_FILE,
   paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
   telegramGroupId = process.env.TELEGRAM_GROUP_ID,
   telegramMemberCountProvider = null,
   telegramPaymentNotifier = null,
+  telegramLeaderboardNotifier = null,
   telegramUserBroadcastFiles = {
     requests: TELEGRAM_USER_BROADCAST_REQUESTS_FILE,
     state: TELEGRAM_USER_BROADCAST_STATE_FILE
@@ -1908,6 +1991,7 @@ export function createAdminDashboardServer({
   let launchedAgent = null;
   const blockedContacts = createBlockedContactsStore(blockedContactsFile);
   const contactGenders = createContactGenderStore(contactGenderFile);
+  const telegramStudentGenders = createTelegramStudentGenderStore(telegramStudentGenderFile);
   const paymentLabels = createContactPaymentLabelsStore(paymentLabelsFile);
   const studentPaymentLedger = createStudentPaymentLedger(paymentLedgerFile);
   const scheduledLessons = createScheduledLessonStore({ filePath: scheduledLessonsFile });
@@ -2066,12 +2150,19 @@ export function createAdminDashboardServer({
       telegramProgress: readJsonFileOr(telegramProgressFile, {}),
       lessons: readJsonFile(lessonsFile)
     };
+    const genderOverrides = telegramStudentGenders.list();
     const progress = listDashboardStudentProgress(data, now, timeZone);
     const latestSkipRequests = new Map();
     const latestSendRequests = new Map();
+    const latestRegradeRequests = new Map();
+    const latestReminderRequests = new Map();
     for (const request of lessonSkipQueues.Telegram.read()) {
       if (request.requestType === 'send_lesson') {
         latestSendRequests.set(request.studentKey, request);
+      } else if (request.requestType === 'regrade_task') {
+        latestRegradeRequests.set(request.studentKey, request);
+      } else if (request.requestType === 'manual_reminder') {
+        latestReminderRequests.set(request.studentKey, request);
       } else {
         latestSkipRequests.set(request.studentKey, request);
       }
@@ -2081,9 +2172,27 @@ export function createAdminDashboardServer({
       students: progress.students.map(student => {
         const request = latestSkipRequests.get(student.jid);
         const sendRequest = latestSendRequests.get(student.jid);
+        const regradeRequest = latestRegradeRequests.get(student.jid);
+        const reminderRequest = latestReminderRequests.get(student.jid);
+        const telegramStudent = data.telegramProgress[student.jid];
         return {
           ...student,
+          gender: getTelegramStudentGender(telegramStudent, genderOverrides[student.jid]),
+          genderOverride: genderOverrides[student.jid] || 'auto',
           availableLessons: getReadyTelegramLessons(student.grade, data.lessons),
+          canSendReminder: Boolean(
+            data.telegramProgress[student.jid]?.telegramPrivateChatId &&
+            ['awaiting_task', 'awaiting_reattempt'].includes(
+              data.telegramProgress[student.jid]?.status
+            )
+          ),
+          reminderRequest: reminderRequest?.currentLessonId === student.currentLessonId
+            ? {
+                status: reminderRequest.status,
+                  error: reminderRequest.error,
+                  updatedAt: reminderRequest.updatedAt
+              }
+            : null,
           skipRequest: request?.currentLessonId === student.currentLessonId
             ? {
                 status: request.status,
@@ -2097,6 +2206,12 @@ export function createAdminDashboardServer({
                 error: sendRequest.error,
                 nextLessonId: sendRequest.nextLessonId,
                 nextLessonTitle: sendRequest.nextLessonTitle
+              }
+            : null,
+          regradeRequest: regradeRequest?.currentLessonId === student.currentLessonId
+            ? {
+                status: regradeRequest.status,
+                error: regradeRequest.error
               }
             : null
         };
@@ -2348,8 +2463,16 @@ export function createAdminDashboardServer({
         const joinedStudents = progress.students.filter(student => student.joinedAt);
         const lessonCounts = Object.values(readJsonFile(lessonsFile))
           .reduce((count, grade) => count + (Array.isArray(grade.lessons) ? grade.lessons.length : 0), 0);
+        const telegramGenderStatistics = progress.students.reduce((counts, student) => {
+          const gender = ['female', 'male'].includes(student.gender?.value)
+            ? student.gender.value
+            : 'unknown';
+          counts[gender] += 1;
+          return counts;
+        }, { female: 0, male: 0, unknown: 0 });
         sendJson(res, 200, {
           telegramStudents: progress.students.length,
+          telegramGenderStatistics,
           telegramJoinedToday: joinedStudents.filter(student =>
             calendarDateKey(Date.parse(student.joinedAt), timeZone) === today).length,
           telegramJoinedLast7Days: joinedStudents.filter(student =>
@@ -2363,6 +2486,77 @@ export function createAdminDashboardServer({
         console.error('[Admin Dashboard] Could not load Telegram dashboard data:', error.message);
         sendJson(res, 500, { error: 'Could not load Telegram dashboard data.' });
       }
+      return;
+    }
+
+    if (req.method === 'GET' &&
+        requestUrl.pathname === '/api/admin/telegram-leaderboard') {
+      try {
+        const leaderboard = getWeeklyLessonLeaderboard(
+          readJsonFileOr(telegramProgressFile, {}),
+          Date.now()
+        );
+        sendJson(res, 200, {
+          ...leaderboard,
+          groupConfigured: Boolean(telegramGroupId),
+          botConfigured: Boolean(telegramLeaderboardNotifier || process.env.TELEGRAM_BOT_TOKEN?.trim())
+        });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not build the Telegram weekly leaderboard:', error.message);
+        sendJson(res, 500, { error: 'Could not load the weekly Telegram leaderboard.' });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/telegram-leaderboard') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'The leaderboard can only be shared from this local dashboard.' });
+        return;
+      }
+      const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+      if (!telegramGroupId || (!telegramLeaderboardNotifier && !botToken)) {
+        sendJson(res, 503, { error: 'Configure TELEGRAM_BOT_TOKEN and TELEGRAM_GROUP_ID before sharing the leaderboard.' });
+        return;
+      }
+      void (async () => {
+        try {
+          const leaderboard = getWeeklyLessonLeaderboard(
+            readJsonFileOr(telegramProgressFile, {}),
+            Date.now()
+          );
+          if (!leaderboard.students.length) {
+            sendJson(res, 409, { error: 'No students have completed a lesson this week yet.' });
+            return;
+          }
+          if (telegramLeaderboardNotifier) {
+            await telegramLeaderboardNotifier(String(telegramGroupId), leaderboard.message);
+          } else {
+            const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: String(telegramGroupId),
+                text: leaderboard.message
+              }),
+              signal: AbortSignal.timeout(10_000)
+            });
+            const result = await response.json();
+            if (!response.ok || result?.ok !== true) {
+              throw new Error(result?.description || 'Telegram rejected the message.');
+            }
+          }
+          sendJson(res, 200, {
+            sent: true,
+            studentsCount: leaderboard.students.length,
+            weekStart: leaderboard.weekStart,
+            weekEnd: leaderboard.weekEnd
+          });
+        } catch (error) {
+          console.error('[Admin Dashboard] Could not share the Telegram weekly leaderboard:', error.message);
+          sendJson(res, 502, { error: 'Telegram could not deliver the weekly leaderboard.' });
+        }
+      })();
       return;
     }
 
@@ -3883,6 +4077,175 @@ export function createAdminDashboardServer({
         const invalidInput = /Payment amount|Currency must|Payment status|Student identifier|enrollment date|review date/.test(error.message);
         sendJson(res, invalidInput ? 400 : 500, {
           error: invalidInput ? error.message : 'Could not update student payment status.'
+        });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/telegram-student-gender') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Student settings can only be changed from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (!body || typeof body.jid !== 'string' ||
+            !/^telegram:-?\d+:\d+$/.test(body.jid) ||
+            !['female', 'male', 'unknown', 'auto'].includes(body.gender)) {
+          sendJson(res, 400, { error: 'Choose feminine, masculine, not specified, or automatic addressing.' });
+          return;
+        }
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+        const student = telegramProgress[body.jid];
+        if (!student ||
+            body.jid !== `telegram:${student.telegramChatId}:${student.telegramUserId}`) {
+          sendJson(res, 404, { error: 'Telegram student was not found.' });
+          return;
+        }
+        try {
+          telegramStudentGenders.set(body.jid, body.gender);
+          sendJson(res, 200, {
+            gender: getTelegramStudentGender(
+              student,
+              body.gender === 'auto' ? null : body.gender
+            ),
+            genderOverride: body.gender
+          });
+        } catch (error) {
+          console.error('[Admin Dashboard] Could not update Telegram student addressing:', error.message);
+          sendJson(res, 500, { error: 'Could not save the student addressing setting.' });
+        }
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not update Telegram student addressing:', error.message);
+        const invalidInput = error.message === 'Request body is too large.' ||
+          error.message === 'Request body must contain valid JSON.';
+        sendJson(res, invalidInput ? 400 : 500, {
+          error: invalidInput ? error.message : 'Could not update the student addressing setting.'
+        });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/progress/regrade-task') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Task rechecks must be requested from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (!body || typeof body.jid !== 'string' || typeof body.currentLessonId !== 'string') {
+          sendJson(res, 400, { error: 'A Telegram student and current lesson ID are required.' });
+          return;
+        }
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+        const student = telegramProgress[body.jid];
+        const savedSubmission = student?.lastTaskSubmission;
+        if (!student || student.currentLessonId !== body.currentLessonId ||
+            student.grade !== savedSubmission?.grade ||
+            savedSubmission?.lessonId !== student.currentLessonId ||
+            typeof savedSubmission?.text !== 'string' ||
+            !student.telegramPrivateChatId ||
+            !['awaiting_task', 'awaiting_reattempt'].includes(student.status)) {
+          sendJson(res, 409, {
+            error: 'There is no saved submission for this active lesson. Only new submissions can be rechecked.'
+          });
+          return;
+        }
+        if (typeof student.telegramChatId === 'undefined' ||
+            typeof student.telegramUserId === 'undefined' ||
+            body.jid !== `telegram:${student.telegramChatId}:${student.telegramUserId}`) {
+          sendJson(res, 409, { error: 'This Telegram student does not have a valid group identity.' });
+          return;
+        }
+        const { request, alreadyQueued, conflict } = lessonSkipQueues.Telegram.enqueue({
+          requestType: 'regrade_task',
+          platform: 'Telegram',
+          studentKey: body.jid,
+          chatId: String(student.telegramChatId),
+          userId: String(student.telegramUserId),
+          gradeKey: student.grade,
+          currentLessonId: student.currentLessonId,
+          nextLessonId: student.currentLessonId,
+          nextLessonTitle: 'Recheck latest task answers'
+        });
+        if (conflict) {
+          sendJson(res, 409, { error: 'Another lesson action is already queued for this student.' });
+          return;
+        }
+        if (!alreadyQueued) scheduleChange(path.basename(telegramLessonSkipRequestsFile));
+        sendJson(res, 202, {
+          requestId: request.id,
+          status: request.status,
+          alreadyQueued
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not queue a Telegram task recheck:', error.message);
+        const invalidInput = error.message === 'Request body is too large.' ||
+          error.message === 'Request body must contain valid JSON.';
+        sendJson(res, invalidInput ? 400 : 500, {
+          error: invalidInput ? error.message : 'Could not queue the task recheck.'
+        });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/progress/send-reminder') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Student reminders must be requested from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        if (!body || typeof body.jid !== 'string' || typeof body.currentLessonId !== 'string') {
+          sendJson(res, 400, { error: 'A Telegram student and current lesson ID are required.' });
+          return;
+        }
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+        const student = telegramProgress[body.jid];
+        if (!student || student.currentLessonId !== body.currentLessonId ||
+            !['awaiting_task', 'awaiting_reattempt'].includes(student.status)) {
+          sendJson(res, 409, { error: 'The student no longer has a pending exercise for this lesson.' });
+          return;
+        }
+        if (!student.telegramPrivateChatId) {
+          sendJson(res, 409, {
+            error: 'The student must start a private chat with the bot before receiving a reminder.'
+          });
+          return;
+        }
+        if (typeof student.telegramChatId === 'undefined' ||
+            typeof student.telegramUserId === 'undefined' ||
+            body.jid !== `telegram:${student.telegramChatId}:${student.telegramUserId}`) {
+          sendJson(res, 409, { error: 'This Telegram student does not have a valid group identity.' });
+          return;
+        }
+        const { request, alreadyQueued, conflict } = lessonSkipQueues.Telegram.enqueue({
+          requestType: 'manual_reminder',
+          platform: 'Telegram',
+          studentKey: body.jid,
+          chatId: String(student.telegramChatId),
+          userId: String(student.telegramUserId),
+          gradeKey: student.grade,
+          currentLessonId: student.currentLessonId,
+          nextLessonId: student.currentLessonId,
+          nextLessonTitle: 'Send private lesson reminder'
+        });
+        if (conflict) {
+          sendJson(res, 409, { error: 'Another lesson action or reminder is already queued for this student.' });
+          return;
+        }
+        if (!alreadyQueued) scheduleChange(path.basename(telegramLessonSkipRequestsFile));
+        sendJson(res, 202, {
+          requestId: request.id,
+          status: request.status,
+          alreadyQueued
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not queue a Telegram student reminder:', error.message);
+        const invalidInput = error.message === 'Request body is too large.' ||
+          error.message === 'Request body must contain valid JSON.';
+        sendJson(res, invalidInput ? 400 : 500, {
+          error: invalidInput ? error.message : 'Could not queue the student reminder.'
         });
       });
       return;

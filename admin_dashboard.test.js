@@ -84,7 +84,7 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   const lessonsFile = path.join(directory, 'lessons.json');
   fs.writeFileSync(progressFile, JSON.stringify({
     'telegram:-1001:10': {
-      name: 'Telegram learner',
+      name: 'مريم',
       grade: 'grade_3_secondary',
       telegramChatId: '-1001',
       telegramUserId: 10,
@@ -133,6 +133,11 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   const overview = await overviewResponse.json();
   const progress = await progressResponse.json();
   assert.equal(overview.telegramStudents, 1);
+  assert.deepEqual(overview.telegramGenderStatistics, {
+    female: 1,
+    male: 0,
+    unknown: 0
+  });
   assert.equal(overview.awaitingTask, 1);
   assert.equal(progress.students.length, 1);
   assert.equal(progress.students[0].platform, 'Telegram');
@@ -151,6 +156,182 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
 
   const invalidTimeZoneResponse = await fetch(`${origin}/telegram-overview?timeZone=Not%2FAZone`);
   assert.equal(invalidTimeZoneResponse.status, 400);
+});
+
+test('dashboard queues task rechecks only for an available active Telegram submission', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-task-recheck-dashboard-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const progressFile = path.join(directory, 'telegram_progress.json');
+  const lessonsFile = path.join(directory, 'lessons.json');
+  const requestFile = path.join(directory, 'telegram_lesson_skip_requests.json');
+  const genderFile = path.join(directory, 'telegram_student_gender.json');
+  const studentKey = 'telegram:-1001:10';
+  fs.writeFileSync(progressFile, JSON.stringify({
+    [studentKey]: {
+      name: 'Telegram learner',
+      grade: 'grade_3_secondary',
+      telegramChatId: '-1001',
+      telegramUserId: 10,
+      telegramPrivateChatId: '10',
+      currentLessonIndex: 0,
+      currentLessonId: 'lesson_1',
+      status: 'awaiting_reattempt',
+      lastTaskSubmission: {
+        grade: 'grade_3_secondary',
+        lessonId: 'lesson_1',
+        text: 'student answer',
+        submittedAt: new Date().toISOString()
+      }
+    }
+  }));
+  fs.writeFileSync(lessonsFile, JSON.stringify({
+    grade_3_secondary: {
+      name: 'Third Secondary',
+      lessons: [{ id: 'lesson_1', title: 'Lesson One', answerKey: ['expected answer'] }]
+    }
+  }));
+  const server = createAdminDashboardServer({
+    telegramProgressFile: progressFile,
+    lessonsFile,
+    telegramLessonSkipRequestsFile: requestFile,
+    telegramStudentGenderFile: genderFile,
+    whatsappLessonSkipRequestsFile: path.join(directory, 'whatsapp_lesson_skip_requests.json')
+  });
+  t.after(async () => {
+    if (server.listening) await new Promise(resolve => server.close(resolve));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const progressResponse = await fetch(`${origin}/api/admin/telegram-progress?timeZone=UTC`);
+  assert.equal(progressResponse.status, 200);
+  const progress = await progressResponse.json();
+  assert.equal(progress.students[0].canRegradeTask, true);
+  assert.equal(progress.students[0].canSendReminder, true);
+  assert.equal(progress.students[0].gender.value, 'unknown');
+
+  const genderResponse = await fetch(`${origin}/api/admin/telegram-student-gender`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jid: studentKey, gender: 'female' })
+  });
+  assert.equal(genderResponse.status, 200);
+  assert.equal((await genderResponse.json()).gender.source, 'manual');
+  assert.deepEqual(JSON.parse(fs.readFileSync(genderFile, 'utf8')), { [studentKey]: 'female' });
+  const genderOverviewResponse = await fetch(`${origin}/api/admin/telegram-overview?timeZone=UTC`);
+  assert.equal(genderOverviewResponse.status, 200);
+  assert.equal((await genderOverviewResponse.json()).telegramGenderStatistics.female, 1);
+  const resetGenderResponse = await fetch(`${origin}/api/admin/telegram-student-gender`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jid: studentKey, gender: 'auto' })
+  });
+  assert.equal(resetGenderResponse.status, 200);
+  assert.equal((await resetGenderResponse.json()).gender.value, 'unknown');
+  assert.deepEqual(JSON.parse(fs.readFileSync(genderFile, 'utf8')), {});
+
+  const reminderResponse = await fetch(`${origin}/api/admin/progress/send-reminder`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jid: studentKey, currentLessonId: 'lesson_1' })
+  });
+  assert.equal(reminderResponse.status, 202);
+  assert.equal((await reminderResponse.json()).status, 'queued');
+  const reminderRequest = JSON.parse(fs.readFileSync(requestFile, 'utf8'))[0];
+  assert.equal(reminderRequest.requestType, 'manual_reminder');
+  assert.equal(reminderRequest.studentKey, studentKey);
+  new LessonSkipQueue(requestFile).complete(reminderRequest.id, 'sent');
+  const sentReminderProgress = await fetch(`${origin}/api/admin/telegram-progress?timeZone=UTC`);
+  assert.equal((await sentReminderProgress.json()).students[0].reminderRequest.status, 'sent');
+
+  const queuedResponse = await fetch(`${origin}/api/admin/progress/regrade-task`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jid: studentKey, currentLessonId: 'lesson_1' })
+  });
+  assert.equal(queuedResponse.status, 202);
+  const queued = await queuedResponse.json();
+  assert.equal(queued.status, 'queued');
+  const requests = JSON.parse(fs.readFileSync(requestFile, 'utf8'));
+  const regradeRequest = requests.find(request => request.requestType === 'regrade_task');
+  assert.equal(regradeRequest.studentKey, studentKey);
+
+  const staleResponse = await fetch(`${origin}/api/admin/progress/regrade-task`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jid: studentKey, currentLessonId: 'lesson_2' })
+  });
+  assert.equal(staleResponse.status, 409);
+});
+
+test('Telegram weekly leaderboard counts this week and only shares after dashboard confirmation', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-weekly-leaderboard-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const progressFile = path.join(directory, 'telegram_progress.json');
+  const now = Date.now();
+  fs.writeFileSync(progressFile, JSON.stringify({
+    'telegram:-1001:10': {
+      name: 'Zeinab',
+      telegramCelebrationsOptIn: false,
+      lessonCompletionTimestamps: [
+        new Date(now).toISOString(),
+        new Date(now - 60 * 60 * 1000).toISOString(),
+        new Date(now - 9 * 24 * 60 * 60 * 1000).toISOString()
+      ]
+    },
+    'telegram:-1001:11': {
+      name: 'Amina',
+      telegramCelebrationsOptIn: false,
+      lessonCompletionTimestamps: [
+        new Date(now).toISOString(),
+        new Date(now + 60 * 60 * 1000).toISOString()
+      ]
+    },
+    'telegram:-1001:12': {
+      name: 'No completions',
+      lessonCompletionTimestamps: []
+    }
+  }));
+  const sentMessages = [];
+  const server = createAdminDashboardServer({
+    telegramProgressFile: progressFile,
+    telegramGroupId: '-1001',
+    telegramLeaderboardNotifier: async (chatId, message) => {
+      sentMessages.push({ chatId, message });
+    }
+  });
+  t.after(async () => {
+    if (server.listening) await new Promise(resolve => server.close(resolve));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const leaderboardUrl = `${origin}/api/admin/telegram-leaderboard`;
+
+  const previewResponse = await fetch(leaderboardUrl);
+  assert.equal(previewResponse.status, 200);
+  const preview = await previewResponse.json();
+  assert.deepEqual(preview.students.map(student => [student.name, student.lessonsCompleted]), [
+    ['Zeinab', 2],
+    ['Amina', 1]
+  ]);
+  assert.equal(preview.groupConfigured, true);
+  assert.equal(preview.botConfigured, true);
+  assert.match(preview.message, /Zeinab/);
+  assert.match(preview.message, /Amina/);
+  assert.doesNotMatch(preview.message, /No completions/);
+  assert.equal(sentMessages.length, 0);
+
+  const shareResponse = await fetch(leaderboardUrl, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  assert.equal(shareResponse.status, 200);
+  const shared = await shareResponse.json();
+  assert.equal(shared.sent, true);
+  assert.equal(shared.studentsCount, 2);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].chatId, '-1001');
+  assert.equal(sentMessages[0].message, preview.message);
 });
 
 const sampleData = {

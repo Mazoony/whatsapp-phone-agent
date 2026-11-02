@@ -41,6 +41,13 @@ import {
 } from './telegram_update_queue.js';
 import { isExplicitPaidClaim } from './contact_payment_labels.js';
 import {
+  getTelegramStudentGender,
+  inferTelegramGenderFromMessage,
+  inferTelegramGenderFromName,
+  personalizeTelegramMessage
+} from './telegram_student_gender.js';
+import { createTelegramStudentGenderStore } from './telegram_student_gender_store.js';
+import {
   getDueLessonAnswerReminders,
   LESSON_ANSWER_REMINDER_CHECK_INTERVAL_MS,
   LESSON_ANSWER_REMINDER_MESSAGE,
@@ -358,6 +365,7 @@ export class TelegramLessonAgent {
     paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
     scanReceipt = scanPaymentReceipt,
     motivationTimeZone = STUDENT_MOTIVATION_TIME_ZONE,
+    studentGenderStore = createTelegramStudentGenderStore(),
     logger = console
   }) {
     if (!bot || typeof bot.sendMessage !== 'function' || typeof bot.sendVideo !== 'function') {
@@ -378,6 +386,7 @@ export class TelegramLessonAgent {
     this.paymentReceiptImageDirectory = paymentReceiptImageDirectory;
     this.scanReceipt = scanReceipt;
     this.motivationTimeZone = motivationTimeZone;
+    this.studentGenderStore = studentGenderStore;
     this.logger = logger;
     this.processingLessonSkips = false;
     this.processingAnswerReminders = false;
@@ -386,6 +395,17 @@ export class TelegramLessonAgent {
     if (!this.progress || typeof this.progress !== 'object' || Array.isArray(this.progress)) {
       throw new Error(`Invalid Telegram lesson progress in ${progressFile}.`);
     }
+    const sendMessage = bot.sendMessage.bind(bot);
+    this.bot.sendMessage = (chatId, text, ...args) => {
+      const studentEntry = Object.entries(this.progress).find(([, state]) =>
+        state.telegramPrivateChatId &&
+        String(state.telegramPrivateChatId) === String(chatId));
+      const override = studentEntry
+        ? this.studentGenderStore.list()[studentEntry[0]]
+        : null;
+      const gender = getTelegramStudentGender(studentEntry?.[1], override).value;
+      return sendMessage(chatId, personalizeTelegramMessage(text, gender), ...args);
+    };
     this.discoveredGroupIds = new Set();
     this.ignoredGroupIds = new Set();
     this.studentOperations = new Map();
@@ -499,6 +519,7 @@ export class TelegramLessonAgent {
       : typeof message.caption === 'string'
         ? message.caption.trim()
         : '';
+    this.recordStudentGenderEvidence(studentKey, text);
     if (!text) {
       if (Array.isArray(message.photo) && message.photo.length) {
         await this.sendPrivateNotice(
@@ -688,6 +709,8 @@ export class TelegramLessonAgent {
     activityTimestamps.push(new Date(now).toISOString());
 
     const joinedAt = state.joinedAt || new Date(now).toISOString();
+    const nameGender = inferTelegramGenderFromName(getStudentName(user));
+    const keepSelfDescription = state.inferredGenderSource === 'inferred from self-description';
     this.progress[studentKey] = {
       ...state,
       grade: state.grade || this.defaultGrade,
@@ -695,12 +718,25 @@ export class TelegramLessonAgent {
       telegramUserId: user.id,
       telegramUsername: user.username || '',
       name: getStudentName(user),
+      inferredGender: keepSelfDescription ? state.inferredGender : nameGender,
+      inferredGenderSource: keepSelfDescription
+        ? state.inferredGenderSource
+        : nameGender === 'female' ? 'inferred from name' : 'unknown',
       joinedAt,
       enrolledAt: state.enrolledAt || joinedAt,
       lastActivityAt: new Date(now).toISOString(),
       submissionsReceived: (state.submissionsReceived || 0) + Number(submission),
       activityTimestamps
     };
+    this.saveProgress();
+  }
+
+  recordStudentGenderEvidence(studentKey, text) {
+    const gender = inferTelegramGenderFromMessage(text);
+    const student = this.progress[studentKey];
+    if (!student || gender === 'unknown') return;
+    student.inferredGender = gender;
+    student.inferredGenderSource = 'inferred from self-description';
     this.saveProgress();
   }
 
@@ -731,6 +767,8 @@ export class TelegramLessonAgent {
     }
     const [studentKey, initialState] = found;
     let state = initialState;
+    this.recordStudentGenderEvidence(studentKey, text);
+    state = this.progress[studentKey];
     state.telegramPrivateChatId = String(message.chat.id);
     this.saveProgress();
     this.saveProgress();
@@ -1110,6 +1148,89 @@ export class TelegramLessonAgent {
       );
       this.logger.info(`[Telegram] Discarded stale lesson skip request ${request.id}.`);
       return false;
+    }
+
+    if (request.requestType === 'regrade_task') {
+      const savedSubmission = state.lastTaskSubmission;
+      if (!['awaiting_task', 'awaiting_reattempt'].includes(state.status) ||
+          !savedSubmission ||
+          savedSubmission.lessonId !== state.currentLessonId ||
+          savedSubmission.grade !== state.grade ||
+          typeof savedSubmission.text !== 'string' ||
+          !state.telegramPrivateChatId) {
+        this.lessonSkipQueue.complete(
+          request.id,
+          'failed',
+          'The latest task submission is no longer available for private regrading.'
+        );
+        return false;
+      }
+      const previousRetryQuestionNumbers = Array.isArray(state.retryQuestionNumbers)
+        ? [...state.retryQuestionNumbers]
+        : [];
+      state.retryQuestionNumbers = [];
+      try {
+        const graded = await this.gradeSubmission({
+          chatId: String(state.telegramPrivateChatId),
+          studentKey: request.studentKey,
+          studentName: state.name || 'Student',
+          submission: savedSubmission.text,
+          manualReview: true,
+          recordSubmission: false
+        });
+        if (!graded) {
+          state.retryQuestionNumbers = previousRetryQuestionNumbers;
+          this.saveProgress();
+          this.lessonSkipQueue.complete(
+            request.id,
+            'failed',
+            'The saved submission could not be graded as a task response.'
+          );
+          return false;
+        }
+        this.lessonSkipQueue.complete(request.id, 'sent');
+        this.logger.info(`[Telegram] Rechecked the latest task submission for ${request.studentKey} by admin request.`);
+        return true;
+      } catch (error) {
+        state.retryQuestionNumbers = previousRetryQuestionNumbers;
+        this.saveProgress();
+        this.lessonSkipQueue.complete(request.id, 'failed', error.message);
+        this.logger.error(`[Telegram] Could not recheck a task for ${request.studentKey}: ${error.message}`);
+        return false;
+      }
+    }
+
+    if (request.requestType === 'manual_reminder') {
+      if (!state.telegramPrivateChatId ||
+          !['awaiting_task', 'awaiting_reattempt'].includes(state.status)) {
+        this.lessonSkipQueue.complete(
+          request.id,
+          'failed',
+          'The student no longer has a pending exercise or private chat.'
+        );
+        return false;
+      }
+      try {
+        await this.bot.sendMessage(
+          state.telegramPrivateChatId,
+          LESSON_ANSWER_REMINDER_MESSAGE
+        );
+        const sentAt = new Date().toISOString();
+        state.answerReminderSentForDeliveryAt = state.deliveredAt;
+        state.answerReminderSentAt = sentAt;
+        state.motivationMessageSentFor = getStudentLocalDate(
+          Date.parse(sentAt),
+          this.motivationTimeZone
+        );
+        this.saveProgress();
+        this.lessonSkipQueue.complete(request.id, 'sent');
+        this.logger.info(`[Telegram] Sent a private lesson reminder to ${request.studentKey} by admin request.`);
+        return true;
+      } catch (error) {
+        this.lessonSkipQueue.complete(request.id, 'failed', error.message);
+        this.logger.error(`[Telegram] Could not send a manual reminder to ${request.studentKey}: ${error.message}`);
+        return false;
+      }
     }
 
     const gradeLessons = this.lessonManager.lessonsConfig[state.grade]?.lessons || [];
@@ -1599,7 +1720,15 @@ export class TelegramLessonAgent {
     }
   }
 
-  async gradeSubmission({ chatId, studentKey, studentName, messageId, submission }) {
+  async gradeSubmission({
+    chatId,
+    studentKey,
+    studentName,
+    messageId,
+    submission,
+    manualReview = false,
+    recordSubmission = true
+  }) {
     this.lessonManager.refreshLessonsConfig?.();
     const state = this.progress[studentKey];
     const lesson = this.lessonManager.lessonsConfig[state.grade]?.lessons?.[state.currentLessonIndex];
@@ -1607,6 +1736,18 @@ export class TelegramLessonAgent {
       throw new Error(`Active Telegram lesson is missing its task or answer key for ${studentKey}.`);
     }
 
+    if (recordSubmission) {
+      state.lastTaskSubmission = {
+        grade: state.grade,
+        lessonId: lesson.id,
+        text: submission.slice(0, 4096),
+        submittedAt: new Date().toISOString()
+      };
+      this.saveProgress();
+    }
+    const reviewPrefix = manualReview
+      ? 'راجع الأستاذ إجابتك مرة تانية:\n'
+      : '';
     const taskVersion = getLessonTaskVersion(lesson);
     if (state.taskVersion !== taskVersion) {
       state.taskVersion = taskVersion;
@@ -1647,10 +1788,10 @@ export class TelegramLessonAgent {
       });
     } catch (error) {
       this.logger.error(`[Telegram] Could not grade a task for ${studentKey}: ${error.message}`);
-      await this.bot.sendMessage(chatId, taskFailureMessage(), messageId);
-      return;
+      await this.bot.sendMessage(chatId, `${reviewPrefix}${taskFailureMessage()}`, messageId);
+      return false;
     }
-    if (!result.isTaskSubmission) return;
+    if (!result.isTaskSubmission) return false;
 
     const pending = new Set(pendingQuestionNumbers);
     const answeredQuestionNumbers = Array.isArray(result.answeredQuestionNumbers)
@@ -1669,10 +1810,10 @@ export class TelegramLessonAgent {
     if (answeredQuestionNumbers.length === 0) {
       await this.bot.sendMessage(
         chatId,
-        'ما قدرت أحدد الإجابة من رسالتك. أرسل الإجابة بس؛ ما محتاج تعيد باقي الإجابات. ممكن تكتبها بدون رقم لو واضحة، أو أضف كلمة من السؤال لو في أكتر من سؤال باقي.',
+        `${reviewPrefix}ما قدرت أحدد الإجابة من رسالتك. أرسل الإجابة بس؛ ما محتاج تعيد باقي الإجابات. ممكن تكتبها بدون رقم لو واضحة، أو أضف كلمة من السؤال لو في أكتر من سؤال باقي.`,
         messageId
       );
-      return;
+      return false;
     }
 
     const incorrectQuestionNumbers = answeredQuestionNumbers
@@ -1749,10 +1890,10 @@ export class TelegramLessonAgent {
       ]).size;
       await this.bot.sendMessage(
         chatId,
-        `${correctionFeedback}${correctionFeedback ? ' ' : ''}${spellingCorrectionFeedback}${spellingCorrectionFeedback ? ' ' : ''}تقدمك ${completedQuestionCount} من ${lesson.answerKey.length} أسئلة. حفظت الإجابات الصحيحة.${incorrectFeedback}${uncertaintyFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
+        `${reviewPrefix}${correctionFeedback}${correctionFeedback ? ' ' : ''}${spellingCorrectionFeedback}${spellingCorrectionFeedback ? ' ' : ''}تقدمك ${completedQuestionCount} من ${lesson.answerKey.length} أسئلة. حفظت الإجابات الصحيحة.${incorrectFeedback}${uncertaintyFeedback} الأسئلة المحتاجة تصحيح أو إجابة: ${list}. أرسل إجابات الأسئلة دي بس؛ ما محتاج تعيد الإجابات الصحيحة. ممكن ترسل التصحيح بدون رقم لو واضح من الإجابة.`,
         messageId
       );
-      return;
+      return true;
     }
 
     const retryResolution = correctedAfterRetry.size > 0
@@ -1763,12 +1904,12 @@ export class TelegramLessonAgent {
       : 'ممتاز! كل الإجابات صحيحة،\n\nيلا دا مستوى ناس الـ93 وفوق والله!\n\nخلينا نستمر كدا وحننبهر بالنتيجة.\n\nبجيك هسي الفيديو البعدو.';
     await this.bot.sendMessage(
       chatId,
-      spellingCorrectionFeedback
+      `${reviewPrefix}${spellingCorrectionFeedback
         ? `${allCorrectMessage}\n\n${spellingCorrectionFeedback}`
-        : allCorrectMessage,
+        : allCorrectMessage}`,
       messageId
     );
-    if (state.telegramCelebrationsOptIn === true &&
+    if (!manualReview && state.telegramCelebrationsOptIn === true &&
         state.correctQuestionNumbers.length === lesson.answerKey.length &&
         state.resolvedQuestionNumbers.length === 0 &&
         this.groupId) {
@@ -1804,7 +1945,7 @@ export class TelegramLessonAgent {
     state.lessonCompletionTimestamps = completionTimestamps.slice(-365);
     state.status = 'awaiting_content';
     this.saveProgress();
-    if ([3, 10, 20, 50].includes(state.lessonsCompleted)) {
+    if (!manualReview && [3, 10, 20, 50].includes(state.lessonsCompleted)) {
       try {
         await this.bot.sendMessage(chatId, getStudentMilestoneMessage(state.lessonsCompleted));
       } catch (error) {
@@ -1813,7 +1954,7 @@ export class TelegramLessonAgent {
         );
       }
     }
-    if (state.lessonsCompleted === TELEGRAM_PAYMENT_REMINDER_LESSONS) {
+    if (!manualReview && state.lessonsCompleted === TELEGRAM_PAYMENT_REMINDER_LESSONS) {
       await this.bot.sendMessage(
         chatId,
         'ما شاء الله، كملت 5 دروس بنجاح 😍 عشان تواصل معانا، رسوم الاشتراك الشهري 17 ألف جنيه سوداني، عن طريق بنكك.\n\nرقم الحساب: 2865022\nباسم: مازن محمد أحمد الصديق صالح\n\nبعد الدفع أرسل /paid عشان نراجع الإشعار.'
@@ -1830,6 +1971,7 @@ export class TelegramLessonAgent {
       state.status = 'completed';
       this.saveProgress();
     }
+    return true;
   }
 }
 

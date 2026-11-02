@@ -69,7 +69,10 @@
     .section-heading h2 { font-size: 16px; margin: 0; letter-spacing: -.2px; }
     .section-heading p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
     .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
-    .telegram-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 720px; }
+    .telegram-overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 960px; }
+    .gender-overview-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+    .gender-overview-value { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 10px; }
+    .gender-overview-value strong { color: var(--ink); font-size: 20px; font-weight: 760; }
     .metric { background: var(--paper); border: 1px solid var(--line); border-radius: 13px; padding: 16px 17px; box-shadow: var(--shadow); }
     .metric-button { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; }
     .metric-button:hover { border-color: #a9cdb6; box-shadow: 0 12px 30px rgba(30, 90, 60, .12); }
@@ -231,6 +234,12 @@
     .telegram-stats-chart .telegram-active-line { fill: none; stroke: #5278c7; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
     .telegram-stats-chart .telegram-joins-point { fill: white; stroke: #23875a; stroke-width: 2; }
     .telegram-stats-chart .telegram-active-point { fill: white; stroke: #5278c7; stroke-width: 2; }
+    .telegram-stats-chart .telegram-stats-point { cursor: pointer; }
+    .telegram-stats-chart .telegram-stats-point:focus { outline: none; stroke-width: 3; }
+    .telegram-stats-chart .telegram-value-label { font-size: 9px; font-weight: 750; paint-order: stroke; stroke: white; stroke-width: 3px; stroke-linejoin: round; }
+    .telegram-stats-chart .telegram-joins-label { fill: #176b43; }
+    .telegram-stats-chart .telegram-active-label { fill: #355a9e; }
+    .telegram-stats-tooltip { position: absolute; z-index: 2; max-width: 230px; padding: 8px 10px; border: 1px solid #dce5df; border-radius: 7px; background: white; color: var(--ink); box-shadow: 0 5px 16px rgba(20, 45, 32, .16); font-size: 10px; line-height: 1.5; pointer-events: none; }
     .telegram-stats-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; color: var(--muted); font-size: 10px; }
     .telegram-stats-legend span { display: inline-flex; align-items: center; gap: 5px; }
     .telegram-stats-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: #23875a; }
@@ -407,6 +416,9 @@
     .roster-insights { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(240px, .8fr); gap: 13px; margin-top: 14px; }
     .roster-insight-panel { min-width: 0; padding: 15px 17px; }
     .roster-insight-panel h3 { margin: 0; font-size: 12px; }
+    .leaderboard-preview { max-height: 360px; overflow: auto; margin: 12px 0; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: #f8faf8; color: var(--ink); font: inherit; font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .leaderboard-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .leaderboard-status { margin: 0; color: var(--muted); font-size: 11px; }
     .roster-follow-up-list { display: grid; gap: 6px; max-height: 260px; overflow: auto; margin-top: 8px; }
     .roster-follow-up-item { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); text-align: left; font-size: 10px; }
     .roster-follow-up-item:hover { background: #f2f8f4; }
@@ -417,6 +429,38 @@
     .progress-filters input, .progress-filters select { width: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: white; color: var(--ink); font: inherit; font-size: 11px; }
     .progress-filter-count { color: var(--muted); font-size: 10px; white-space: nowrap; }
     .progress-row-highlight { outline: 2px solid #73b28e; outline-offset: -2px; background: #f0faf3; }
+    #progress-rows > tr[data-progress-student] > td { transition: background-color .16s ease, box-shadow .16s ease; }
+    #progress-rows > tr[data-progress-student]:hover > td,
+    #progress-rows > tr[data-progress-student]:focus-within > td { background: #f1f8f3; }
+    #progress-rows > tr[data-progress-student]:hover > td:first-child,
+    #progress-rows > tr[data-progress-student]:focus-within > td:first-child { box-shadow: inset 3px 0 #73b28e; }
+    .progress-student-link { border: 0; padding: 0; background: transparent; color: var(--green); font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+    .progress-student-link:hover, .progress-student-link:focus-visible { text-decoration: underline; }
+    .student-profile-dialog { width: min(760px, calc(100% - 32px)); max-width: none; max-height: min(88vh, 860px); overflow: hidden; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: white; color: var(--ink); box-shadow: 0 24px 70px rgba(10, 35, 25, .28); }
+    .student-profile-dialog::backdrop { background: rgba(18, 38, 30, .58); backdrop-filter: blur(4px); }
+    .student-profile-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 20px 24px; border-bottom: 1px solid var(--line); background: #fafcfb; }
+    .student-profile-header h2 { margin: 0 0 4px; font-size: 19px; }
+    .student-profile-header p { margin: 0; color: var(--muted); font-size: 11px; }
+    .student-profile-close { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: white; color: var(--ink); font: inherit; font-size: 11px; font-weight: 700; }
+    .student-profile-body { display: grid; gap: 16px; max-height: calc(min(88vh, 860px) - 74px); overflow-y: auto; padding: 20px 24px 24px; }
+    .student-profile-section { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 11px; background: #fbfdfb; }
+    .student-profile-section h3 { margin: 0 0 12px; font-size: 12px; }
+    .student-profile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .student-profile-field { min-width: 0; }
+    .student-profile-field small { display: block; margin-bottom: 3px; color: var(--muted); font-size: 9px; }
+    .student-profile-field strong { display: block; overflow-wrap: anywhere; font-size: 11px; }
+    .student-profile-actions { display: grid; gap: 10px; }
+    .student-profile-action { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+    .student-profile-action label { display: grid; flex: 1 1 220px; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 650; }
+    .student-profile-action select { width: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: white; color: var(--ink); font: inherit; font-size: 11px; }
+    .student-profile-action button { min-height: 36px; border: 1px solid #c8dcd0; border-radius: 8px; padding: 7px 11px; background: white; color: var(--green); font: inherit; font-size: 10px; font-weight: 700; }
+    .student-profile-action button:disabled { cursor: not-allowed; opacity: .55; }
+    .student-profile-note { margin: 0; color: var(--muted); font-size: 10px; }
+    @media (max-width: 520px) {
+      .student-profile-dialog { width: calc(100% - 16px); max-height: 94vh; }
+      .student-profile-body { max-height: calc(94vh - 74px); padding: 14px; }
+      .student-profile-header { padding: 16px; }
+    }
     @media (max-width: 850px) { .progress-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 480px) { .progress-filters { grid-template-columns: 1fr; } }
     .activity-hourly-chart { overflow-x: auto; }
@@ -469,7 +513,7 @@
     th { color: var(--muted); font-weight: 650; background: #fafcfb; }
     td { color: #43534b; }
     #progress-rows > tr > td:last-child { min-width: 225px; }
-    .progress-actions { display: grid; gap: 12px; min-width: 195px; }
+    .progress-actions { display: grid; gap: 12px; min-width: 225px; }
     .send-lesson-controls { display: grid; gap: 7px; }
     .send-lesson-picker { position: relative; display: grid; gap: 4px; color: #66776e; font-size: 10px; font-weight: 700; }
     .send-lesson-picker-trigger { display: flex; width: 100%; min-width: 0; min-height: 38px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid #dce6df; border-radius: 8px; outline: 0; background: #fff; color: var(--ink); font: inherit; font-size: 11px; font-weight: 550; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
@@ -658,6 +702,7 @@
       main { grid-column: 1; padding: 19px 13px 34px; }
       .topbar { margin-bottom: 18px; } .local-tag { font-size: 0; padding: 9px; } .local-dot { width: 8px; height: 8px; }
       .chat-layout { grid-template-columns: 1fr; }
+      .telegram-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .chat-list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 255px; }
       .conversation { min-height: 390px; }
       .gender-statistics { gap: 8px; }
@@ -723,6 +768,14 @@
             <div class="metric-top"><span>Telegram bot</span><span class="metric-icon">✈</span></div>
             <div class="metric-value agent-status-line"><i class="agent-status-dot" id="telegram-agent-status-dot"></i><span id="telegram-agent-status-value">Checking…</span></div>
             <div class="metric-foot" id="telegram-agent-status-detail">Connection status updates automatically</div>
+          </article>
+          <article class="metric" aria-label="Gender of tracked Telegram learners">
+            <div class="metric-top"><span>Tracked student gender</span><span class="metric-icon" aria-hidden="true">◎</span></div>
+            <div class="gender-overview-values">
+              <span class="gender-overview-value">Female <strong id="metric-telegram-female">—</strong></span>
+              <span class="gender-overview-value">Male <strong id="metric-telegram-male">—</strong></span>
+            </div>
+            <div class="metric-foot"><span id="metric-telegram-gender-unknown">— not identified</span> · inferred or manually set</div>
           </article>
         </div>
         <article class="panel telegram-stats-panel" aria-labelledby="telegram-stats-title">
@@ -1196,6 +1249,20 @@
           </div>
           <a class="primary-button workbook-download" id="workbook-download" href="/api/admin/student-workbook.xlsx" download="students.xlsx" aria-disabled="true">Download Excel</a>
         </article>
+        <article class="panel roster-insight-panel">
+          <div class="section-heading" style="margin:0">
+            <div>
+              <h3>Weekly lesson leaderboard</h3>
+              <p>Recognizes students who completed lessons this week. Names and counts will be shared in the group.</p>
+            </div>
+            <button class="pagination button" id="telegram-leaderboard-refresh" type="button">Refresh preview</button>
+          </div>
+          <pre class="leaderboard-preview" id="telegram-leaderboard-preview" aria-live="polite">Loading weekly leaderboard…</pre>
+          <div class="leaderboard-actions">
+            <p class="leaderboard-status" id="telegram-leaderboard-status" aria-live="polite"></p>
+            <button class="primary-button" id="telegram-leaderboard-share" type="button" disabled>Share in Telegram group</button>
+          </div>
+        </article>
         <article class="panel roster-insight-panel telegram-enrollment-panel">
           <h3>Telegram group members</h3>
           <p class="activity-summary" id="telegram-enrollment-summary" aria-live="polite">Loading Telegram enrollment…</p>
@@ -1588,6 +1655,40 @@
     </form>
   </dialog>
 
+  <dialog class="student-profile-dialog" id="student-profile-dialog" aria-labelledby="student-profile-name">
+    <div class="student-profile-header">
+      <div>
+        <h2 id="student-profile-name">Student profile</h2>
+        <p id="student-profile-subtitle"></p>
+      </div>
+      <button class="student-profile-close" id="student-profile-close" type="button">Close</button>
+    </div>
+    <div class="student-profile-body">
+      <section class="student-profile-section" aria-labelledby="student-profile-progress-title">
+        <h3 id="student-profile-progress-title">Progress and activity</h3>
+        <div class="student-profile-grid" id="student-profile-details"></div>
+      </section>
+      <section class="student-profile-section" id="student-profile-addressing-section" aria-labelledby="student-profile-addressing-title" hidden>
+        <h3 id="student-profile-addressing-title">Form of address</h3>
+        <div class="student-profile-action">
+          <label>How should the bot address this student?
+            <select id="student-profile-gender">
+              <option value="auto">Automatic · infer only when clear</option>
+              <option value="female">Feminine</option>
+              <option value="male">Masculine</option>
+              <option value="unknown">Neutral / not specified</option>
+            </select>
+          </label>
+          <small class="student-profile-note" id="student-profile-gender-status" aria-live="polite"></small>
+        </div>
+      </section>
+      <section class="student-profile-section" aria-labelledby="student-profile-actions-title">
+        <h3 id="student-profile-actions-title">Student actions</h3>
+        <div class="student-profile-actions" id="student-profile-actions"></div>
+      </section>
+    </div>
+  </dialog>
+
   <script>
     const PAGE_SIZE = 30;
     const CONTACT_PAGE_SIZE = 50;
@@ -1658,6 +1759,8 @@
     let dashboardCacheGeneration = 0;
     let dashboardDialogResolver = null;
     let dashboardDialogQueue = Promise.resolve();
+    let progressProfileStudent = null;
+    let progressStudents = [];
     const $ = selector => document.querySelector(selector);
 
     function closeOpenLessonPickers() {
@@ -2586,7 +2689,7 @@
         `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats · ${telegramTotal.toLocaleString()} Telegram active learner-days · ${telegramJoinTotal.toLocaleString()} Telegram group joins over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
     }
 
-    function renderTelegramStats(stats) {
+    function renderTelegramStats(stats, timeZone) {
       const summary = $('#telegram-stats-summary');
       const memberValue = stats.totalGroupMembers === null
         ? 'Unavailable'
@@ -2660,8 +2763,16 @@
         const dateLabel = index % 7 === 0 || index === points.length - 1
           ? `<text x="${point.x}" y="${height - 24}" text-anchor="middle">${escapeHtml(label)}</text>`
           : '';
-        return `<circle class="telegram-joins-point" cx="${point.x}" cy="${point.joinsY}" r="3"><title>${escapeHtml(description)}</title></circle>
-          <circle class="telegram-active-point" cx="${point.x}" cy="${point.activeY}" r="3"><title>${escapeHtml(description)}</title></circle>
+        const recentLabel = index >= points.length - 3;
+        const joinsLabelY = point.joinsY < top + 18
+          ? point.joinsY + 15
+          : point.joinsY - 8;
+        const activeLabelY = point.activeY > top + plotHeight - 18
+          ? point.activeY - 8
+          : point.activeY + 15;
+        return `<circle class="telegram-stats-point telegram-joins-point" data-date="${escapeHtml(point.date)}" data-joins="${point.joins}" data-active="${point.activeLearners}" data-series="joins" tabindex="0" role="img" aria-label="${escapeHtml(description)}" cx="${point.x}" cy="${point.joinsY}" r="4"><title>${escapeHtml(description)}</title></circle>
+          <circle class="telegram-stats-point telegram-active-point" data-date="${escapeHtml(point.date)}" data-joins="${point.joins}" data-active="${point.activeLearners}" data-series="active" tabindex="0" role="img" aria-label="${escapeHtml(description)}" cx="${point.x}" cy="${point.activeY}" r="4"><title>${escapeHtml(description)}</title></circle>
+          ${recentLabel ? `<text class="telegram-value-label telegram-joins-label" x="${point.x}" y="${joinsLabelY}" text-anchor="middle">${point.joins}</text><text class="telegram-value-label telegram-active-label" x="${point.x}" y="${activeLabelY}" text-anchor="middle">${point.activeLearners}</text>` : ''}
           ${dateLabel}`;
       }).join('');
       chart.innerHTML = `
@@ -2674,13 +2785,46 @@
           <polyline class="telegram-active-line" points="${activeLine}"></polyline>
           ${marks}
           <text x="${width / 2}" y="${height - 4}" text-anchor="middle">Last 30 days</text>
-        </svg>`;
+        </svg>
+        <div class="telegram-stats-tooltip" role="status" hidden></div>`;
+      const tooltip = chart.querySelector('.telegram-stats-tooltip');
+      chart.querySelectorAll('.telegram-stats-point').forEach(point => {
+        const showPointDetails = () => {
+          const date = new Intl.DateTimeFormat(undefined, {
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            timeZone
+          }).format(new Date(`${point.dataset.date}T12:00:00Z`));
+          tooltip.innerHTML = `<strong>${escapeHtml(date)}</strong><br>Daily recorded joins: ${Number(point.dataset.joins).toLocaleString()}<br>Active tracked learners: ${Number(point.dataset.active).toLocaleString()}`;
+          tooltip.hidden = false;
+          const svg = chart.querySelector('svg');
+          const svgRect = svg.getBoundingClientRect();
+          const chartRect = chart.getBoundingClientRect();
+          const pointX = Number(point.getAttribute('cx')) / width * svgRect.width;
+          const pointY = Number(point.getAttribute('cy')) / height * svgRect.height;
+          const tooltipWidth = tooltip.offsetWidth;
+          tooltip.style.left = `${Math.max(4, Math.min(
+            chart.scrollLeft + svgRect.left - chartRect.left + pointX - tooltipWidth / 2,
+            chart.scrollLeft + chart.clientWidth - tooltipWidth - 4
+          ))}px`;
+          tooltip.style.top = `${Math.max(
+            4,
+            svgRect.top - chartRect.top + pointY - tooltip.offsetHeight - 10
+          )}px`;
+        };
+        point.addEventListener('mouseenter', showPointDetails);
+        point.addEventListener('focus', showPointDetails);
+        point.addEventListener('mouseleave', () => { tooltip.hidden = true; });
+        point.addEventListener('blur', () => { tooltip.hidden = true; });
+      });
     }
 
     async function loadTelegramStats() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const stats = await api(`/api/admin/telegram-stats?${new URLSearchParams({ timeZone })}`);
-      renderTelegramStats(stats);
+      renderTelegramStats(stats, timeZone);
     }
 
     async function loadOverview() {
@@ -2689,6 +2833,23 @@
       $('#metric-telegram-students').textContent = data.telegramStudents.toLocaleString();
       $('#metric-telegram-joins').textContent =
         `Joined today ${data.telegramJoinedToday.toLocaleString()} · last 7 days ${data.telegramJoinedLast7Days.toLocaleString()}`;
+      const genderStatistics = data.telegramGenderStatistics;
+      if (!genderStatistics ||
+          !Number.isInteger(genderStatistics.female) ||
+          !Number.isInteger(genderStatistics.male) ||
+          !Number.isInteger(genderStatistics.unknown)) {
+        $('#metric-telegram-female').textContent = '—';
+        $('#metric-telegram-male').textContent = '—';
+        $('#metric-telegram-gender-unknown').textContent =
+          'Gender totals unavailable · restart dashboard';
+        return;
+      }
+      $('#metric-telegram-female').textContent =
+        genderStatistics.female.toLocaleString();
+      $('#metric-telegram-male').textContent =
+        genderStatistics.male.toLocaleString();
+      $('#metric-telegram-gender-unknown').textContent =
+        `${genderStatistics.unknown.toLocaleString()} not identified`;
     }
 
     async function loadChats() {
@@ -3265,12 +3426,253 @@
         row.focus({ preventScroll: true });
         row.classList.add('progress-row-highlight');
         setTimeout(() => row.classList.remove('progress-row-highlight'), 2500);
+        const student = progressStudents.find(item =>
+          item.platform === row.dataset.progressPlatform && item.jid === jid);
+        if (student) openProgressProfile(student);
       }).catch(error => showError(`Could not open this student's progress: ${error.message}`));
+    }
+
+    function openProgressProfile(student) {
+      progressProfileStudent = student;
+      const dialog = $('#student-profile-dialog');
+      const statusLabels = {
+        awaiting_task: 'Awaiting exercise',
+        awaiting_reattempt: 'Needs another try',
+        awaiting_content: 'Waiting for lesson content',
+        completed: 'Completed'
+      };
+      const field = (label, value) =>
+        `<div class="student-profile-field"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value || '—')}</strong></div>`;
+      $('#student-profile-name').textContent = student.name || 'Student profile';
+      $('#student-profile-subtitle').textContent =
+        `${student.platform || 'Student'} · ${student.gradeName || 'Grade not set'}`;
+      $('#student-profile-addressing-section').hidden = student.platform !== 'Telegram';
+      $('#student-profile-details').innerHTML = [
+        field('Platform', student.platform),
+        field('Student ID', student.jid),
+        field('Grade', student.gradeName),
+        field('Current lesson', student.lessonTitle),
+        field('Progress status', statusLabels[student.status] || student.status),
+        field('Group joined', student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'),
+        field('Last student activity', formatDate(student.lastStudentActivityAt)),
+        field('Messages / submissions', Number(student.totalIncomingMessages || 0).toLocaleString()),
+        field('Last 7 days / 30 days',
+          `${Number(student.incomingMessagesLast7Days || 0).toLocaleString()} / ${Number(student.incomingMessagesLast30Days || 0).toLocaleString()}`),
+        field('Active days (30 days)', `${Number(student.activeDaysLast30Days || 0)} / 30`),
+        field('Lessons passed', Number(student.lessonsCompleted || 0).toLocaleString()),
+        field('Last lesson delivery', formatDate(student.deliveredAt)),
+        field('Latest task answer', formatDate(student.lastTaskSubmissionAt)),
+        field('Current lesson ID', student.currentLessonId)
+      ].join('');
+      $('#student-profile-gender').value = student.genderOverride || 'auto';
+      $('#student-profile-gender-status').textContent =
+        student.genderOverride && student.genderOverride !== 'auto'
+          ? 'Manual setting overrides automatic inference.'
+          : student.gender?.value === 'female'
+            ? `Feminine form inferred ${student.gender.source === 'inferred from name' ? 'from the name' : 'from self-description'}.`
+            : 'No clear signal found; automatic mode uses neutral wording where supported.';
+
+      const sendRequest = student.sendLessonRequest;
+      const skipRequest = student.skipRequest;
+      const regradeRequest = student.regradeRequest;
+      const reminderRequest = student.reminderRequest;
+      const hasPendingLessonRequest = ['queued', 'processing'].includes(skipRequest?.status) ||
+        ['queued', 'processing'].includes(sendRequest?.status);
+      const isSendingLesson = ['queued', 'processing'].includes(sendRequest?.status);
+      const isSkippingLesson = ['queued', 'processing'].includes(skipRequest?.status);
+      const isRegradingTask = ['queued', 'processing'].includes(regradeRequest?.status);
+      const actions = [];
+      if (student.availableLessons?.length) {
+        const failure = sendRequest?.status === 'failed'
+          ? `Last send failed: ${sendRequest.error || 'delivery error'}`
+          : isSendingLesson ? 'The selected lesson is being sent.' : 'Sending a lesson replaces the active exercise.';
+        actions.push(`<div class="student-profile-action">
+          <label>Send a lesson
+            <select data-profile-lesson ${hasPendingLessonRequest ? 'disabled' : ''}>
+              <option value="">Choose from curriculum…</option>
+              ${student.availableLessons.map(lesson =>
+                `<option value="${escapeHtml(lesson.id)}">${escapeHtml(lesson.title)}</option>`).join('')}
+            </select>
+          </label>
+          <button type="button" data-profile-action="send" disabled>${isSendingLesson ? 'Sending…' : 'Send lesson'}</button>
+          <small class="student-profile-note">${escapeHtml(failure)}</small>
+        </div>`);
+      }
+      if (student.canRegradeTask) {
+        const note = regradeRequest?.status === 'failed'
+          ? `Last recheck failed: ${regradeRequest.error || 'delivery error'}`
+          : student.lastTaskSubmissionAt
+            ? `Latest answer received ${formatDate(student.lastTaskSubmissionAt)}`
+            : 'Re-evaluates the latest saved answer.';
+        actions.push(`<div class="student-profile-action">
+          <button type="button" data-profile-action="recheck" ${isRegradingTask || hasPendingLessonRequest ? 'disabled' : ''}>${isRegradingTask ? 'Rechecking…' : 'Recheck latest task'}</button>
+          <small class="student-profile-note">${escapeHtml(note)}</small>
+        </div>`);
+      }
+      if (student.canSendReminder) {
+        const isSendingReminder = ['queued', 'processing'].includes(reminderRequest?.status);
+        const reminderNote = isSendingReminder
+          ? 'The reminder is queued and will be sent privately.'
+          : reminderRequest?.status === 'failed'
+            ? `Last reminder failed: ${reminderRequest.error || 'delivery error'}`
+            : reminderRequest?.status === 'sent'
+              ? `Last reminder sent ${formatDate(reminderRequest.updatedAt)}`
+              : 'Sends the standard lesson reminder privately.';
+        actions.push(`<div class="student-profile-action">
+          <button type="button" data-profile-action="remind" ${isSendingReminder ? 'disabled' : ''}>${isSendingReminder ? 'Reminder queued…' : reminderRequest?.status === 'failed' ? 'Retry reminder' : 'Send reminder'}</button>
+          <small class="student-profile-note">${escapeHtml(reminderNote)}</small>
+        </div>`);
+      }
+      if (student.canSkipToNextLesson) {
+        const note = skipRequest?.status === 'failed'
+          ? `Previous attempt failed: ${skipRequest.error || 'delivery error'}`
+          : isSkippingLesson
+            ? 'The next lesson will be sent when the agent processes this request.'
+            : `Next lesson: ${student.nextLessonTitle || '—'}`;
+        actions.push(`<div class="student-profile-action">
+          <button type="button" data-profile-action="skip" ${hasPendingLessonRequest ? 'disabled' : ''}>${isSkippingLesson ? 'Queued…' : skipRequest?.status === 'failed' ? 'Retry skip' : 'Skip to next lesson'}</button>
+          <small class="student-profile-note">${escapeHtml(note)}</small>
+        </div>`);
+      }
+      $('#student-profile-actions').innerHTML = actions.length
+        ? actions.join('')
+        : '<p class="student-profile-note">There are no lesson actions available for this student right now.</p>';
+      if (!dialog.open) dialog.showModal();
+    }
+
+    $('#student-profile-close').addEventListener('click', () => $('#student-profile-dialog').close());
+    $('#student-profile-dialog').addEventListener('close', () => {
+      progressProfileStudent = null;
+    });
+    $('#student-profile-dialog').addEventListener('click', event => {
+      if (event.target === $('#student-profile-dialog')) $('#student-profile-dialog').close();
+    });
+    $('#student-profile-gender').addEventListener('change', async event => {
+      if (!progressProfileStudent) return;
+      const select = event.currentTarget;
+      const previousValue = progressProfileStudent.genderOverride || 'auto';
+      select.disabled = true;
+      $('#student-profile-gender-status').textContent = 'Saving…';
+      try {
+        await api('/api/admin/telegram-student-gender', {
+          method: 'POST',
+          body: JSON.stringify({
+            jid: progressProfileStudent.jid,
+            gender: select.value
+          })
+        });
+        await loadProgress();
+        $('#student-profile-gender-status').textContent = 'Saved. This setting controls future bot messages.';
+      } catch (error) {
+        select.value = previousValue;
+        $('#student-profile-gender-status').textContent = `Could not save: ${error.message}`;
+        showError(`Could not update this student's form of address: ${error.message}`);
+      } finally {
+        select.disabled = false;
+      }
+    });
+    $('#student-profile-actions').addEventListener('change', event => {
+      if (!event.target.matches('[data-profile-lesson]')) return;
+      $('#student-profile-actions').querySelector('[data-profile-action="send"]').disabled =
+        !event.target.value || Boolean(
+          progressProfileStudent &&
+          (['queued', 'processing'].includes(progressProfileStudent.skipRequest?.status) ||
+            ['queued', 'processing'].includes(progressProfileStudent.sendLessonRequest?.status))
+        );
+    });
+    $('#student-profile-actions').addEventListener('click', async event => {
+      const button = event.target.closest('[data-profile-action]');
+      if (!button || !progressProfileStudent || button.disabled) return;
+      if (button.dataset.profileAction === 'remind') {
+        const student = progressProfileStudent;
+        if (!await dashboardConfirm(
+          `Send a private lesson reminder to ${student.name}?`,
+          { title: 'Send reminder', confirmText: 'Send reminder' }
+        )) return;
+        button.disabled = true;
+        button.textContent = 'Queuing…';
+        try {
+          await api('/api/admin/progress/send-reminder', {
+            method: 'POST',
+            body: JSON.stringify({
+              jid: student.jid,
+              currentLessonId: student.currentLessonId
+            })
+          });
+          await loadProgress();
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = 'Send reminder';
+          showError(`Could not send this student a reminder: ${error.message}`);
+        }
+        return;
+      }
+      const row = [...$('#progress-rows').querySelectorAll('[data-progress-student]')]
+        .find(item => item.dataset.progressStudent === progressProfileStudent.jid &&
+          item.dataset.progressPlatform === progressProfileStudent.platform);
+      if (!row) {
+        showError('Could not find this student in the progress roster. Refresh the list and try again.');
+        return;
+      }
+      if (button.dataset.profileAction === 'send') {
+        const lessonId = $('#student-profile-actions').querySelector('[data-profile-lesson]').value;
+        const picker = row.querySelector('[data-send-lesson-picker]');
+        const option = [...(picker?.querySelectorAll('[data-lesson-id]') || [])]
+          .find(item => item.dataset.lessonId === lessonId);
+        const sendButton = row.querySelector('.send-lesson-button');
+        if (!lessonId || !picker || !option || !sendButton) {
+          showError('Choose an available lesson before sending.');
+          return;
+        }
+        picker.dataset.selectedLesson = lessonId;
+        picker.querySelector('[data-selected-lesson]').textContent = option.querySelector('span').textContent;
+        sendButton.click();
+        return;
+      }
+      const selector = button.dataset.profileAction === 'recheck'
+        ? '[data-regrade-jid]'
+        : '[data-skip-jid]';
+      const rowButton = [...row.querySelectorAll(selector)].find(item =>
+        item.dataset[button.dataset.profileAction === 'recheck' ? 'regradeJid' : 'skipJid'] ===
+        progressProfileStudent.jid);
+      if (!rowButton || rowButton.disabled) {
+        showError('This action is no longer available. Refresh the student profile and try again.');
+        return;
+      }
+      rowButton.click();
+    });
+    $('#progress-rows').addEventListener('click', event => {
+      const button = event.target.closest('[data-open-student-profile]');
+      if (!button) return;
+      const student = progressStudents.find(item =>
+        item.platform === button.dataset.profilePlatform && item.jid === button.dataset.profileJid);
+      if (student) openProgressProfile(student);
+    });
+
+    async function loadTelegramLeaderboard() {
+      const data = await api(`/api/admin/telegram-leaderboard?refresh=${Date.now()}`);
+      const preview = $('#telegram-leaderboard-preview');
+      const status = $('#telegram-leaderboard-status');
+      const shareButton = $('#telegram-leaderboard-share');
+      preview.textContent = data.message || 'No tracked students have completed a lesson this week yet.';
+      shareButton.disabled = !data.students.length || !data.groupConfigured || !data.botConfigured;
+      status.textContent = !data.groupConfigured || !data.botConfigured
+        ? 'Configure TELEGRAM_BOT_TOKEN and TELEGRAM_GROUP_ID to share this leaderboard.'
+        : data.students.length
+          ? `${data.students.length.toLocaleString()} students with lesson completions this week · ${data.weekStart} to ${data.weekEnd}.`
+          : 'No lesson completions recorded this week.';
     }
 
     async function loadProgress() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const { students, insights } = await api(`/api/admin/telegram-progress?${new URLSearchParams({ timeZone })}`);
+      progressStudents = students;
+      loadTelegramLeaderboard().catch(error => {
+        $('#telegram-leaderboard-preview').textContent = 'Could not load the weekly leaderboard.';
+        $('#telegram-leaderboard-status').textContent = error.message;
+        $('#telegram-leaderboard-share').disabled = true;
+        showError(`Could not load weekly leaderboard: ${error.message}`);
+      });
       initializeProgressFilters(students);
       renderTelegramEnrollment(insights.telegramEnrollment, timeZone);
       renderRosterInsights(
@@ -3297,6 +3699,8 @@
         const sendRequest = student.sendLessonRequest;
         const isSendingLesson = ['queued', 'processing'].includes(sendRequest?.status);
         const hasPendingLessonRequest = isWaiting || isSendingLesson;
+        const regradeRequest = student.regradeRequest;
+        const isRegradingTask = ['queued', 'processing'].includes(regradeRequest?.status);
         const skipButtonLabel = isWaiting
           ? skipRequest.status === 'processing' ? 'Sending…' : 'Queued…'
           : skipRequest?.status === 'failed' ? 'Retry skip' : 'Skip to next lesson';
@@ -3312,6 +3716,9 @@
         const sendLessonAction = availableLessons.length
           ? `<div class="send-lesson-controls"><div class="send-lesson-picker" data-send-lesson-picker><span>Choose a lesson</span><button class="send-lesson-picker-trigger" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a lesson for ${escapeHtml(student.name)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-picker-value" data-selected-lesson>Select from curriculum…</span><span class="send-lesson-picker-chevron" aria-hidden="true">⌄</span></button><div class="send-lesson-menu" role="listbox" aria-label="Available lessons for ${escapeHtml(student.name)}" hidden>${availableLessons.map(lesson => `<button class="send-lesson-option" type="button" role="option" aria-selected="false" data-lesson-id="${escapeHtml(lesson.id)}"><span>${escapeHtml(lesson.title)}</span><span class="send-lesson-option-check" aria-hidden="true"></span></button>`).join('')}</div></div><button class="send-lesson-button" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-button-icon" aria-hidden="true">➤</span>${isSendingLesson ? sendRequest.status === 'processing' ? 'Sending…' : 'Queued…' : 'Send lesson'}</button>${sendRequest?.status === 'failed' ? `<small class="send-lesson-status">Last send failed: ${escapeHtml(sendRequest.error || 'delivery error')}</small>` : isSendingLesson ? '<small class="send-lesson-status">The selected lesson is being sent.</small>' : '<small class="send-lesson-status">This becomes their active lesson.</small>'}</div>`
           : '';
+        const regradeAction = student.canRegradeTask
+          ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-regrade-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${isRegradingTask || hasPendingLessonRequest ? 'disabled' : ''}>${isRegradingTask ? 'Rechecking…' : 'Recheck latest task'}</button><small class="skip-lesson-status">${regradeRequest?.status === 'failed' ? `Last recheck failed: ${escapeHtml(regradeRequest.error || 'delivery error')}` : student.lastTaskSubmissionAt ? `Latest answer received ${escapeHtml(formatDate(student.lastTaskSubmissionAt))}` : 'Re-evaluates the latest saved answer.'}</small></div>`
+          : '';
         const gradeKey = student.grade || student.gradeName || '__unknown';
         const knownStatuses = ['awaiting_task', 'awaiting_reattempt', 'completed', 'awaiting_content'];
         const progressStatus = knownStatuses.includes(student.status) ? student.status : 'other';
@@ -3322,7 +3729,7 @@
             : null;
         const searchText = `${student.name} ${student.gradeName} ${student.lessonTitle || ''} ${student.platform}`
           .toLocaleLowerCase();
-        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${skipAction || '—'}</div></td></tr>`;
+        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || '—'}</div></td></tr>`;
       }).join('') : '<tr><td colspan="12" class="empty">No student progress recorded yet.</td></tr>';
       applyProgressFilters();
       $('#progress-rows').querySelectorAll('[data-send-lesson-picker]').forEach(picker => {
@@ -3451,6 +3858,38 @@
           }
         });
       });
+      $('#progress-rows').querySelectorAll('[data-regrade-jid]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const student = students.find(item =>
+            item.platform === 'Telegram' && item.jid === button.dataset.regradeJid);
+          if (!student || !await dashboardConfirm(
+            `Ask the bot to recheck ${student.name}'s latest saved answer for ${student.lessonTitle}? The bot may update lesson progress based on the recheck and will privately message the student.`,
+            { title: 'Recheck task answers', confirmText: 'Recheck task' }
+          )) return;
+          button.disabled = true;
+          button.textContent = 'Queuing…';
+          try {
+            await api('/api/admin/progress/regrade-task', {
+              method: 'POST',
+              body: JSON.stringify({
+                jid: student.jid,
+                currentLessonId: student.currentLessonId
+              })
+            });
+            await loadProgress();
+          } catch (error) {
+            button.disabled = false;
+            button.textContent = 'Recheck latest task';
+            showError(`Could not queue the task recheck: ${error.message}`);
+          }
+        });
+      });
+      if ($('#student-profile-dialog').open && progressProfileStudent) {
+        const refreshedStudent = students.find(item =>
+          item.platform === progressProfileStudent.platform && item.jid === progressProfileStudent.jid);
+        if (refreshedStudent) openProgressProfile(refreshedStudent);
+        else $('#student-profile-dialog').close();
+      }
     }
 
     async function loadWorkbookStatus() {
@@ -4613,6 +5052,35 @@
     });
     $('#payment-ledger-refresh').addEventListener('click', () => {
       loadPaymentLedger().catch(error => showError(`Could not refresh payment ledger: ${error.message}`));
+    });
+    $('#telegram-leaderboard-refresh').addEventListener('click', () => {
+      loadTelegramLeaderboard().catch(error => {
+        $('#telegram-leaderboard-status').textContent = error.message;
+        showError(`Could not refresh weekly leaderboard: ${error.message}`);
+      });
+    });
+    $('#telegram-leaderboard-share').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      if (!await dashboardConfirm(
+        'This will post every listed student name and weekly lesson-completion count publicly in the Telegram group. Share it now?',
+        { title: 'Share weekly leaderboard', confirmText: 'Share in group' }
+      )) return;
+      button.disabled = true;
+      button.textContent = 'Sharing…';
+      try {
+        const result = await api('/api/admin/telegram-leaderboard', {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        $('#telegram-leaderboard-status').textContent =
+          `Shared with the Telegram group · ${result.studentsCount.toLocaleString()} students.`;
+      } catch (error) {
+        $('#telegram-leaderboard-status').textContent = error.message;
+        showError(`Could not share weekly leaderboard: ${error.message}`);
+      } finally {
+        button.textContent = 'Share in Telegram group';
+        button.disabled = false;
+      }
     });
     $('#telegram-payment-month-previous').addEventListener('click', () => {
       telegramPaymentMonth = new Date(
