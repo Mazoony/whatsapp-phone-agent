@@ -217,7 +217,7 @@
       {
         "id": "lesson_9",
         "title": "Treasure Island_Lesson_2 About_The_Book",
-        "videoFile": "media/lessons/grade_3_secondary/Treasure_Island_-_About_the_Book_-_Lesson_3.mp4",
+        "videoFile": "media/lessons/grade_3_secondary/Treasure_Island_-_About_the_Book_-_Lesson_3_compressed.mp4",
         "caption": "🎬 فيديو الحصة | مستر مازن (eShool)",
         "introMessage": "يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇",
         "taskMessage": "1. When did the story Treasure Island take place?\n2. What is Treasure Island about?\n3. What did pirates do when they take a treasure?\n4. When was Robert Louis Stevenson born?\n5. Whose the treasur of the story?\n6. What did pirates do to the sailors?\n7. What happens to pirates if they are caught?\n8. What did the ships carry?\n9. Where did ships come from?\n10. Where did the ships go to?\n11. Name two real pirates\n*True or False*\n1. Treasure Island is a real place in the UK (...........)\n2. Pirates killed people but didn't kill each others  (........)\n3. Long John Silver is not a real person (.........)\n4. People didn't like to talk about pirates?",
@@ -237,6 +237,26 @@
           "F",
           "T",
           "F"
+        ]
+      },
+      {
+        "id": "lesson_10",
+        "title": "الحصة العاشرة: Past Simple_Affirmative",
+        "videoFile": "media/lessons/grade_3_secondary/Lesson_10.mp4",
+        "caption": "🎬 فيديو الحصة | مستر مازن (eShool)",
+        "introMessage": "يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇",
+        "taskMessage": "1. Sara ________ her grandmother yesterday. (visit)\n2. We ________ football after school. (play)\n3. Adam ________ a delicious cake for his family. (make)\n4. They ________ to the museum last Saturday. (go)\n5. I ________ a new story in class. (write)\n6. The students ________ their English lesson. (study)\n7. My brother ________ a beautiful picture. (draw)\n8. Huda ________ her room in the morning. (clean)\n9. The children ________ a funny film last night. (see)\n10. Our teacher ________ us an interesting story. (tell)",
+        "answerKey": [
+          "visited — الفعل العادي بنضيف ليهو ed عشان نخليهو في الماضي.",
+          "played — الفعل العادي بنضيف ليهو ed عشان نخليهو في الماضي.",
+          "made — الفعل make شاذ، وتغييره في الماضي ما بكون بإضافة ed.",
+          "went — الفعل go شاذ، وتغييرهو في الماضي لازم نحفظو.",
+          "wrote — الفعل write شاذ، وتغييرهو في الماضي لازم نحفظو.",
+          "studied — لو الفعل انتهى بحرف ساكن وبعدو y، بنغيّر y إلى i وبنضيف ed.",
+          "drew — الفعل draw شاذ، وتغييرهو في الماضي لازم نحفظو.",
+          "cleaned — الفعل العادي بنضيف ليهو ed عشان نخليهو في الماضي.",
+          "saw — الفعل see شاذ، وتغييرهو في الماضي لازم نحفظو.",
+          "told — الفعل tell شاذ، وتغييرهو في الماضي لازم نحفظو."
         ]
       }
     ],

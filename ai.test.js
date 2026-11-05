@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { config, resolveStudentGrade } from './config.js';
 import {
@@ -407,7 +408,7 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
         studentAnswer: 'He go to school.',
         explanation: 'بعد he بنضيف s للفعل في المضارع البسيط.'
       }],
-      feedback: 'في إجابة محتاجة تصحيح. حاول تاني.'
+      feedback: 'السؤال 1: الإجابة الصحيحة «goes». بعد he بنضيف s للفعل في المضارع البسيط.'
     });
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
@@ -489,7 +490,7 @@ test('task grading gives Sudanese Arabic feedback for English submissions', asyn
           incorrectAnswers: [{
             questionNumber: 1,
             studentAnswer: 'The answer is wrong.',
-            explanation: 'الإجابة ما مطابقة للسؤال.'
+            explanation: 'This is the present simple form.'
           }]
         })
       }
@@ -500,13 +501,35 @@ test('task grading gives Sudanese Arabic feedback for English submissions', asyn
     const result = await evaluateStudentTask({
       title: 'Present Simple',
       taskMessage: 'Complete the sentence.',
-      answerKey: ['goes']
+      answerKey: ['goes — بعد he أو she بنضيف s للفعل في المضارع البسيط.']
     }, 'The answer is wrong.');
-    assert.equal(result.feedback, 'في إجابة محتاجة تصحيح. حاول تاني.');
+    assert.equal(
+      result.feedback,
+      'السؤال 1: الإجابة الصحيحة «goes». بعد he أو she بنضيف s للفعل في المضارع البسيط.'
+    );
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
     globalThis.fetch = previousFetch;
   }
+});
+
+test('Lesson 10 has the correct past-simple answer forms and Sudanese Arabic rule notes', () => {
+  const lessons = JSON.parse(readFileSync(new URL('./lessons.json', import.meta.url), 'utf8'));
+  const lesson = lessons.grade_3_secondary.lessons.find(item => item.id === 'lesson_10');
+
+  assert.deepEqual(lesson.answerKey.map(answer => answer.split(' — ')[0]), [
+    'visited',
+    'played',
+    'made',
+    'went',
+    'wrote',
+    'studied',
+    'drew',
+    'cleaned',
+    'saw',
+    'told'
+  ]);
+  assert.ok(lesson.answerKey.every(answer => answer.includes(' — ')));
 });
 
 test('task grading deterministically accepts exact numbered answers and listed alternatives', async () => {

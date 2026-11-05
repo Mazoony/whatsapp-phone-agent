@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import { TelegramClient } from 'teleproto';
+import { TelegramClient, utils as telegramUtils } from 'teleproto';
 import { StringSession } from 'teleproto/sessions';
 import { config } from './config.js';
 import { isTelegramAnnouncementRecipient } from './telegram_announcement_recipients.js';
@@ -15,6 +15,18 @@ export const TELEGRAM_USER_BROADCAST_REQUESTS_FILE = path.join(DATA_DIR, 'telegr
 export const TELEGRAM_USER_BROADCAST_STATE_FILE = path.join(DATA_DIR, 'telegram_user_broadcast_state.json');
 const SEND_INTERVAL_MS = 3_000;
 const MAX_GROUP_PARTICIPANTS = 10_000;
+const GROUP_ROSTER_SYNC_INTERVAL_MS = 30_000;
+
+function getTelegramPresenceStatus(member) {
+  switch (member?.status?.className) {
+    case 'UserStatusOnline':
+      return 'online';
+    case 'UserStatusOffline':
+      return 'offline';
+    default:
+      return 'unknown';
+  }
+}
 
 function readJsonFile(filePath, fallback) {
   if (!fs.existsSync(filePath)) return fallback;
@@ -40,6 +52,15 @@ function getEntityId(entity) {
 
 function getGroupEntityId(entity) {
   return normalizeTelegramGroupId(getEntityId(entity));
+}
+
+function getGroupMemberName(member) {
+  const firstName = typeof member?.firstName === 'string' ? member.firstName.trim() : '';
+  const lastName = typeof member?.lastName === 'string' ? member.lastName.trim() : '';
+  const fullName = [firstName, lastName].filter(Boolean).join(' ');
+  if (fullName) return fullName;
+  const username = typeof member?.username === 'string' ? member.username.trim() : '';
+  return username ? `@${username}` : `Telegram user ${getEntityId(member)}`;
 }
 
 function getOptedInRecipientIds(progress, groupId) {
@@ -74,6 +95,9 @@ export class TelegramUserBroadcastWorker {
     this.sendIntervalMs = sendIntervalMs;
     this.logger = logger;
     this.processing = false;
+    this.lastGroupRosterSyncAttemptAt = 0;
+    this.accountUserId = null;
+    this.accountUserIdLoaded = false;
   }
 
   getProgress() {
@@ -110,18 +134,77 @@ export class TelegramUserBroadcastWorker {
     return dialog.entity || dialog;
   }
 
-  async getOptedInGroupParticipants(groupEntity, recipientIds) {
+  async getGroupParticipants(groupEntity, recipientIds = null) {
+    if (!this.accountUserIdLoaded) {
+      if (typeof this.client.getMe === 'function') {
+        this.accountUserId = getEntityId(await this.client.getMe());
+      }
+      this.accountUserIdLoaded = true;
+    }
     const participants = new Map();
     let inspected = 0;
     for await (const participant of this.client.iterParticipants(groupEntity, {
-      limit: MAX_GROUP_PARTICIPANTS
+      limit: MAX_GROUP_PARTICIPANTS,
+      showTotal: false
     })) {
       inspected += 1;
       const userId = getEntityId(participant);
-      if (recipientIds.has(userId)) participants.set(userId, participant);
+      if ((!recipientIds || recipientIds.has(userId)) &&
+          userId !== this.accountUserId &&
+          participant?.bot !== true) {
+        participants.set(userId, participant);
+      }
     }
-    this.logger.info(`[Telegram broadcast] Checked ${inspected} group members for current opt-ins.`);
+    this.logger.info(`[Telegram broadcast] Checked ${inspected} current group members.`);
     return participants;
+  }
+
+  async syncGroupRoster() {
+    this.lastGroupRosterSyncAttemptAt = Date.now();
+    const dialogs = await this.client.getDialogs({});
+    const groupEntity = this.getGroupEntity(dialogs);
+    const participants = await this.getGroupParticipants(groupEntity);
+    let onlineGroupMembersCount = null;
+    if (typeof this.client.getInputEntity === 'function' &&
+        typeof this.client.api?.channels?.getFullChannel === 'function') {
+      try {
+        const channel = telegramUtils.getInputChannel(
+          await this.client.getInputEntity(groupEntity)
+        );
+        const fullChannel = await this.client.api.channels.getFullChannel({ channel });
+        if (Number.isInteger(fullChannel?.fullChat?.onlineCount) &&
+            fullChannel.fullChat.onlineCount >= 0) {
+          onlineGroupMembersCount = fullChannel.fullChat.onlineCount;
+        }
+      } catch (error) {
+        this.logger.error(
+          `[Telegram broadcast] Could not fetch the group's online member count: ${error.message}`
+        );
+      }
+    }
+    const groupRoster = [...participants.entries()]
+      .map(([userId, member]) => ({
+        userId,
+        name: getGroupMemberName(member),
+        presence: getTelegramPresenceStatus(member),
+        ...(typeof member.username === 'string' && member.username.trim()
+          ? { username: member.username.trim() }
+          : {})
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name) || left.userId.localeCompare(right.userId));
+    const state = this.getState();
+    const previousRoster = Array.isArray(state.groupRoster) ? state.groupRoster : [];
+    const rosterChanged = JSON.stringify(previousRoster) !== JSON.stringify(groupRoster);
+    const now = new Date().toISOString();
+    writeJsonFile(this.stateFile, {
+      ...state,
+      groupRoster,
+      onlineGroupMembersCount,
+      onlineGroupMembersUpdatedAt: onlineGroupMembersCount === null ? null : now,
+      groupRosterSyncedAt: now,
+      ...(rosterChanged ? { groupRosterUpdatedAt: now } : {})
+    });
+    return groupRoster;
   }
 
   saveJobState(state, jobId, jobState) {
@@ -173,12 +256,14 @@ export class TelegramUserBroadcastWorker {
         throw new Error(`Invalid recipient position for Telegram broadcast ${job.id}.`);
       }
       const currentProgress = this.getProgress();
-      const optedInIds = getOptedInRecipientIds(currentProgress, this.groupId);
       const requestedIds = new Set(job.recipients.map(recipient => String(recipient.userId)));
-      const targetIds = new Set([...optedInIds].filter(id => requestedIds.has(id)));
+      const targetIds = job.audience === 'group-members'
+        ? requestedIds
+        : new Set([...getOptedInRecipientIds(currentProgress, this.groupId)]
+          .filter(id => requestedIds.has(id)));
       const dialogs = await this.client.getDialogs({});
       const groupEntity = this.getGroupEntity(dialogs);
-      const participantEntities = await this.getOptedInGroupParticipants(groupEntity, targetIds);
+      const participantEntities = await this.getGroupParticipants(groupEntity, targetIds);
       let sent = current.sent || 0;
       let skipped = current.skipped || 0;
       let uncertain = current.uncertain || 0;
@@ -194,6 +279,9 @@ export class TelegramUserBroadcastWorker {
       });
 
       while (nextIndex < job.recipients.length) {
+        if (Date.now() - this.lastGroupRosterSyncAttemptAt >= GROUP_ROSTER_SYNC_INTERVAL_MS) {
+          await this.syncGroupRoster();
+        }
         const queued = this.getQueue().find(item => item.id === job.id);
         const latestState = this.getState();
         if (queued?.cancelled || latestState.jobs[job.id]?.status === 'cancellation_requested') {
@@ -212,9 +300,13 @@ export class TelegramUserBroadcastWorker {
         const recipient = job.recipients[nextIndex];
         const userId = String(recipient.userId);
         const latestProgress = this.getProgress();
-        const stillOptedIn = getOptedInRecipientIds(latestProgress, this.groupId).has(userId);
+        const currentStudent = Object.values(latestProgress).find(student =>
+          String(student.telegramUserId) === userId &&
+          (job.audience === 'group-members'
+            ? String(student.telegramChatId) === this.groupId
+            : isTelegramAnnouncementRecipient(student, this.groupId)));
         const participant = participantEntities.get(userId);
-        if (!stillOptedIn || !participant) {
+        if ((job.audience !== 'group-members' && !currentStudent) || !participant) {
           skipped += 1;
           nextIndex += 1;
           this.saveJobState(latestState, job.id, {
@@ -230,7 +322,13 @@ export class TelegramUserBroadcastWorker {
         }
 
         try {
-          await this.client.sendMessage(participant, { message: job.text });
+          const recipientName = currentStudent?.name || currentStudent?.telegramUsername ||
+            recipient.name || getGroupMemberName(participant) ||
+            `Telegram user ${userId}`;
+          const message = job.personalized === true
+            ? job.text.replaceAll('{{name}}', recipientName)
+            : job.text;
+          await this.client.sendMessage(participant, { message });
           sent += 1;
           nextIndex += 1;
           this.saveJobState(latestState, job.id, {
@@ -303,6 +401,9 @@ export class TelegramUserBroadcastWorker {
     try {
     while (!signal?.aborted) {
       try {
+        if (Date.now() - this.lastGroupRosterSyncAttemptAt >= GROUP_ROSTER_SYNC_INTERVAL_MS) {
+          await this.syncGroupRoster();
+        }
         await this.processNextJob();
         writeWorkerStatus(true, null);
       } catch (error) {

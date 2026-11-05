@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <title>eShool | Telegram Learning Dashboard</title>
   <style>
     :root {
@@ -122,6 +123,9 @@
     .agent-queue-paused { margin-top: 9px; padding: 8px 10px; border-radius: 7px; color: #8a5b12; background: #fff5df; font-size: 10px; }
     .agent-queue-list { display: grid; gap: 8px; margin-top: 12px; }
     .agent-queue-item { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; transition: transform .45s cubic-bezier(.2,.75,.25,1), opacity .25s ease; will-change: transform; }
+    .agent-queue-item.admin-action { border-color: #d7c8eb; background: #fcfaff; }
+    .agent-queue-subheading { margin: 14px 0 0; color: var(--ink); font-size: 11px; }
+    .agent-queue-subheading + .agent-queue-list { margin-top: 7px; }
     .agent-queue-position { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 750; }
     .agent-queue-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
     .agent-queue-detail { margin-top: 3px; color: var(--muted); font-size: 10px; }
@@ -221,7 +225,7 @@
     .telegram-stats-panel { margin: 14px 0; padding: 15px 17px 12px; }
     .telegram-stats-panel h2 { margin: 0; font-size: 15px; }
     .telegram-stats-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
-    .telegram-stats-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
+    .telegram-stats-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
     .telegram-stat-card { padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
     .telegram-stat-label { color: var(--muted); font-size: 10px; font-weight: 650; }
     .telegram-stat-value { margin-top: 5px; font-size: 21px; font-weight: 760; }
@@ -244,6 +248,11 @@
     .telegram-stats-legend span { display: inline-flex; align-items: center; gap: 5px; }
     .telegram-stats-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: #23875a; }
     .telegram-stats-legend .telegram-active-key { background: #5278c7; }
+    .telegram-presence { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+    .telegram-presence::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
+    .telegram-presence.online { color: #18764d; background: #e6f4ed; }
+    .telegram-presence.offline { color: #63716a; background: #eef1ef; }
+    .telegram-presence.unknown { color: #8a6a2a; background: #fff5df; }
     @media (max-width: 700px) { .telegram-stats-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .payment-calendar-panel { padding: 16px; }
     .payment-calendar-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -296,6 +305,11 @@
     .composer { margin-top: 14px; padding: 16px; }
     .composer h3 { margin: 0 0 4px; font-size: 13px; }
     .composer p { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
+    .telegram-recipient-preview-toggle { margin: 0 0 10px; }
+    .telegram-recipient-preview { max-height: 260px; overflow-y: auto; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fafcfb; }
+    .telegram-recipient-preview[hidden] { display: none; }
+    .telegram-recipient-preview-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 5px 16px; margin: 0; padding-left: 18px; color: var(--ink); font-size: 11px; }
+    .telegram-recipient-preview-more { margin-top: 9px; }
     .composer textarea { width: 100%; min-height: 110px; resize: vertical; padding: 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
     .composer textarea:focus { outline: 0; border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
     .broadcast-format-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 10px 0 0; padding: 6px; border: 1px solid var(--line); border-bottom: 0; border-radius: 9px 9px 0 0; background: #f8faf9; }
@@ -429,6 +443,11 @@
     .progress-filters input, .progress-filters select { width: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: white; color: var(--ink); font: inherit; font-size: 11px; }
     .progress-filter-count { color: var(--muted); font-size: 10px; white-space: nowrap; }
     .progress-row-highlight { outline: 2px solid #73b28e; outline-offset: -2px; background: #f0faf3; }
+    #section-progress .progress-table { border-collapse: separate; border-spacing: 0 7px; }
+    #section-progress .progress-table tbody { background: var(--canvas); }
+    #section-progress .progress-table tbody tr[data-progress-student] > td { padding-top: 14px; padding-bottom: 14px; border-top: 1px solid #e8eee9; border-bottom: 1px solid #e8eee9; background: #fff; }
+    #section-progress .progress-table tbody tr[data-progress-student] > td:first-child { border-left: 1px solid #e8eee9; border-radius: 9px 0 0 9px; }
+    #section-progress .progress-table tbody tr[data-progress-student] > td:last-child { border-right: 1px solid #e8eee9; border-radius: 0 9px 9px 0; }
     #progress-rows > tr[data-progress-student] > td { transition: background-color .16s ease, box-shadow .16s ease; }
     #progress-rows > tr[data-progress-student]:hover > td,
     #progress-rows > tr[data-progress-student]:focus-within > td { background: #f1f8f3; }
@@ -553,6 +572,42 @@
     .payment-ledger-amount input:first-child { width: 90px; }
     .payment-ledger-amount input:last-child { width: 60px; }
     .payment-ledger-actions select { flex: 1; }
+    .discount-offer-dialog { width: min(680px, calc(100% - 24px)); max-width: none; max-height: 92vh; overflow-y: auto; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: white; color: var(--ink); box-shadow: 0 24px 70px rgba(10, 35, 25, .28); }
+    .discount-offer-dialog::backdrop { background: rgba(18, 38, 30, .58); backdrop-filter: blur(4px); }
+    .discount-offer-form { display: grid; gap: 12px; padding: 20px; }
+    .discount-offer-form h2 { margin: 0; font-size: 17px; }
+    .discount-offer-form p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .discount-offer-form label { display: grid; gap: 6px; font-size: 11px; font-weight: 650; }
+    .discount-offer-form textarea, .discount-offer-form select { width: 100%; min-height: 40px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; font: inherit; font-size: 12px; }
+    .discount-offer-form textarea { min-height: 150px; resize: vertical; }
+    .discount-offer-preview { padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f7faf8; }
+    .discount-offer-preview strong { display: block; margin-bottom: 5px; font-size: 10px; }
+    .discount-offer-preview p { color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .discount-offer-recipients { max-height: 150px; overflow-y: auto; margin: 0; padding-left: 20px; color: #43534b; font-size: 10px; }
+    .discount-offer-recipients[hidden] { display: none; }
+    .discount-offer-recipient { display: flex; align-items: center; gap: 5px; min-height: 27px; }
+    .discount-offer-recipient small { margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 400; }
+    .discount-offer-remove { display: grid; place-items: center; flex: 0 0 18px; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--red); font: inherit; font-size: 15px; line-height: 1; cursor: pointer; visibility: hidden; }
+    .discount-offer-recipient:hover .discount-offer-remove,
+    .discount-offer-recipient:focus-within .discount-offer-remove { visibility: visible; }
+    .discount-offer-remove:hover { background: #fff0ef; }
+    .discount-offer-more { justify-self: start; }
+    .discount-offer-delivery { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #f7faf8; }
+    .discount-offer-delivery[hidden] { display: none; }
+    .discount-offer-delivery-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .discount-offer-delivery-heading strong { font-size: 12px; }
+    .discount-offer-delivery-status { color: var(--green); font-size: 11px; font-weight: 700; }
+    .discount-offer-delivery-progress { width: 100%; height: 8px; overflow: hidden; border: 0; border-radius: 99px; appearance: none; background: #e4ebe6; }
+    .discount-offer-delivery-progress::-webkit-progress-bar { border-radius: 99px; background: #e4ebe6; }
+    .discount-offer-delivery-progress::-webkit-progress-value { border-radius: 99px; background: var(--green); transition: width .25s ease; }
+    .discount-offer-delivery-progress::-moz-progress-bar { border-radius: 99px; background: var(--green); }
+    .discount-offer-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+    .discount-offer-metric { padding: 8px; border-radius: 7px; background: white; }
+    .discount-offer-metric span { display: block; color: var(--muted); font-size: 9px; }
+    .discount-offer-metric strong { display: block; margin-top: 3px; font-size: 15px; }
+    .discount-offer-delivery-error { color: var(--red) !important; }
+    .discount-offer-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+    @media (max-width: 460px) { .discount-offer-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .payment-receipt-preview { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 112px; color: var(--green); font-size: 10px; font-weight: 650; text-decoration: none; }
     .payment-receipt-preview img { display: block; width: 96px; height: 72px; object-fit: cover; border: 1px solid var(--line); border-radius: 6px; background: #f5f7f5; }
     .payment-receipt-preview:hover img, .payment-receipt-preview:focus-visible img { border-color: var(--green); }
@@ -781,10 +836,11 @@
         <article class="panel telegram-stats-panel" aria-labelledby="telegram-stats-title">
           <div>
             <h2 id="telegram-stats-title">Telegram group statistics</h2>
-            <p>Group membership from Telegram, plus recorded joins and learner activity over the last 30 days.</p>
+            <p>Group membership and online count from Telegram, plus recorded joins and learner activity over the last 30 days.</p>
           </div>
           <div class="telegram-stats-summary" id="telegram-stats-summary" aria-live="polite">
             <div class="telegram-stat-card"><div class="telegram-stat-label">Total group members</div><div class="telegram-stat-value">Loading…</div></div>
+            <div class="telegram-stat-card"><div class="telegram-stat-label">Online now</div><div class="telegram-stat-value">—</div></div>
             <div class="telegram-stat-card"><div class="telegram-stat-label">Tracked learners</div><div class="telegram-stat-value">—</div></div>
             <div class="telegram-stat-card"><div class="telegram-stat-label">Joined today</div><div class="telegram-stat-value">—</div></div>
             <div class="telegram-stat-card"><div class="telegram-stat-label">Joined in 7 days</div><div class="telegram-stat-value">—</div></div>
@@ -792,7 +848,7 @@
           <div class="telegram-stats-chart" id="telegram-stats-chart" aria-live="polite">
             <p>Loading Telegram activity…</p>
           </div>
-          <p class="activity-note">Total group members includes everyone in the Telegram group. Tracked learners are accounts with a saved progress record; not every member has necessarily started a lesson. Telegram does not provide the bot a reliable list of which remaining members are students, so the dashboard does not show that difference as a count. Older join activity from before tracking began may be missing.</p>
+          <p class="activity-note">Total group members includes everyone in the Telegram group. Online count and visible per-student presence are refreshed periodically from the signed-in Telegram account; privacy settings may hide individual statuses. Tracked learners are accounts with a saved progress record; not every member has necessarily started a lesson, and the dashboard cannot reliably identify which untracked members are students. Older join activity from before tracking began may be missing.</p>
           <div class="telegram-stats-legend" aria-label="Telegram graph legend">
             <span><i></i>Daily recorded group joins</span>
             <span><i class="telegram-active-key"></i>Active tracked learners</span>
@@ -806,7 +862,10 @@
         <article class="panel agent-queue-panel" id="telegram-chat-queue-panel">
           <div class="agent-media-top"><h3>Live Telegram update queue</h3><div class="agent-queue-controls"><span class="agent-queue-state">FIFO · updates live</span><button class="agent-queue-control" id="telegram-queue-toggle" type="button" disabled>Pause handling</button></div></div>
           <div class="agent-queue-paused" id="telegram-queue-paused" hidden>Telegram update handling is paused. The bot will keep receiving updates; queued updates wait until handling resumes.</div>
+          <h4 class="agent-queue-subheading">Incoming Telegram updates</h4>
           <div class="agent-queue-list" id="telegram-queue-list" aria-live="polite"><div class="agent-queue-empty">No Telegram updates are waiting.</div></div>
+          <h4 class="agent-queue-subheading">Dashboard-assigned tasks</h4>
+          <div class="agent-queue-list" id="telegram-admin-actions-list" aria-live="polite"><div class="agent-queue-empty">No dashboard tasks are waiting.</div></div>
         </article>
         <article class="panel agent-media-panel" id="telegram-media-panel">
           <h3>Telegram video delivery</h3>
@@ -1187,7 +1246,10 @@
             <h2>Student payment ledger</h2>
             <p>Each payment period lasts 30 days from the student's enrollment date. Claims and receipt scans stay pending until you confirm them. Confirmation updates the ledger; students can check their status with /payment, but are not automatically messaged.</p>
           </div>
-          <button class="pagination button" id="payment-ledger-refresh" type="button">Refresh</button>
+          <div class="top-actions">
+            <button class="pagination button" id="payment-ledger-refresh" type="button">Refresh</button>
+            <button class="primary-button" id="open-discount-offer" type="button">Send discount offer</button>
+          </div>
         </div>
         <article class="panel payment-calendar-panel" style="margin-bottom:16px">
           <div class="section-heading" style="margin-bottom:12px">
@@ -1240,7 +1302,7 @@
       </section>
 
       <section class="section" id="section-progress">
-        <div class="section-heading"><div><h2>Student progress</h2><p>Includes Telegram group members, their recorded join dates, and lesson progress.</p></div></div>
+        <div class="section-heading"><div><h2>Student progress</h2><p>Includes Telegram group members, their recorded join dates, lesson progress, and visible online status.</p></div></div>
         <article class="panel workbook-panel">
           <div>
             <h3>Student data workbook</h3>
@@ -1249,20 +1311,36 @@
           </div>
           <a class="primary-button workbook-download" id="workbook-download" href="/api/admin/student-workbook.xlsx" download="students.xlsx" aria-disabled="true">Download Excel</a>
         </article>
-        <article class="panel roster-insight-panel">
-          <div class="section-heading" style="margin:0">
-            <div>
-              <h3>Weekly lesson leaderboard</h3>
-              <p>Recognizes students who completed lessons this week. Names and counts will be shared in the group.</p>
+        <div class="roster-insights">
+          <article class="panel roster-insight-panel">
+            <div class="section-heading" style="margin:0">
+              <div>
+                <h3>Daily lesson leaderboard</h3>
+                <p>Recognizes students who completed lessons today in Sudan time. Sharing stays manual.</p>
+              </div>
+              <button class="pagination button" data-leaderboard-refresh="daily" type="button">Refresh preview</button>
             </div>
-            <button class="pagination button" id="telegram-leaderboard-refresh" type="button">Refresh preview</button>
-          </div>
-          <pre class="leaderboard-preview" id="telegram-leaderboard-preview" aria-live="polite">Loading weekly leaderboard…</pre>
-          <div class="leaderboard-actions">
-            <p class="leaderboard-status" id="telegram-leaderboard-status" aria-live="polite"></p>
-            <button class="primary-button" id="telegram-leaderboard-share" type="button" disabled>Share in Telegram group</button>
-          </div>
-        </article>
+            <pre class="leaderboard-preview" id="telegram-daily-leaderboard-preview" aria-live="polite">Loading daily leaderboard…</pre>
+            <div class="leaderboard-actions">
+              <p class="leaderboard-status" id="telegram-daily-leaderboard-status" aria-live="polite"></p>
+              <button class="primary-button" data-share-leaderboard="daily" type="button" disabled>Share daily leaderboard</button>
+            </div>
+          </article>
+          <article class="panel roster-insight-panel">
+            <div class="section-heading" style="margin:0">
+              <div>
+                <h3>Weekly lesson leaderboard</h3>
+                <p>Recognizes students who completed lessons this week. Sharing stays manual.</p>
+              </div>
+              <button class="pagination button" data-leaderboard-refresh="weekly" type="button">Refresh preview</button>
+            </div>
+            <pre class="leaderboard-preview" id="telegram-weekly-leaderboard-preview" aria-live="polite">Loading weekly leaderboard…</pre>
+            <div class="leaderboard-actions">
+              <p class="leaderboard-status" id="telegram-weekly-leaderboard-status" aria-live="polite"></p>
+              <button class="primary-button" data-share-leaderboard="weekly" type="button" disabled>Share weekly leaderboard</button>
+            </div>
+          </article>
+        </div>
         <article class="panel roster-insight-panel telegram-enrollment-panel">
           <h3>Telegram group members</h3>
           <p class="activity-summary" id="telegram-enrollment-summary" aria-live="polite">Loading Telegram enrollment…</p>
@@ -1310,7 +1388,7 @@
             </label>
             <span class="progress-filter-count" id="progress-filter-count" aria-live="polite">Loading students…</span>
           </div>
-          <table><thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Actions</th></tr></thead><tbody id="progress-rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
+          <table class="progress-table"><thead><tr><th>Platform</th><th>Student</th><th>Presence</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Actions</th></tr></thead><tbody id="progress-rows"><tr><td colspan="13" class="empty">Loading…</td></tr></tbody></table>
         </div>
       </section>
 
@@ -1325,6 +1403,11 @@
         <article class="panel composer">
           <h3>Eligible recipients</h3>
           <p id="telegram-user-broadcast-recipients" aria-live="polite">Loading eligible recipients…</p>
+          <button class="pagination button telegram-recipient-preview-toggle" id="telegram-user-broadcast-preview-toggle" type="button" aria-expanded="false" aria-controls="telegram-user-broadcast-preview" hidden>View eligible students</button>
+          <div class="telegram-recipient-preview" id="telegram-user-broadcast-preview" hidden>
+            <ul class="telegram-recipient-preview-list" id="telegram-user-broadcast-preview-list"></ul>
+            <button class="pagination button telegram-recipient-preview-more" id="telegram-user-broadcast-preview-more" type="button" hidden>Show more</button>
+          </div>
           <p id="telegram-user-broadcast-worker" aria-live="polite">Checking account sender…</p>
           <p>Students who request a lesson with <code>/lesson</code> (or have lesson progress) are included if they have started a private chat. They can opt out at any time by privately messaging the bot <code>/announcements_off</code>, or opt back in with <code>/announcements_on</code>. Only current members of the configured group are eligible. Messages are sent individually from your Telegram account, with a 3-second pause between recipients. Telegram privacy settings or rate limits can still prevent delivery.</p>
           <form id="telegram-user-broadcast-form">
@@ -1341,6 +1424,50 @@
           <div id="telegram-user-broadcast-jobs" aria-live="polite"><div class="empty">Loading announcements…</div></div>
         </article>
       </section>
+      <dialog class="discount-offer-dialog" id="discount-offer-dialog" aria-labelledby="discount-offer-title">
+        <form class="discount-offer-form" id="discount-offer-form">
+          <h2 id="discount-offer-title">Send a personalized discount offer</h2>
+          <p>The recipient list includes all current human members of the configured Telegram group, even if they have never privately messaged the bot. While this dialog is open, it refreshes for new members about every 10 seconds (the sender syncs the group list about every 30 seconds). The offer's audience is fixed when you confirm it; later joiners appear in future offers. The sender checks group membership again before delivery, so departed members may be skipped.</p>
+          <p id="discount-offer-audience" aria-live="polite">Loading recipient count and sender status…</p>
+          <label for="discount-offer-filter">Recipient filter
+            <select id="discount-offer-filter">
+              <option value="all">All current group members</option>
+              <option value="not-messaged-privately">Have not messaged the bot privately</option>
+            </select>
+          </label>
+          <label for="discount-offer-message">Message template <span>Use <code>{{name}}</code> for the student's name.</span></label>
+          <textarea id="discount-offer-message" maxlength="4096" required></textarea>
+          <div class="discount-offer-preview">
+            <strong>Personalized preview</strong>
+            <p id="discount-offer-preview-text" aria-live="polite"></p>
+          </div>
+          <div>
+            <strong style="font-size:11px" id="discount-offer-list-heading">Current group members</strong>
+            <ul class="discount-offer-recipients" id="discount-offer-recipients"></ul>
+            <button class="pagination button discount-offer-more" id="discount-offer-more" type="button" hidden>Show more</button>
+          </div>
+          <section class="discount-offer-delivery" id="discount-offer-delivery" aria-live="polite" hidden>
+            <div class="discount-offer-delivery-heading">
+              <strong>Offer delivery</strong>
+              <span class="discount-offer-delivery-status" id="discount-offer-delivery-status">Queued</span>
+            </div>
+            <progress class="discount-offer-delivery-progress" id="discount-offer-delivery-progress" max="1" value="0" aria-label="Discount offer delivery progress"></progress>
+            <div class="discount-offer-metrics">
+              <div class="discount-offer-metric"><span>Sent</span><strong id="discount-offer-sent">0</strong></div>
+              <div class="discount-offer-metric"><span>Skipped</span><strong id="discount-offer-skipped">0</strong></div>
+              <div class="discount-offer-metric"><span>Uncertain</span><strong id="discount-offer-uncertain">0</strong></div>
+              <div class="discount-offer-metric"><span>Remaining</span><strong id="discount-offer-remaining">0</strong></div>
+            </div>
+            <p id="discount-offer-delivery-detail">Waiting for the sender to start.</p>
+            <p class="discount-offer-delivery-error" id="discount-offer-delivery-error" hidden></p>
+          </section>
+          <p id="discount-offer-status" role="status" aria-live="polite"></p>
+          <div class="discount-offer-actions">
+            <button class="pagination button" id="discount-offer-close" type="button">Close</button>
+            <button class="primary-button" id="discount-offer-send" type="submit" disabled>Review and send</button>
+          </div>
+        </form>
+      </dialog>
 
       <section class="section" id="section-scheduled-lessons" hidden>
         <div class="section-heading">
@@ -2706,6 +2833,17 @@
           <div class="telegram-stat-foot">${escapeHtml(memberFoot)}</div>
         </div>
         <div class="telegram-stat-card">
+        <div class="telegram-stat-label">Online now</div>
+        <div class="telegram-stat-value">${stats.onlineGroupMembers === null
+          ? 'Unavailable'
+          : stats.onlineGroupMembers.toLocaleString()}</div>
+        <div class="telegram-stat-foot">${stats.onlineGroupMembersStatus === 'available'
+          ? `Telegram account checked ${escapeHtml(new Date(stats.onlineGroupMembersUpdatedAt).toLocaleTimeString())}`
+          : stats.onlineGroupMembersStatus === 'stale'
+            ? `Last checked ${escapeHtml(new Date(stats.onlineGroupMembersUpdatedAt).toLocaleTimeString())}; waiting for a fresh sync`
+            : 'Waiting for Telegram account presence sync'}</div>
+        </div>
+        <div class="telegram-stat-card">
           <div class="telegram-stat-label">Tracked learners</div>
           <div class="telegram-stat-value">${stats.trackedLearners.toLocaleString()}</div>
           <div class="telegram-stat-foot">Telegram accounts with a saved progress record</div>
@@ -3404,7 +3542,7 @@
       if (!emptyRow && rows.length) {
         emptyRow = document.createElement('tr');
         emptyRow.id = 'progress-filter-empty';
-        emptyRow.innerHTML = '<td colspan="12" class="empty">No students match these filters.</td>';
+        emptyRow.innerHTML = '<td colspan="13" class="empty">No students match these filters.</td>';
         $('#progress-rows').append(emptyRow);
       }
       if (emptyRow) emptyRow.hidden = visible !== 0 || rows.length === 0;
@@ -3649,30 +3787,40 @@
       if (student) openProgressProfile(student);
     });
 
-    async function loadTelegramLeaderboard() {
-      const data = await api(`/api/admin/telegram-leaderboard?refresh=${Date.now()}`);
-      const preview = $('#telegram-leaderboard-preview');
-      const status = $('#telegram-leaderboard-status');
-      const shareButton = $('#telegram-leaderboard-share');
-      preview.textContent = data.message || 'No tracked students have completed a lesson this week yet.';
+    async function loadTelegramLeaderboard(period) {
+      const prefix = `telegram-${period}-leaderboard`;
+      const data = await api(
+        `/api/admin/telegram-leaderboard?${new URLSearchParams({ period, refresh: Date.now() })}`
+      );
+      const preview = $(`#${prefix}-preview`);
+      const status = $(`#${prefix}-status`);
+      const shareButton = $(`[data-share-leaderboard="${period}"]`);
+      const periodLabel = period === 'daily' ? 'today' : 'this week';
+      preview.textContent = data.message ||
+        `No tracked students have completed a lesson ${periodLabel} yet.`;
       shareButton.disabled = !data.students.length || !data.groupConfigured || !data.botConfigured;
       status.textContent = !data.groupConfigured || !data.botConfigured
         ? 'Configure TELEGRAM_BOT_TOKEN and TELEGRAM_GROUP_ID to share this leaderboard.'
         : data.students.length
-          ? `${data.students.length.toLocaleString()} students with lesson completions this week · ${data.weekStart} to ${data.weekEnd}.`
-          : 'No lesson completions recorded this week.';
+          ? period === 'daily'
+            ? `${data.students.length.toLocaleString()} students with lesson completions today · Sudan time.`
+            : `${data.students.length.toLocaleString()} students with lesson completions this week · ${data.weekStart} to ${data.weekEnd}.`
+          : `No lesson completions recorded ${periodLabel}.`;
     }
 
     async function loadProgress() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const { students, insights } = await api(`/api/admin/telegram-progress?${new URLSearchParams({ timeZone })}`);
       progressStudents = students;
-      loadTelegramLeaderboard().catch(error => {
-        $('#telegram-leaderboard-preview').textContent = 'Could not load the weekly leaderboard.';
-        $('#telegram-leaderboard-status').textContent = error.message;
-        $('#telegram-leaderboard-share').disabled = true;
-        showError(`Could not load weekly leaderboard: ${error.message}`);
-      });
+      for (const period of ['daily', 'weekly']) {
+        loadTelegramLeaderboard(period).catch(error => {
+          const prefix = `telegram-${period}-leaderboard`;
+          $(`#${prefix}-preview`).textContent = `Could not load the ${period} leaderboard.`;
+          $(`#${prefix}-status`).textContent = error.message;
+          $(`[data-share-leaderboard="${period}"]`).disabled = true;
+          showError(`Could not load ${period} leaderboard: ${error.message}`);
+        });
+      }
       initializeProgressFilters(students);
       renderTelegramEnrollment(insights.telegramEnrollment, timeZone);
       renderRosterInsights(
@@ -3701,6 +3849,18 @@
         const hasPendingLessonRequest = isWaiting || isSendingLesson;
         const regradeRequest = student.regradeRequest;
         const isRegradingTask = ['queued', 'processing'].includes(regradeRequest?.status);
+        const regradeButtonLabel = regradeRequest?.status === 'processing'
+          ? 'Rechecking…'
+          : isRegradingTask ? 'Queued…' : 'Recheck latest task';
+        const regradeStatusText = regradeRequest?.status === 'queued'
+          ? 'Waiting for the Telegram bot to recheck this answer.'
+          : regradeRequest?.status === 'processing'
+            ? 'The Telegram bot is rechecking this answer.'
+            : regradeRequest?.status === 'failed'
+              ? `Last recheck failed: ${escapeHtml(regradeRequest.error || 'grading error')}`
+              : student.lastTaskSubmissionAt
+                ? `Latest answer received ${escapeHtml(formatDate(student.lastTaskSubmissionAt))}`
+                : 'Re-evaluates the latest saved answer.';
         const skipButtonLabel = isWaiting
           ? skipRequest.status === 'processing' ? 'Sending…' : 'Queued…'
           : skipRequest?.status === 'failed' ? 'Retry skip' : 'Skip to next lesson';
@@ -3717,7 +3877,7 @@
           ? `<div class="send-lesson-controls"><div class="send-lesson-picker" data-send-lesson-picker><span>Choose a lesson</span><button class="send-lesson-picker-trigger" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a lesson for ${escapeHtml(student.name)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-picker-value" data-selected-lesson>Select from curriculum…</span><span class="send-lesson-picker-chevron" aria-hidden="true">⌄</span></button><div class="send-lesson-menu" role="listbox" aria-label="Available lessons for ${escapeHtml(student.name)}" hidden>${availableLessons.map(lesson => `<button class="send-lesson-option" type="button" role="option" aria-selected="false" data-lesson-id="${escapeHtml(lesson.id)}"><span>${escapeHtml(lesson.title)}</span><span class="send-lesson-option-check" aria-hidden="true"></span></button>`).join('')}</div></div><button class="send-lesson-button" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-button-icon" aria-hidden="true">➤</span>${isSendingLesson ? sendRequest.status === 'processing' ? 'Sending…' : 'Queued…' : 'Send lesson'}</button>${sendRequest?.status === 'failed' ? `<small class="send-lesson-status">Last send failed: ${escapeHtml(sendRequest.error || 'delivery error')}</small>` : isSendingLesson ? '<small class="send-lesson-status">The selected lesson is being sent.</small>' : '<small class="send-lesson-status">This becomes their active lesson.</small>'}</div>`
           : '';
         const regradeAction = student.canRegradeTask
-          ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-regrade-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${isRegradingTask || hasPendingLessonRequest ? 'disabled' : ''}>${isRegradingTask ? 'Rechecking…' : 'Recheck latest task'}</button><small class="skip-lesson-status">${regradeRequest?.status === 'failed' ? `Last recheck failed: ${escapeHtml(regradeRequest.error || 'delivery error')}` : student.lastTaskSubmissionAt ? `Latest answer received ${escapeHtml(formatDate(student.lastTaskSubmissionAt))}` : 'Re-evaluates the latest saved answer.'}</small></div>`
+          ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-regrade-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${isRegradingTask || hasPendingLessonRequest ? 'disabled' : ''}>${regradeButtonLabel}</button><small class="skip-lesson-status">${regradeStatusText}</small></div>`
           : '';
         const gradeKey = student.grade || student.gradeName || '__unknown';
         const knownStatuses = ['awaiting_task', 'awaiting_reattempt', 'completed', 'awaiting_content'];
@@ -3729,8 +3889,22 @@
             : null;
         const searchText = `${student.name} ${student.gradeName} ${student.lessonTitle || ''} ${student.platform}`
           .toLocaleLowerCase();
-        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || '—'}</div></td></tr>`;
-      }).join('') : '<tr><td colspan="12" class="empty">No student progress recorded yet.</td></tr>';
+        const presence = student.platform === 'Telegram'
+          ? ['online', 'offline'].includes(student.telegramPresence)
+            ? student.telegramPresence
+            : 'unknown'
+          : null;
+        const presenceLabel = presence === 'online'
+          ? 'Online'
+          : presence === 'offline' ? 'Offline' : 'Not visible';
+        const presenceTitle = student.telegramPresenceUpdatedAt
+          ? `Last checked ${formatDate(student.telegramPresenceUpdatedAt)}`
+          : 'Telegram has not provided a current presence status.';
+        const presenceCell = presence
+          ? `<span class="telegram-presence ${presence}" title="${escapeHtml(presenceTitle)}">${presenceLabel}</span>`
+          : '—';
+        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || '—'}</div></td></tr>`;
+      }).join('') : '<tr><td colspan="13" class="empty">No student progress recorded yet.</td></tr>';
       applyProgressFilters();
       $('#progress-rows').querySelectorAll('[data-send-lesson-picker]').forEach(picker => {
         const trigger = picker.querySelector('.send-lesson-picker-trigger');
@@ -3999,11 +4173,54 @@
       $('#telegram-agent-status-detail').textContent = detail;
     }
 
-    async function loadTelegramUserBroadcasts() {
-      const data = await api('/api/admin/telegram-user-broadcasts');
+    let telegramBroadcastStudents = [];
+    let telegramBroadcastStudentLimit = 30;
+    let telegramBroadcastStudentCount = 0;
+
+    function renderTelegramBroadcastStudents() {
+      const visibleStudents = telegramBroadcastStudents.slice(0, telegramBroadcastStudentLimit);
+      $('#telegram-user-broadcast-preview-list').innerHTML = visibleStudents
+        .map(student =>
+          `<li>${escapeHtml(student.name)} — ${student.lessonsCompleted.toLocaleString()}</li>`
+        ).join('');
+      const moreButton = $('#telegram-user-broadcast-preview-more');
+      moreButton.hidden = visibleStudents.length >= telegramBroadcastStudentCount;
+      moreButton.textContent =
+        `Show more (${Math.min(30, telegramBroadcastStudentCount - visibleStudents.length).toLocaleString()})`;
+    }
+
+    async function loadTelegramUserBroadcasts({
+      includeStudents = $('#telegram-user-broadcast-preview-toggle').getAttribute('aria-expanded') === 'true'
+    } = {}) {
+      const data = await api(
+        `/api/admin/telegram-user-broadcasts${includeStudents ? '?includeStudents=true&offset=0' : ''}`
+      );
       $('#telegram-user-broadcast-recipients').dataset.count = String(data.optedInCount);
       $('#telegram-user-broadcast-recipients').textContent =
         `${data.optedInCount.toLocaleString()} eligible lesson learner${data.optedInCount === 1 ? '' : 's'}.`;
+      const previewToggle = $('#telegram-user-broadcast-preview-toggle');
+      previewToggle.hidden = data.optedInCount === 0;
+      if (data.optedInCount === 0) {
+        previewToggle.setAttribute('aria-expanded', 'false');
+        $('#telegram-user-broadcast-preview').hidden = true;
+        telegramBroadcastStudents = [];
+        telegramBroadcastStudentCount = 0;
+        $('#telegram-user-broadcast-preview-list').replaceChildren();
+      }
+      previewToggle.textContent =
+        `${previewToggle.getAttribute('aria-expanded') === 'true' ? 'Hide' : 'View'} eligible students (${data.optedInCount.toLocaleString()})`;
+      if (includeStudents) {
+        telegramBroadcastStudentCount = data.optedInCount;
+        const loadedCount = telegramBroadcastStudents.length || Math.min(30, data.optedInCount);
+        const offsets = [];
+        for (let offset = 30; offset < loadedCount; offset += 30) offsets.push(offset);
+        const additionalPages = await Promise.all(offsets.map(offset =>
+          api(`/api/admin/telegram-user-broadcasts?includeStudents=true&offset=${offset}`)
+        ));
+        telegramBroadcastStudents = [data, ...additionalPages]
+          .flatMap(page => page.optedInStudents || []);
+        renderTelegramBroadcastStudents();
+      }
       $('#telegram-user-broadcast-worker').textContent = data.workerConnected
         ? `Personal Telegram account sender is connected on this computer.${data.workerError ? ` Last error: ${data.workerError}` : ''}`
         : `Sender is offline. Start it in a terminal on this computer with npm run telegram-broadcast.${data.workerError ? ` Last error: ${data.workerError}` : ''}`;
@@ -4044,10 +4261,12 @@
     async function loadTelegramUpdateQueue() {
       const queue = await api('/api/admin/telegram-chat-queue');
       const container = $('#telegram-queue-list');
+      const adminActionsContainer = $('#telegram-admin-actions-list');
       const rows = [
         ...(queue.active ? [{ ...queue.active, active: true }] : []),
         ...(queue.waiting || []).map(entry => ({ ...entry, active: false }))
       ];
+      const adminActions = queue.adminActions || [];
       if (!rows.length) {
         container.innerHTML = '<div class="agent-queue-empty">No Telegram updates are waiting.</div>';
       } else {
@@ -4060,6 +4279,24 @@
               : `Received ${formatDate(row.queuedAt)} · waiting ${formatQueueDuration(row.queuedAt)}`}</div></div>
             <span class="agent-queue-state">${row.active ? 'Handling now' : 'Waiting'}</span>
           </div>`).join('');
+      }
+      if (!adminActions.length) {
+        adminActionsContainer.innerHTML =
+          '<div class="agent-queue-empty">No dashboard tasks are waiting.</div>';
+      } else {
+        adminActionsContainer.innerHTML = adminActions.map(row => {
+          const processing = row.status === 'processing';
+          const timestamp = processing ? row.startedAt || row.queuedAt : row.queuedAt;
+          return `
+            <div class="agent-queue-item admin-action">
+              <span class="agent-queue-position">${processing ? '▶' : `#${row.position}`}</span>
+              <div><div class="agent-queue-name">${escapeHtml(row.name)}</div>
+              <div class="agent-queue-detail">${escapeHtml(row.action)} · ${processing
+                ? `Started ${formatDate(timestamp)} · processing ${formatQueueDuration(timestamp)}`
+                : `Queued ${formatDate(timestamp)} · waiting ${formatQueueDuration(timestamp)}`}</div></div>
+              <span class="agent-queue-state">${processing ? 'Processing' : 'Queued'}</span>
+            </div>`;
+        }).join('');
       }
       $('#telegram-queue-paused').hidden = !queue.paused;
       const button = $('#telegram-queue-toggle');
@@ -4644,6 +4881,368 @@
       });
     }
 
+    let discountOfferCount = 0;
+    let discountOfferRecipients = [];
+    let discountOfferExcludedUserIds = new Set();
+    let discountOfferAudienceFilter = 'all';
+    let discountOfferAudienceVersion = null;
+    let discountOfferRosterSyncedAt = null;
+    let discountOfferRosterUpdatedAt = null;
+    let discountOfferWorkerConnected = false;
+    let discountOfferWorkerError = '';
+    let discountOfferLoadingMore = false;
+    let discountOfferSending = false;
+    let discountOfferQueued = false;
+    let discountOfferJobId = null;
+    let discountOfferJobTerminal = false;
+    let discountOfferTrackingTimer = null;
+    let discountOfferRosterTimer = null;
+
+    function renderDiscountOfferPreview() {
+      if (!Number.isSafeInteger(discountOfferCount) || discountOfferCount < 0) {
+        throw new Error('The group member count is missing. Refresh the dashboard and restart its server and the Telegram account sender.');
+      }
+      const selectedRecipients = discountOfferRecipients.filter(student =>
+        !discountOfferExcludedUserIds.has(student.userId));
+      const sampleName = selectedRecipients[0]?.name || 'Student';
+      $('#discount-offer-preview-text').textContent =
+        $('#discount-offer-message').value.replaceAll('{{name}}', sampleName);
+      const list = $('#discount-offer-recipients');
+      list.replaceChildren(...selectedRecipients.map(student => {
+        const userId = String(student.userId);
+        const item = document.createElement('li');
+        item.className = 'discount-offer-recipient';
+        const removeButton = document.createElement('button');
+        removeButton.className = 'discount-offer-remove';
+        removeButton.type = 'button';
+        removeButton.textContent = '×';
+        removeButton.setAttribute('data-discount-offer-remove-id', userId);
+        removeButton.setAttribute('aria-label', `Remove ${student.name} from this offer`);
+        removeButton.addEventListener('click', () => {
+          if (!userId || userId === 'undefined') {
+            $('#discount-offer-status').textContent =
+              `Could not remove ${student.name}: this recipient has no Telegram user ID.`;
+            return;
+          }
+          discountOfferExcludedUserIds.add(userId);
+          item.remove();
+          $('#discount-offer-status').textContent =
+            `${student.name} removed from this offer only; this does not change their announcement preferences.`;
+          renderDiscountOfferPreview();
+        });
+        const name = document.createElement('span');
+        name.textContent = student.name;
+        const privateStatus = document.createElement('small');
+        privateStatus.textContent = student.hasPrivateChat
+          ? 'Messaged the bot privately'
+          : 'Has not messaged the bot privately';
+        item.append(removeButton, name, privateStatus);
+        return item;
+      }));
+      const selectedCount = discountOfferCount - discountOfferExcludedUserIds.size;
+      const filterLabel = discountOfferAudienceFilter === 'not-messaged-privately'
+        ? 'group member who has not messaged the bot privately'
+        : 'current group member';
+      const workerStatus = discountOfferWorkerConnected
+        ? 'Personal Telegram account sender is connected.'
+        : 'Sender is offline; start it on this computer with npm run telegram-broadcast.';
+      const rosterSyncedAtMs = Date.parse(discountOfferRosterSyncedAt || '');
+      const rosterIsFresh = Number.isFinite(rosterSyncedAtMs) &&
+        Date.now() - rosterSyncedAtMs >= 0 &&
+        Date.now() - rosterSyncedAtMs <= 120_000;
+      $('#discount-offer-audience').textContent =
+        `${selectedCount.toLocaleString()} of ${discountOfferCount.toLocaleString()} ${filterLabel}${discountOfferCount === 1 ? '' : 's'} selected for this offer. ${workerStatus}${discountOfferWorkerConnected && !rosterIsFresh ? ' Waiting for a fresh group roster; restart the Telegram account sender if this persists.' : ''}${selectedCount > 500 ? ' Offers are limited to 500 recipients; remove some members to continue.' : ''}${discountOfferWorkerError ? ` Last error: ${discountOfferWorkerError}` : ''}`;
+      $('#discount-offer-list-heading').textContent = discountOfferAudienceFilter === 'not-messaged-privately'
+        ? 'Members who have not messaged the bot privately'
+        : 'Current group members';
+      const moreButton = $('#discount-offer-more');
+      moreButton.hidden = discountOfferRecipients.length >= discountOfferCount;
+      moreButton.textContent =
+        `Show more (${Math.min(30, discountOfferCount - discountOfferRecipients.length).toLocaleString()} remaining)`;
+      const hasNamePlaceholder = $('#discount-offer-message').value.includes('{{name}}');
+      $('#discount-offer-send').disabled =
+        discountOfferSending || discountOfferQueued || !discountOfferWorkerConnected ||
+        selectedCount === 0 || selectedCount > 500 || !hasNamePlaceholder;
+    }
+
+    async function loadDiscountOfferRecipients({ reset = false } = {}) {
+      if (discountOfferLoadingMore) return;
+      const offset = reset ? 0 : discountOfferRecipients.length;
+      if (!reset && offset >= discountOfferCount) return;
+      discountOfferLoadingMore = true;
+      const moreButton = $('#discount-offer-more');
+      moreButton.disabled = true;
+      try {
+        let data = await api(
+          `/api/admin/telegram-user-broadcasts?audience=group-members&filter=${encodeURIComponent(discountOfferAudienceFilter)}&includeStudents=true&offset=${offset}`
+        );
+        if (!data || !Number.isSafeInteger(data.groupMemberCount) ||
+            data.groupMemberCount < 0 ||
+            !Array.isArray(data.groupMembers) ||
+            typeof data.groupAudienceVersion !== 'string') {
+          throw new Error('The dashboard server does not support the group-member recipient list yet. Restart/update the dashboard server and Telegram account sender, then refresh this page.');
+        }
+        if (!reset &&
+            (data.groupMemberCount !== discountOfferCount ||
+              data.groupRosterUpdatedAt !== discountOfferRosterUpdatedAt ||
+              data.groupAudienceVersion !== discountOfferAudienceVersion)) {
+          data = await api(
+            `/api/admin/telegram-user-broadcasts?audience=group-members&filter=${encodeURIComponent(discountOfferAudienceFilter)}&includeStudents=true&offset=0`
+          );
+          reset = true;
+          discountOfferExcludedUserIds.clear();
+          $('#discount-offer-status').textContent =
+            'The group membership changed while loading. The preview was refreshed and exclusions were cleared; review the updated list.';
+        }
+        discountOfferCount = data.groupMemberCount;
+        discountOfferRosterSyncedAt = data.groupRosterSyncedAt;
+        discountOfferRosterUpdatedAt = data.groupRosterUpdatedAt;
+        discountOfferAudienceVersion = data.groupAudienceVersion;
+        discountOfferWorkerConnected = data.workerConnected;
+        discountOfferWorkerError = data.workerError || '';
+        if (reset) discountOfferRecipients = [];
+        discountOfferRecipients.push(...(data.groupMembers || []));
+        renderDiscountOfferPreview();
+      } finally {
+        discountOfferLoadingMore = false;
+        moreButton.disabled = false;
+        if (Number.isSafeInteger(discountOfferCount)) renderDiscountOfferPreview();
+      }
+    }
+
+    async function refreshDiscountOfferRoster() {
+      if (!$('#discount-offer-dialog').open || discountOfferQueued) return;
+      try {
+        clearDashboardApiCache();
+        const data = await api(
+          `/api/admin/telegram-user-broadcasts?audience=group-members&filter=${encodeURIComponent(discountOfferAudienceFilter)}`
+        );
+        if (!data || !Number.isSafeInteger(data.groupMemberCount) ||
+            data.groupMemberCount < 0 ||
+            typeof data.groupAudienceVersion !== 'string') {
+          throw new Error('The dashboard server does not support group-member filtering yet. Restart/update the dashboard server and Telegram account sender.');
+        }
+        discountOfferWorkerConnected = data.workerConnected;
+        discountOfferWorkerError = data.workerError || '';
+        discountOfferRosterSyncedAt = data.groupRosterSyncedAt;
+        if (data.groupMemberCount !== discountOfferCount ||
+            data.groupRosterUpdatedAt !== discountOfferRosterUpdatedAt ||
+            data.groupAudienceVersion !== discountOfferAudienceVersion) {
+          discountOfferExcludedUserIds.clear();
+          $('#discount-offer-status').textContent =
+            'The group membership changed. The recipient list was refreshed and exclusions were cleared; review it before sending.';
+          await loadDiscountOfferRecipients({ reset: true });
+        } else {
+          renderDiscountOfferPreview();
+        }
+      } catch (error) {
+        $('#discount-offer-status').textContent =
+          `Could not refresh the group member list: ${error.message}`;
+      } finally {
+        if ($('#discount-offer-dialog').open && !discountOfferQueued) {
+          discountOfferRosterTimer = setTimeout(refreshDiscountOfferRoster, 10_000);
+        }
+      }
+    }
+
+    async function openDiscountOfferDialog() {
+      const dialog = $('#discount-offer-dialog');
+      if (discountOfferJobId && !discountOfferJobTerminal) {
+        dialog.showModal();
+        return;
+      }
+      $('#discount-offer-message').value =
+        'مرحباً {{name}}، لدينا لك عرض خصم خاص على رسوم الدراسة. راسلنا لمعرفة التفاصيل.';
+      $('#discount-offer-status').textContent = '';
+      $('#discount-offer-delivery').hidden = true;
+      $('#discount-offer-delivery-error').hidden = true;
+      $('#discount-offer-send').textContent = 'Review and send';
+      discountOfferSending = false;
+      discountOfferQueued = false;
+      discountOfferJobId = null;
+      discountOfferJobTerminal = false;
+      if (discountOfferRosterTimer) {
+        clearTimeout(discountOfferRosterTimer);
+        discountOfferRosterTimer = null;
+      }
+      if (discountOfferTrackingTimer) {
+        clearTimeout(discountOfferTrackingTimer);
+        discountOfferTrackingTimer = null;
+      }
+      discountOfferRecipients = [];
+      discountOfferExcludedUserIds = new Set();
+      discountOfferCount = 0;
+      discountOfferAudienceFilter = $('#discount-offer-filter').value;
+      discountOfferAudienceVersion = null;
+      discountOfferWorkerConnected = false;
+      discountOfferWorkerError = '';
+      $('#discount-offer-audience').textContent = 'Loading recipient count and sender status…';
+      dialog.showModal();
+      renderDiscountOfferPreview();
+      try {
+        clearDashboardApiCache();
+        await loadDiscountOfferRecipients({ reset: true });
+        discountOfferRosterTimer = setTimeout(refreshDiscountOfferRoster, 10_000);
+      } catch (error) {
+        $('#discount-offer-audience').textContent =
+          `Could not load eligible recipients: ${error.message}`;
+        $('#discount-offer-status').textContent = 'Refresh the page or close and reopen this dialog to try again.';
+      }
+    }
+
+    function renderDiscountOfferDelivery(job) {
+      const total = Number.isSafeInteger(job.total) && job.total >= 0 ? job.total : 0;
+      const sent = Number.isSafeInteger(job.sent) && job.sent >= 0 ? job.sent : 0;
+      const skipped = Number.isSafeInteger(job.skipped) && job.skipped >= 0 ? job.skipped : 0;
+      const uncertain = Number.isSafeInteger(job.uncertain) && job.uncertain >= 0
+        ? job.uncertain
+        : 0;
+      const processed = Math.min(total, sent + skipped + uncertain);
+      const remaining = Math.max(0, total - processed);
+      const statuses = {
+        queued: 'Queued',
+        running: 'Sending',
+        cancellation_requested: 'Cancelling',
+        cancelled: 'Cancelled',
+        completed: 'Completed',
+        failed: 'Stopped after an error'
+      };
+      $('#discount-offer-delivery').hidden = false;
+      $('#discount-offer-delivery-status').textContent = statuses[job.status] || job.status;
+      $('#discount-offer-delivery-progress').max = Math.max(total, 1);
+      $('#discount-offer-delivery-progress').value = processed;
+      $('#discount-offer-sent').textContent = sent.toLocaleString();
+      $('#discount-offer-skipped').textContent = skipped.toLocaleString();
+      $('#discount-offer-uncertain').textContent = uncertain.toLocaleString();
+      $('#discount-offer-remaining').textContent = remaining.toLocaleString();
+      $('#discount-offer-delivery-detail').textContent =
+        `${processed.toLocaleString()} of ${total.toLocaleString()} recipients processed.`;
+      const error = $('#discount-offer-delivery-error');
+      error.textContent = job.error || '';
+      error.hidden = !job.error;
+      discountOfferJobTerminal =
+        ['cancelled', 'completed', 'failed'].includes(job.status);
+    }
+
+    async function refreshDiscountOfferDelivery() {
+      if (!discountOfferJobId || discountOfferJobTerminal) return;
+      try {
+        clearDashboardApiCache();
+        const data = await api('/api/admin/telegram-user-broadcasts');
+        const job = data.jobs.find(candidate => candidate.id === discountOfferJobId);
+        if (!job) {
+          $('#discount-offer-delivery-error').textContent =
+            'This offer is not in the latest 20 jobs. Check Telegram announcements for its status.';
+          $('#discount-offer-delivery-error').hidden = false;
+          discountOfferJobTerminal = true;
+          return;
+        }
+        renderDiscountOfferDelivery(job);
+      } catch (error) {
+        $('#discount-offer-delivery-error').textContent =
+          `Could not refresh delivery metrics: ${error.message}`;
+        $('#discount-offer-delivery-error').hidden = false;
+      }
+      if (!discountOfferJobTerminal) {
+        discountOfferTrackingTimer = setTimeout(refreshDiscountOfferDelivery, 2500);
+      }
+    }
+
+    async function sendDiscountOffer(event) {
+      event.preventDefault();
+      if (discountOfferSending) return;
+      const text = $('#discount-offer-message').value.trim();
+      if (!text.includes('{{name}}')) {
+        $('#discount-offer-status').textContent = 'Add the {{name}} placeholder so the offer is personalized.';
+        return;
+      }
+      discountOfferSending = true;
+      $('#discount-offer-send').disabled = true;
+      $('#discount-offer-send').textContent = 'Checking recipients…';
+      $('#discount-offer-status').textContent = '';
+      try {
+        clearDashboardApiCache();
+        const current = await api(
+          `/api/admin/telegram-user-broadcasts?audience=group-members&filter=${encodeURIComponent(discountOfferAudienceFilter)}`
+        );
+        if (!current.workerConnected) {
+          discountOfferWorkerConnected = false;
+          $('#discount-offer-audience').textContent =
+            'Sender is offline; start it on this computer with npm run telegram-broadcast.';
+          $('#discount-offer-status').textContent = 'The offer was not queued because the sender is offline.';
+          return;
+        }
+        if (current.groupMemberCount !== discountOfferCount ||
+            current.groupRosterUpdatedAt !== discountOfferRosterUpdatedAt ||
+            current.groupAudienceVersion !== discountOfferAudienceVersion) {
+          $('#discount-offer-status').textContent =
+            'The group membership or private-chat status changed. The preview was refreshed and exclusions were cleared; review it before sending.';
+          discountOfferExcludedUserIds.clear();
+          await loadDiscountOfferRecipients({ reset: true });
+          return;
+        }
+        if (Date.parse(current.groupRosterSyncedAt || '') !==
+            Date.parse(discountOfferRosterSyncedAt || '')) {
+          discountOfferRosterSyncedAt = current.groupRosterSyncedAt;
+        }
+        const selectedCount = discountOfferCount - discountOfferExcludedUserIds.size;
+        if (!await dashboardConfirm(
+          `Queue this personalized private offer for ${selectedCount.toLocaleString()} selected ${discountOfferAudienceFilter === 'not-messaged-privately' ? 'members who have not messaged the bot privately' : 'group members'}? The sender rechecks group membership before each delivery, so members who leave may be skipped. Members who join later will be available for future offers. Once queued, sent messages cannot be recalled.`,
+          { title: 'Confirm discount offer', confirmText: 'Queue offer' }
+        )) return;
+        const result = await api('/api/admin/telegram-user-broadcasts', {
+          method: 'POST',
+          body: JSON.stringify({
+            text,
+            personalized: true,
+            audience: 'group-members',
+            audienceFilter: discountOfferAudienceFilter,
+            expectedCount: current.groupMemberCount,
+            expectedRosterUpdatedAt: current.groupRosterUpdatedAt,
+            expectedAudienceVersion: current.groupAudienceVersion,
+            excludedUserIds: [...discountOfferExcludedUserIds]
+          })
+        });
+        discountOfferJobId = result.id;
+        discountOfferJobTerminal = false;
+        $('#discount-offer-delivery').hidden = false;
+        $('#discount-offer-delivery-status').textContent = 'Queued';
+        $('#discount-offer-delivery-progress').max = Math.max(result.total, 1);
+        $('#discount-offer-delivery-progress').value = 0;
+        $('#discount-offer-sent').textContent = '0';
+        $('#discount-offer-skipped').textContent = '0';
+        $('#discount-offer-uncertain').textContent = '0';
+        $('#discount-offer-remaining').textContent = result.total.toLocaleString();
+        $('#discount-offer-delivery-detail').textContent =
+          `0 of ${result.total.toLocaleString()} recipients processed.`;
+        $('#discount-offer-delivery-error').hidden = true;
+        $('#discount-offer-status').textContent =
+          `Offer queued for ${result.total.toLocaleString()} candidates (job ${result.id}). Current eligibility and group membership will be checked as it sends.`;
+        discountOfferQueued = true;
+        if (discountOfferRosterTimer) {
+          clearTimeout(discountOfferRosterTimer);
+          discountOfferRosterTimer = null;
+        }
+        $('#discount-offer-send').textContent = 'Offer queued';
+        $('#discount-offer-send').disabled = true;
+        refreshDiscountOfferDelivery();
+        try {
+          await loadTelegramUserBroadcasts();
+        } catch (error) {
+          $('#discount-offer-status').textContent +=
+            ` The offer is queued, but the announcements list could not refresh: ${error.message}`;
+        }
+      } catch (error) {
+        $('#discount-offer-status').textContent = `Could not queue the discount offer: ${error.message}`;
+      } finally {
+        discountOfferSending = false;
+        if ($('#discount-offer-send').textContent !== 'Offer queued') {
+          $('#discount-offer-send').textContent = 'Review and send';
+          renderDiscountOfferPreview();
+        }
+      }
+    }
+
     async function loadAgentQr() {
       if (!handledChatsOnly) return;
       const result = await api('/api/admin/agent-qr');
@@ -4925,6 +5524,14 @@
             tasks.push(loadCurriculumOverview());
           }
         }
+        if (has('telegram_lesson_skip_requests.json')) {
+          if (document.querySelector('#section-progress').classList.contains('active')) {
+            tasks.push(loadProgress());
+          }
+          if (document.querySelector('#section-overview').classList.contains('active')) {
+            tasks.push(loadTelegramUpdateQueue());
+          }
+        }
         if (has('student_payment_ledger.json') &&
             document.querySelector('#section-payment-ledger').classList.contains('active')) {
           tasks.push(loadPaymentLedger());
@@ -4935,6 +5542,14 @@
           tasks.push(loadTelegramUpdateQueue());
         }
         if (has('telegram_agent_media_activity.json')) tasks.push(loadTelegramAgentMediaActivity());
+        if (has('telegram_user_broadcast_state.json')) {
+          if (document.querySelector('#section-overview').classList.contains('active')) {
+            tasks.push(loadTelegramStats());
+          }
+          if (document.querySelector('#section-progress').classList.contains('active')) {
+            tasks.push(loadProgress());
+          }
+        }
         if (has('telegram_user_broadcasts.json', 'telegram_user_broadcast_state.json')) {
           tasks.push(loadTelegramUserBroadcasts());
         }
@@ -4995,8 +5610,50 @@
         `${event.target.value.length.toLocaleString()} / 4,096`;
     });
     $('#telegram-user-broadcast-refresh').addEventListener('click', () => {
-      loadTelegramUserBroadcasts().catch(error =>
+      loadTelegramUserBroadcasts({
+        includeStudents: $('#telegram-user-broadcast-preview-toggle').getAttribute('aria-expanded') === 'true'
+      }).catch(error =>
         showError(`Could not refresh Telegram announcements: ${error.message}`));
+    });
+    $('#telegram-user-broadcast-preview-toggle').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const expanded = button.getAttribute('aria-expanded') === 'true';
+      const preview = $('#telegram-user-broadcast-preview');
+      button.setAttribute('aria-expanded', String(!expanded));
+      preview.hidden = expanded;
+      button.textContent = `${expanded ? 'View' : 'Hide'} eligible students (${Number($('#telegram-user-broadcast-recipients').dataset.count || 0).toLocaleString()})`;
+      if (expanded) return;
+      $('#telegram-user-broadcast-preview-list').innerHTML = '<li>Loading students…</li>';
+      telegramBroadcastStudents = [];
+      telegramBroadcastStudentLimit = 30;
+      try {
+        await loadTelegramUserBroadcasts({ includeStudents: true });
+      } catch (error) {
+        preview.hidden = true;
+        button.setAttribute('aria-expanded', 'false');
+        button.textContent = `View eligible students (${Number($('#telegram-user-broadcast-recipients').dataset.count || 0).toLocaleString()})`;
+        showError(`Could not load eligible Telegram students: ${error.message}`);
+      }
+    });
+    $('#telegram-user-broadcast-preview-more').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Loading…';
+      try {
+        const offset = telegramBroadcastStudents.length;
+        const data = await api(
+          `/api/admin/telegram-user-broadcasts?includeStudents=true&offset=${offset}`
+        );
+        telegramBroadcastStudentCount = data.optedInCount;
+        telegramBroadcastStudents.push(...(data.optedInStudents || []));
+        telegramBroadcastStudentLimit += 30;
+        renderTelegramBroadcastStudents();
+      } catch (error) {
+        showError(`Could not load more eligible Telegram students: ${error.message}`);
+        renderTelegramBroadcastStudents();
+      } finally {
+        button.disabled = false;
+      }
     });
     $('#telegram-user-broadcast-form').addEventListener('submit', async event => {
       event.preventDefault();
@@ -5017,7 +5674,9 @@
         });
         $('#telegram-user-broadcast-message').value = '';
         $('#telegram-user-broadcast-length').textContent = '0 / 4,096';
-        await loadTelegramUserBroadcasts();
+        await loadTelegramUserBroadcasts({
+          includeStudents: $('#telegram-user-broadcast-preview-toggle').getAttribute('aria-expanded') === 'true'
+        });
       } catch (error) {
         showError(`Could not queue Telegram announcement: ${error.message}`);
       } finally {
@@ -5053,34 +5712,70 @@
     $('#payment-ledger-refresh').addEventListener('click', () => {
       loadPaymentLedger().catch(error => showError(`Could not refresh payment ledger: ${error.message}`));
     });
-    $('#telegram-leaderboard-refresh').addEventListener('click', () => {
-      loadTelegramLeaderboard().catch(error => {
-        $('#telegram-leaderboard-status').textContent = error.message;
-        showError(`Could not refresh weekly leaderboard: ${error.message}`);
+    $('#open-discount-offer').addEventListener('click', () => {
+      openDiscountOfferDialog();
+    });
+    $('#discount-offer-close').addEventListener('click', () => {
+      $('#discount-offer-dialog').close();
+    });
+    $('#discount-offer-message').addEventListener('input', renderDiscountOfferPreview);
+    $('#discount-offer-filter').addEventListener('change', () => {
+      discountOfferAudienceFilter = $('#discount-offer-filter').value;
+      discountOfferExcludedUserIds.clear();
+      discountOfferRecipients = [];
+      discountOfferCount = 0;
+      discountOfferAudienceVersion = null;
+      $('#discount-offer-status').textContent =
+        'The recipient filter changed; reloading the member list.';
+      renderDiscountOfferPreview();
+      clearDashboardApiCache();
+      loadDiscountOfferRecipients({ reset: true }).catch(error => {
+        $('#discount-offer-status').textContent =
+          `Could not load members for this filter: ${error.message}`;
       });
     });
-    $('#telegram-leaderboard-share').addEventListener('click', async event => {
-      const button = event.currentTarget;
-      if (!await dashboardConfirm(
-        'This will post every listed student name and weekly lesson-completion count publicly in the Telegram group. Share it now?',
-        { title: 'Share weekly leaderboard', confirmText: 'Share in group' }
-      )) return;
-      button.disabled = true;
-      button.textContent = 'Sharing…';
-      try {
-        const result = await api('/api/admin/telegram-leaderboard', {
-          method: 'POST',
-          body: JSON.stringify({})
+    $('#discount-offer-more').addEventListener('click', () => {
+      loadDiscountOfferRecipients().catch(error => {
+        $('#discount-offer-status').textContent =
+          `Could not load more eligible students: ${error.message}`;
+      });
+    });
+    $('#discount-offer-form').addEventListener('submit', sendDiscountOffer);
+    document.querySelectorAll('[data-leaderboard-refresh]').forEach(button => {
+      button.addEventListener('click', () => {
+        const period = button.dataset.leaderboardRefresh;
+        loadTelegramLeaderboard(period).catch(error => {
+          $(`#telegram-${period}-leaderboard-status`).textContent = error.message;
+          showError(`Could not refresh ${period} leaderboard: ${error.message}`);
         });
-        $('#telegram-leaderboard-status').textContent =
-          `Shared with the Telegram group · ${result.studentsCount.toLocaleString()} students.`;
-      } catch (error) {
-        $('#telegram-leaderboard-status').textContent = error.message;
-        showError(`Could not share weekly leaderboard: ${error.message}`);
-      } finally {
-        button.textContent = 'Share in Telegram group';
-        button.disabled = false;
-      }
+      });
+    });
+    document.querySelectorAll('[data-share-leaderboard]').forEach(button => {
+      button.addEventListener('click', async event => {
+        const shareButton = event.currentTarget;
+        const period = shareButton.dataset.shareLeaderboard;
+        const periodLabel = period === 'daily' ? 'daily' : 'weekly';
+        if (!await dashboardConfirm(
+          `This will post every listed student name and ${periodLabel} lesson-completion count publicly in the Telegram group. Share it now?`,
+          { title: `Share ${periodLabel} leaderboard`, confirmText: 'Share in group' }
+        )) return;
+        shareButton.textContent = 'Sharing…';
+        shareButton.disabled = true;
+        try {
+          const result = await api(
+            `/api/admin/telegram-leaderboard?period=${encodeURIComponent(period)}`,
+            { method: 'POST', body: JSON.stringify({}) }
+          );
+          $(`#telegram-${period}-leaderboard-status`).textContent =
+            `Shared with the Telegram group · ${result.studentsCount.toLocaleString()} students.`;
+        } catch (error) {
+          $(`#telegram-${period}-leaderboard-status`).textContent = error.message;
+          showError(`Could not share ${periodLabel} leaderboard: ${error.message}`);
+        } finally {
+          shareButton.textContent = `Share ${periodLabel} leaderboard`;
+          shareButton.disabled = false;
+        }
+      });
     });
     $('#telegram-payment-month-previous').addEventListener('click', () => {
       telegramPaymentMonth = new Date(

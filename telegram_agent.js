@@ -106,8 +106,17 @@ function getStudentName(user) {
     `Student ${user.id}`;
 }
 
-function isLessonCommand(text) {
-  return /^\/lesson(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
+function isLessonRequest(text) {
+  const normalized = text.trim().replace(/[؟?!.,،؛]+$/u, '').replace(/\s+/g, ' ');
+  return /^\/lesson(?:@[a-z0-9_]+)?(?:\s|$)/i.test(normalized) ||
+    /^(?:وين|وينو|وينها)\s+(?:ال)?(?:حصة|حصه|درس)(?:ي)?$/u.test(normalized) ||
+    /^(?:ال)?(?:حصة|حصه|درس)(?:ي)?\s+(?:وين|وينها)$/u.test(normalized);
+}
+
+function isAcknowledgmentMessage(text) {
+  const normalized = text.trim().replace(/[؟?!.,،؛]+$/u, '').replace(/\s+/g, ' ');
+  return /^(?:تمام|طيب|حاضر|اوكي|أوكي|okay|ok|شكرا|شكراً|تسلم)(?:\s+(?:شكرا|شكراً|يا زول))?$/iu
+    .test(normalized);
 }
 
 function getLessonNavigationCommand(text) {
@@ -224,7 +233,7 @@ function getTelegramStudentHelpMessage() {
 
 • في الخاص أرسل /reminder 18:30 لاختيار زمن تذكير يومي اختياري (بتوقيت السودان)، أو /reminder_off لإيقافه. تذكير التمرين بعد 8 ساعات يظل منفصلًا.
 
-• الاحتفال باسمك في القروب اختياري: أرسل في الخاص /celebrations_on للموافقة أو /celebrations_off لإيقافه.
+• لما تجاوب تمرين الحصة كامل وكل إجاباتك تكون صحيحة، حنحتفل بيك في القروب.
 
 • أرسل /help في أي وقت لعرض المساعدة تاني.`;
 }
@@ -575,7 +584,7 @@ export class TelegramLessonAgent {
       return;
     }
 
-    if (isLessonCommand(text)) {
+    if (isLessonRequest(text)) {
       this.logger.info(`[Telegram] Starting or resuming a lesson for ${studentName}.`);
       await this.runStudentOperation(studentKey, async () => {
         this.recordStudentActivity(studentKey, chatId, message.from);
@@ -759,7 +768,7 @@ export class TelegramLessonAgent {
     if (!found) {
       await this.bot.sendMessage(
         String(message.chat.id),
-        text && isLessonCommand(text)
+        text && isLessonRequest(text)
           ? 'حسابك ما اتربط بقروب الدروس لسه. أرسل /lesson مرة واحدة في القروب، وبعدها افتح الخاص واضغط Start. ما محتاج تكرر الأمر هنا.'
           : 'حسابك ما اتربط بقروب الدروس لسه. أرسل /lesson في قروب الدروس، وبعدها افتح الخاص واضغط Start.'
       );
@@ -772,6 +781,7 @@ export class TelegramLessonAgent {
     state.telegramPrivateChatId = String(message.chat.id);
     this.saveProgress();
     this.saveProgress();
+    if (isAcknowledgmentMessage(text)) return;
     const announcementOptIn = getTelegramAnnouncementPreferenceCommand(text);
     if (announcementOptIn !== null) {
       state.telegramAnnouncementsOptIn = announcementOptIn;
@@ -789,16 +799,9 @@ export class TelegramLessonAgent {
     }
     const celebrationOptIn = getTelegramCelebrationPreferenceCommand(text);
     if (celebrationOptIn !== null) {
-      state.telegramCelebrationsOptIn = celebrationOptIn;
-      state.telegramCelebrationsOptInAt = celebrationOptIn
-        ? new Date().toISOString()
-        : null;
-      this.saveProgress();
       await this.bot.sendMessage(
         String(message.chat.id),
-        celebrationOptIn
-          ? 'رجعنا الاحتفال باسمك في القروب. لما تحل تمرين الحصة كامل وكل إجاباتك تكون صحيحة حنحتفل بيك. أرسل /celebrations_off لو غيرت رأيك.'
-          : 'تم إيقاف الاحتفال باسمك في القروب. تقدر ترجع في أي وقت بإرسال /celebrations_on.'
+        'الاحتفال باسمك في القروب بيحصل تلقائياً بعد ما تجاوب تمرين الحصة كامل وكل إجاباتك تكون صحيحة.'
       );
       return;
     }
@@ -895,7 +898,7 @@ export class TelegramLessonAgent {
       await this.runStudentOperation(studentKey, async () => {
         await this.bot.sendMessage(
           String(message.chat.id),
-          'أهلين بيك 😍 اتسجلت معانا خلاص. حنرسل ليك الدرس في الخاص، وخليك معانا بالاستمرارية وإن شاء الله تحقق النتيجة البتتمناها!\n\nالاحتفال باسمك في القروب اختياري. لو موافق، أرسل /celebrations_on في الخاص؛ وتقدر توقفه في أي وقت بـ /celebrations_off.'
+          'أهلين بيك 😍 اتسجلت معانا خلاص. حنرسل ليك الدرس في الخاص، وخليك معانا بالاستمرارية وإن شاء الله تحقق النتيجة البتتمناها!\n\nلما تجاوب تمرين الحصة كامل وكل إجاباتك تكون صحيحة، حنحتفل بيك في القروب.'
         );
         try {
           await this.startOrResumeLesson(String(message.chat.id), studentKey, message.message_id);
@@ -968,7 +971,7 @@ export class TelegramLessonAgent {
       return;
     }
 
-    if (isLessonCommand(text)) {
+    if (isLessonRequest(text)) {
       await this.runStudentOperation(studentKey, async () => {
         this.recordStudentActivity(studentKey, state.telegramChatId, message.from);
         const currentState = this.progress[studentKey];
@@ -1878,7 +1881,20 @@ export class TelegramLessonAgent {
               ? answer.replace(/\s+/g, ' ').trim().slice(0, 160)
               : '';
             return `السؤال ${number}${excerpt ? `: «${excerpt}${answer.length > 160 ? '…' : ''}»` : ''}`;
-          }).join('، ')}.`
+          }).join('، ')}. ${needsCorrection.map(number => {
+            const answerKey = String(lesson.answerKey[number - 1] || '');
+            const [expectedAnswer, answerKeyExplanation = ''] =
+              answerKey.split(/\s+—\s+/, 2);
+            const explanation = result.incorrectAnswers?.find(item =>
+              item.questionNumber === number)?.explanation;
+            const savedArabicExplanation = /[\u0600-\u06FF]/.test(answerKeyExplanation)
+              ? answerKeyExplanation.trim()
+              : '';
+            const ruleExplanation = savedArabicExplanation ||
+              (typeof explanation === 'string' ? explanation.trim() : '') ||
+              'راجع قاعدة الدرس وحاول تاني.';
+            return `السؤال ${number}: الإجابة الصحيحة «${expectedAnswer.trim()}». ${ruleExplanation}`;
+          }).join(' ')}`
         : '';
       const uncertaintyFeedback = uncertainQuestionNumbers.size
         ? ` ما قدرت أتأكد من إجابة السؤال ${[...uncertainQuestionNumbers].join('، ')}، وما اعتبرتها غلط. وضّحها أو أرسلها تاني عشان أراجعها.`
@@ -1909,7 +1925,7 @@ export class TelegramLessonAgent {
         : allCorrectMessage}`,
       messageId
     );
-    if (!manualReview && state.telegramCelebrationsOptIn === true &&
+    if (!manualReview &&
         state.correctQuestionNumbers.length === lesson.answerKey.length &&
         state.resolvedQuestionNumbers.length === 0 &&
         this.groupId) {

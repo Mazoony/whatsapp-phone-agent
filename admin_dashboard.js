@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -157,6 +157,8 @@ const DASHBOARD_DATA_SOURCE_FILES = [
   CONTACT_GENDER_OVERRIDES_FILE
 ];
 const AGENT_HEARTBEAT_MAX_AGE_MS = 30_000;
+const TELEGRAM_GROUP_ROSTER_MAX_AGE_MS = 120_000;
+const TELEGRAM_PRESENCE_MAX_AGE_MS = 120_000;
 const DEFAULT_PAGE_SIZE = 30;
 const MAX_PAGE_SIZE = 100;
 const MAX_SEARCH_LENGTH = 120;
@@ -181,7 +183,10 @@ function calendarDateKey(timestamp, timeZone) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-function getWeeklyLessonLeaderboard(progress, now, timeZone = 'Africa/Khartoum') {
+function getLessonLeaderboard(progress, now, period = 'weekly', timeZone = 'Africa/Khartoum') {
+  if (!['daily', 'weekly'].includes(period)) {
+    throw new Error('Leaderboard period must be daily or weekly.');
+  }
   const today = calendarDateKey(now, timeZone);
   const todayUtc = new Date(`${today}T00:00:00.000Z`);
   const daysSinceMonday = (todayUtc.getUTCDay() + 6) % 7;
@@ -189,13 +194,14 @@ function getWeeklyLessonLeaderboard(progress, now, timeZone = 'Africa/Khartoum')
   const weekStart = weekStartDate.toISOString().slice(0, 10);
   const weekEndDate = new Date(weekStartDate.getTime() + 6 * 24 * 60 * 60 * 1000);
   const weekEnd = weekEndDate.toISOString().slice(0, 10);
+  const periodStart = period === 'daily' ? today : weekStart;
   const students = Object.values(progress || {}).flatMap(student => {
     const completions = Array.isArray(student.lessonCompletionTimestamps)
       ? student.lessonCompletionTimestamps.filter(timestamp => {
           const parsed = Date.parse(timestamp);
           if (!Number.isFinite(parsed) || parsed > now) return false;
           const date = calendarDateKey(parsed, timeZone);
-          return date >= weekStart && date <= today;
+          return date >= periodStart && date <= today;
         }).length
       : 0;
     if (!completions) return [];
@@ -212,18 +218,24 @@ function getWeeklyLessonLeaderboard(progress, now, timeZone = 'Africa/Khartoum')
     left.name.localeCompare(right.name));
 
   const dateFormatter = new Intl.DateTimeFormat('ar-SD', {
-    timeZone: 'UTC',
+    timeZone,
     day: 'numeric',
-    month: 'long'
+    month: 'long',
+    year: 'numeric'
   });
-  const formattedWeekStart = dateFormatter.format(weekStartDate);
-  const formattedWeekEnd = dateFormatter.format(weekEndDate);
-  const lines = [
-    '🏆 لوحة إنجازات الأسبوع',
-    `من ${formattedWeekStart} إلى ${formattedWeekEnd}`,
-    '',
-    'برافو للطلاب على اجتهادهم وإكمال الحصص هذا الأسبوع:'
-  ];
+  const lines = period === 'daily'
+    ? [
+        '🏆 لوحة إنجازات اليوم',
+        dateFormatter.format(new Date(`${today}T12:00:00.000Z`)),
+        '',
+        'برافو للطلاب على اجتهادهم وإكمال الحصص اليوم:'
+      ]
+    : [
+        '🏆 لوحة إنجازات الأسبوع',
+        `من ${dateFormatter.format(weekStartDate)} إلى ${dateFormatter.format(weekEndDate)}`,
+        '',
+        'برافو للطلاب على اجتهادهم وإكمال الحصص هذا الأسبوع:'
+      ];
   let visibleCount = 0;
   for (const [index, student] of students.entries()) {
     const rank = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
@@ -242,6 +254,8 @@ function getWeeklyLessonLeaderboard(progress, now, timeZone = 'Africa/Khartoum')
   lines.push('', 'واصلوا التقدم، خطوة خطوة نحو النجاح 🌟');
 
   return {
+    period,
+    date: today,
     weekStart,
     weekEnd,
     students,
@@ -1848,6 +1862,27 @@ async function handleBroadcastPost(req, res, readData, broadcastFiles, mediaDire
   }
 }
 
+function getTelegramPrivateChatUserIds(progress, groupId) {
+  return new Set(Object.values(progress || {})
+    .filter(student =>
+      String(student?.telegramChatId || '') === String(groupId || '') &&
+      Boolean(student?.telegramPrivateChatId))
+    .map(student => String(student.telegramUserId)));
+}
+
+function getTelegramGroupAudienceVersion(groupRoster, privateChatUserIds) {
+  const audienceState = groupRoster
+    .map(member => [
+      String(member.userId),
+      String(member.name || ''),
+      privateChatUserIds.has(String(member.userId))
+    ])
+    .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+  return createHash('sha256')
+    .update(JSON.stringify(audienceState))
+    .digest('hex');
+}
+
 async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcastFiles, groupId) {
   if (!isSameOriginLoopbackRequest(req)) {
     sendJson(res, 403, { error: 'Telegram account broadcasts are only accepted from this local dashboard.' });
@@ -1891,12 +1926,90 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
       sendJson(res, 400, { error: 'Enter a message between 1 and 4,096 characters.' });
       return;
     }
+    if (body.personalized === true && !text.includes('{{name}}')) {
+      sendJson(res, 400, { error: 'Personalized messages must include the {{name}} placeholder.' });
+      return;
+    }
     const progress = readJsonFileOr(progressFile, {});
-    const recipients = Object.values(progress)
-      .filter(student => isTelegramAnnouncementRecipient(student, groupId))
-      .map(student => ({ userId: String(student.telegramUserId) }));
+    const groupMemberAudience = body.audience === 'group-members';
+    const groupRoster = Array.isArray(state.groupRoster) ? state.groupRoster : [];
+    const privateChatUserIds = getTelegramPrivateChatUserIds(progress, groupId);
+    const audienceVersion = getTelegramGroupAudienceVersion(groupRoster, privateChatUserIds);
+    const audienceFilter = body.audienceFilter || 'all';
+    if (!['all', 'not-messaged-privately'].includes(audienceFilter)) {
+      sendJson(res, 400, { error: 'Choose a supported group member filter.' });
+      return;
+    }
+    const rosterSyncedAt = Date.parse(state.groupRosterSyncedAt || '');
+    const rosterIsFresh = Number.isFinite(rosterSyncedAt) &&
+      Date.now() - rosterSyncedAt >= 0 &&
+      Date.now() - rosterSyncedAt <= TELEGRAM_GROUP_ROSTER_MAX_AGE_MS;
+    if (groupMemberAudience && !rosterIsFresh) {
+      sendJson(res, 409, {
+        error: 'The current group member list is unavailable or stale. Make sure the Telegram account sender is running, then refresh the recipient list.'
+      });
+      return;
+    }
+    if (groupMemberAudience && body.personalized !== true) {
+      sendJson(res, 400, { error: 'Group-member discount offers must use personalized delivery.' });
+      return;
+    }
+    if (groupMemberAudience &&
+        (body.expectedRosterUpdatedAt !== state.groupRosterUpdatedAt ||
+          body.expectedAudienceVersion !== audienceVersion)) {
+      sendJson(res, 409, {
+        error: 'The group membership or private-chat status changed since the preview. Refresh the recipient list and confirm again.'
+      });
+      return;
+    }
+    const eligibleRecipients = groupMemberAudience
+      ? groupRoster.map(member => ({
+        userId: String(member.userId),
+        name: typeof member.name === 'string' && member.name.trim()
+          ? member.name.trim()
+          : `Telegram user ${member.userId}`,
+        hasPrivateChat: privateChatUserIds.has(String(member.userId))
+      })).filter(member =>
+        audienceFilter !== 'not-messaged-privately' || !member.hasPrivateChat)
+      : Object.values(progress)
+        .filter(student => isTelegramAnnouncementRecipient(student, groupId))
+        .map(student => ({ userId: String(student.telegramUserId) }));
+    if (body.personalized === true &&
+        (!Number.isSafeInteger(body.expectedCount) || body.expectedCount !== eligibleRecipients.length)) {
+      sendJson(res, 409, {
+        error: 'The eligible recipient count changed. Refresh the preview and confirm again.'
+      });
+      return;
+    }
+    let excludedUserIds = [];
+    if (body.personalized === true) {
+      if (body.excludedUserIds !== undefined &&
+          (!Array.isArray(body.excludedUserIds) ||
+            body.excludedUserIds.some(userId => typeof userId !== 'string'))) {
+        sendJson(res, 400, { error: 'Excluded recipient IDs must be a list of Telegram user IDs.' });
+        return;
+      }
+      excludedUserIds = body.excludedUserIds || [];
+      const eligibleUserIds = new Set(eligibleRecipients.map(recipient => recipient.userId));
+      if (new Set(excludedUserIds).size !== excludedUserIds.length ||
+          excludedUserIds.some(userId => !eligibleUserIds.has(userId))) {
+        sendJson(res, 409, {
+          error: 'The excluded students are no longer in the eligible audience. Refresh the preview and try again.'
+        });
+        return;
+      }
+    }
+    const excludedUserIdSet = new Set(excludedUserIds);
+    const recipients = eligibleRecipients.filter(recipient =>
+      !excludedUserIdSet.has(recipient.userId));
     if (recipients.length === 0) {
-      sendJson(res, 409, { error: 'No students have opted in to private Telegram announcements.' });
+      sendJson(res, 409, {
+        error: excludedUserIds.length
+          ? 'Keep at least one recipient selected for this offer.'
+          : groupMemberAudience
+            ? 'The configured Telegram group has no current members.'
+            : 'No students have opted in to private Telegram announcements.'
+      });
       return;
     }
     if (recipients.length > 500) {
@@ -1907,6 +2020,12 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
     const job = {
       id,
       text,
+      ...(body.personalized === true ? { personalized: true } : {}),
+      ...(groupMemberAudience ? { audience: 'group-members' } : {}),
+      ...(groupMemberAudience ? { audienceFilter } : {}),
+      ...(body.personalized === true && excludedUserIds.length
+        ? { excludedUserIds }
+        : {}),
       recipients,
       createdAt: new Date().toISOString(),
       cancelled: false
@@ -2143,6 +2262,19 @@ export function createAdminDashboardServer({
     return cachedDashboardData;
   };
   const getTelegramProgressSnapshot = (timeZone, now = Date.now()) => {
+    const telegramAccountState = readJsonFileOr(telegramUserBroadcastFiles.state, {});
+    const rosterSyncedAt = Date.parse(telegramAccountState.groupRosterSyncedAt || '');
+    const presenceIsFresh = Number.isFinite(rosterSyncedAt) &&
+      now >= rosterSyncedAt &&
+      now - rosterSyncedAt <= TELEGRAM_PRESENCE_MAX_AGE_MS;
+    const presenceByUserId = new Map(
+      presenceIsFresh && Array.isArray(telegramAccountState.groupRoster)
+        ? telegramAccountState.groupRoster
+          .filter(member => typeof member?.userId === 'string' &&
+            ['online', 'offline', 'unknown'].includes(member.presence))
+          .map(member => [member.userId, member.presence])
+        : []
+    );
     const data = {
       history: {},
       contacts: {},
@@ -2179,6 +2311,12 @@ export function createAdminDashboardServer({
           ...student,
           gender: getTelegramStudentGender(telegramStudent, genderOverrides[student.jid]),
           genderOverride: genderOverrides[student.jid] || 'auto',
+          telegramPresence: presenceIsFresh
+            ? presenceByUserId.get(String(telegramStudent?.telegramUserId)) || 'unknown'
+            : 'unknown',
+          telegramPresenceUpdatedAt: presenceIsFresh
+            ? telegramAccountState.groupRosterSyncedAt
+            : null,
           availableLessons: getReadyTelegramLessons(student.grade, data.lessons),
           canSendReminder: Boolean(
             data.telegramProgress[student.jid]?.telegramPrivateChatId &&
@@ -2492,9 +2630,11 @@ export function createAdminDashboardServer({
     if (req.method === 'GET' &&
         requestUrl.pathname === '/api/admin/telegram-leaderboard') {
       try {
-        const leaderboard = getWeeklyLessonLeaderboard(
+        const period = requestUrl.searchParams.get('period') || 'weekly';
+        const leaderboard = getLessonLeaderboard(
           readJsonFileOr(telegramProgressFile, {}),
-          Date.now()
+          Date.now(),
+          period
         );
         sendJson(res, 200, {
           ...leaderboard,
@@ -2502,8 +2642,14 @@ export function createAdminDashboardServer({
           botConfigured: Boolean(telegramLeaderboardNotifier || process.env.TELEGRAM_BOT_TOKEN?.trim())
         });
       } catch (error) {
-        console.error('[Admin Dashboard] Could not build the Telegram weekly leaderboard:', error.message);
-        sendJson(res, 500, { error: 'Could not load the weekly Telegram leaderboard.' });
+        const invalidPeriod = requestUrl.searchParams.has('period') &&
+          !['daily', 'weekly'].includes(requestUrl.searchParams.get('period'));
+        if (invalidPeriod) {
+          sendJson(res, 400, { error: 'Leaderboard period must be daily or weekly.' });
+          return;
+        }
+        console.error('[Admin Dashboard] Could not build the Telegram leaderboard:', error.message);
+        sendJson(res, 500, { error: 'Could not load the Telegram leaderboard.' });
       }
       return;
     }
@@ -2521,12 +2667,22 @@ export function createAdminDashboardServer({
       }
       void (async () => {
         try {
-          const leaderboard = getWeeklyLessonLeaderboard(
+          const period = requestUrl.searchParams.get('period') || 'weekly';
+          if (!['daily', 'weekly'].includes(period)) {
+            sendJson(res, 400, { error: 'Leaderboard period must be daily or weekly.' });
+            return;
+          }
+          const leaderboard = getLessonLeaderboard(
             readJsonFileOr(telegramProgressFile, {}),
-            Date.now()
+            Date.now(),
+            period
           );
           if (!leaderboard.students.length) {
-            sendJson(res, 409, { error: 'No students have completed a lesson this week yet.' });
+            sendJson(res, 409, {
+              error: period === 'daily'
+                ? 'No students have completed a lesson today yet.'
+                : 'No students have completed a lesson this week yet.'
+            });
             return;
           }
           if (telegramLeaderboardNotifier) {
@@ -2549,12 +2705,14 @@ export function createAdminDashboardServer({
           sendJson(res, 200, {
             sent: true,
             studentsCount: leaderboard.students.length,
+            period: leaderboard.period,
+            date: leaderboard.date,
             weekStart: leaderboard.weekStart,
             weekEnd: leaderboard.weekEnd
           });
         } catch (error) {
-          console.error('[Admin Dashboard] Could not share the Telegram weekly leaderboard:', error.message);
-          sendJson(res, 502, { error: 'Telegram could not deliver the weekly leaderboard.' });
+          console.error('[Admin Dashboard] Could not share the Telegram leaderboard:', error.message);
+          sendJson(res, 502, { error: 'Telegram could not deliver the leaderboard.' });
         }
       })();
       return;
@@ -2572,6 +2730,16 @@ export function createAdminDashboardServer({
       try {
         const now = Date.now();
         const progress = getTelegramProgressSnapshot(timeZone, now);
+        const telegramAccountState = readJsonFileOr(telegramUserBroadcastFiles.state, {});
+        const onlineCountUpdatedAt = Date.parse(
+          telegramAccountState.onlineGroupMembersUpdatedAt || ''
+        );
+        const onlineCountIsFresh = Number.isSafeInteger(
+          telegramAccountState.onlineGroupMembersCount
+        ) && telegramAccountState.onlineGroupMembersCount >= 0 &&
+          Number.isFinite(onlineCountUpdatedAt) &&
+          now >= onlineCountUpdatedAt &&
+          now - onlineCountUpdatedAt <= TELEGRAM_PRESENCE_MAX_AGE_MS;
         getTelegramGroupMemberCount().then(memberCount => {
           const activeByDate = new Map(
             progress.insights.engagementTrend.map(day => [day.date, day.telegramActiveStudents])
@@ -2596,6 +2764,15 @@ export function createAdminDashboardServer({
                 ? 'unavailable'
                 : 'not_configured'
               : 'available',
+            onlineGroupMembers: onlineCountIsFresh
+              ? telegramAccountState.onlineGroupMembersCount
+              : null,
+            onlineGroupMembersUpdatedAt: Number.isFinite(onlineCountUpdatedAt)
+              ? telegramAccountState.onlineGroupMembersUpdatedAt
+              : null,
+            onlineGroupMembersStatus: onlineCountIsFresh
+              ? 'available'
+              : Number.isFinite(onlineCountUpdatedAt) ? 'stale' : 'unavailable',
             trackedLearners: progress.total,
             joinsToday: joinsByDate.get(today) || 0,
             joinsLast7Days: dailyStats.slice(-7).reduce((total, day) => total + day.joins, 0),
@@ -2624,10 +2801,36 @@ export function createAdminDashboardServer({
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-chat-queue') {
       try {
-        sendJson(res, 200, readTelegramUpdateQueue(
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+        const adminActions = lessonSkipQueues.Telegram.read()
+          .filter(request => ['queued', 'processing'].includes(request.status))
+          .map((request, index) => {
+            const student = telegramProgress[request.studentKey] || {};
+            const name = student.name ||
+              (student.telegramUsername ? `@${student.telegramUsername}` : `Telegram user ${request.userId || ''}`);
+            const action = request.requestType === 'send_lesson'
+              ? `Send ${request.nextLessonTitle || request.nextLessonId}`
+              : request.requestType === 'skip_next' || !request.requestType
+                ? `Skip to ${request.nextLessonTitle || request.nextLessonId}`
+                : request.nextLessonTitle || request.requestType;
+            return {
+              id: request.id,
+              name: name.trim() || 'Telegram user',
+              action,
+              status: request.status,
+              position: index + 1,
+              queuedAt: request.createdAt,
+              ...(request.status === 'processing' ? { startedAt: request.updatedAt } : {})
+            };
+          });
+        const updateQueue = readTelegramUpdateQueue(
           telegramUpdateQueueFile,
           telegramAgentControlFile
-        ));
+        );
+        sendJson(res, 200, {
+          ...updateQueue,
+          adminActions
+        });
       } catch (error) {
         console.error('[Admin Dashboard] Could not read the Telegram update queue:', error.message);
         sendJson(res, 500, { error: 'Could not read the Telegram update queue.' });
@@ -2758,6 +2961,17 @@ export function createAdminDashboardServer({
         console.error('[Admin Dashboard] Could not request WhatsApp presence:', error.message);
         sendJson(res, 500, { error: 'Could not request WhatsApp presence.' });
       });
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/favicon.svg') {
+      const faviconPath = path.join(ROOT_DIR, 'public', 'favicon.svg');
+      res.writeHead(200, {
+        'Content-Type': 'image/svg+xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=86400',
+        'X-Content-Type-Options': 'nosniff'
+      });
+      fs.createReadStream(faviconPath).pipe(res);
       return;
     }
 
@@ -3113,17 +3327,37 @@ export function createAdminDashboardServer({
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-user-broadcasts') {
       try {
         const progress = readJsonFileOr(telegramProgressFile, {});
-        const optedIn = Object.entries(progress)
-          .filter(([, student]) => isTelegramAnnouncementRecipient(student, telegramGroupId))
-          .map(([, student]) => ({
-            name: student.name || student.telegramUsername || `Telegram user ${student.telegramUserId}`,
-            optedInAt: student.telegramAnnouncementsOptInAt || null
-          }));
+        const optedInStudents = Object.values(progress)
+          .filter(student => isTelegramAnnouncementRecipient(student, telegramGroupId));
+        const recipientOffset = Number(requestUrl.searchParams.get('offset') || 0);
+        if (!Number.isSafeInteger(recipientOffset) || recipientOffset < 0) {
+          sendJson(res, 400, { error: 'Recipient offset must be a non-negative integer.' });
+          return;
+        }
         const requests = readJsonFileOr(telegramUserBroadcastFiles.requests, []);
         const state = readJsonFileOr(telegramUserBroadcastFiles.state, { jobs: {} });
         if (!Array.isArray(requests) || !state?.jobs || typeof state.jobs !== 'object') {
           throw new Error('Invalid Telegram account broadcast data.');
         }
+        const groupRoster = Array.isArray(state.groupRoster)
+          ? state.groupRoster.filter(member =>
+            member && typeof member === 'object' &&
+            (typeof member.userId === 'string' || Number.isSafeInteger(member.userId)))
+          : [];
+        const privateChatUserIds = getTelegramPrivateChatUserIds(progress, telegramGroupId);
+        const audienceVersion = getTelegramGroupAudienceVersion(groupRoster, privateChatUserIds);
+        const audienceFilter = requestUrl.searchParams.get('filter') || 'all';
+        if (!['all', 'not-messaged-privately'].includes(audienceFilter)) {
+          sendJson(res, 400, { error: 'Choose a supported group member filter.' });
+          return;
+        }
+        const filteredGroupRoster = groupRoster
+          .map(member => ({
+            ...member,
+            hasPrivateChat: privateChatUserIds.has(String(member.userId))
+          }))
+          .filter(member =>
+            audienceFilter !== 'not-messaged-privately' || !member.hasPrivateChat);
         const heartbeat = Date.parse(state.worker?.lastHeartbeatAt || '');
         const workerConnected = state.worker?.connected === true &&
           Number.isFinite(heartbeat) && Date.now() - heartbeat < 30_000;
@@ -3150,8 +3384,39 @@ export function createAdminDashboardServer({
           };
         });
         sendJson(res, 200, {
-          optedInCount: optedIn.length,
-          optedInStudents: optedIn,
+          optedInCount: optedInStudents.length,
+          ...(requestUrl.searchParams.get('audience') === 'group-members' ? {
+            groupMemberCount: filteredGroupRoster.length,
+            allGroupMemberCount: groupRoster.length,
+            groupRosterSyncedAt: state.groupRosterSyncedAt || null,
+            groupRosterUpdatedAt: state.groupRosterUpdatedAt || null,
+            groupAudienceVersion: audienceVersion,
+            groupAudienceFilter: audienceFilter,
+            ...(requestUrl.searchParams.get('includeStudents') === 'true' ? {
+              groupMembers: filteredGroupRoster
+                .slice(recipientOffset, recipientOffset + 30)
+                .map(member => ({
+                  userId: String(member.userId),
+                  name: typeof member.name === 'string' && member.name.trim()
+                    ? member.name
+                    : `Telegram user ${member.userId}`,
+                  username: typeof member.username === 'string' ? member.username : null,
+                  hasPrivateChat: member.hasPrivateChat
+                })),
+              groupMemberOffset: recipientOffset
+            } : {})
+          } : {}),
+          ...(requestUrl.searchParams.get('includeStudents') === 'true' ? {
+            optedInStudents: optedInStudents.slice(recipientOffset, recipientOffset + 30).map(student => ({
+              userId: String(student.telegramUserId),
+              name: student.name || student.telegramUsername || `Telegram user ${student.telegramUserId}`,
+              optedInAt: student.telegramAnnouncementsOptInAt || null,
+              lessonsCompleted: Number.isSafeInteger(student.lessonsCompleted) && student.lessonsCompleted > 0
+                ? student.lessonsCompleted
+                : 0
+            })),
+            optedInOffset: recipientOffset
+          } : {}),
           workerConnected,
           workerError: state.worker?.error || null,
           jobs

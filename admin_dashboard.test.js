@@ -77,11 +77,23 @@ test('dashboard data cache reuses a snapshot and reloads when a source file chan
   }
 });
 
+test('dashboard serves its favicon as an SVG image', async t => {
+  const server = createAdminDashboardServer();
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/favicon.svg`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /^image\/svg\+xml/);
+  assert.match(await response.text(), /<svg\b/);
+});
+
 test('Telegram dashboard summary and progress endpoints do not load WhatsApp dashboard data', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-dashboard-fast-path-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const progressFile = path.join(directory, 'telegram_progress.json');
   const lessonsFile = path.join(directory, 'lessons.json');
+  const telegramAccountStateFile = path.join(directory, 'telegram_user_broadcast_state.json');
   fs.writeFileSync(progressFile, JSON.stringify({
     'telegram:-1001:10': {
       name: 'مريم',
@@ -101,6 +113,13 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
       lessons: [{ id: 'lesson_1', title: 'Lesson One' }]
     }
   }));
+  const presenceSyncedAt = new Date().toISOString();
+  fs.writeFileSync(telegramAccountStateFile, JSON.stringify({
+    groupRosterSyncedAt: presenceSyncedAt,
+    onlineGroupMembersCount: 7,
+    onlineGroupMembersUpdatedAt: presenceSyncedAt,
+    groupRoster: [{ userId: '10', presence: 'online' }]
+  }));
   let memberCountCalls = 0;
   const server = createAdminDashboardServer({
     readData: () => {
@@ -108,6 +127,10 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
     },
     telegramProgressFile: progressFile,
     lessonsFile,
+    telegramUserBroadcastFiles: {
+      requests: path.join(directory, 'telegram_user_broadcasts.json'),
+      state: telegramAccountStateFile
+    },
     telegramGroupId: '-1001',
     telegramMemberCountProvider: async groupId => {
       assert.equal(groupId, '-1001');
@@ -141,11 +164,16 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   assert.equal(overview.awaitingTask, 1);
   assert.equal(progress.students.length, 1);
   assert.equal(progress.students[0].platform, 'Telegram');
+  assert.equal(progress.students[0].telegramPresence, 'online');
+  assert.equal(progress.students[0].telegramPresenceUpdatedAt, presenceSyncedAt);
 
   const statsResponse = await fetch(`${origin}/telegram-stats?timeZone=UTC`);
   assert.equal(statsResponse.status, 200);
   const stats = await statsResponse.json();
   assert.equal(stats.totalGroupMembers, 245);
+  assert.equal(stats.onlineGroupMembers, 7);
+  assert.equal(stats.onlineGroupMembersStatus, 'available');
+  assert.equal(stats.onlineGroupMembersUpdatedAt, presenceSyncedAt);
   assert.equal(stats.trackedLearners, 1);
   assert.equal(stats.joinsToday, 1);
   assert.equal(stats.dailyStats.length, 30);
@@ -153,6 +181,22 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   assert.equal(stats.dailyStats.at(-1).activeLearners, 1);
   await fetch(`${origin}/telegram-stats?timeZone=UTC`);
   assert.equal(memberCountCalls, 1);
+
+  const stalePresence = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  fs.writeFileSync(telegramAccountStateFile, JSON.stringify({
+    groupRosterSyncedAt: stalePresence,
+    onlineGroupMembersCount: 12,
+    onlineGroupMembersUpdatedAt: stalePresence,
+    groupRoster: [{ userId: '10', presence: 'online' }]
+  }));
+  const [staleProgressResponse, staleStatsResponse] = await Promise.all([
+    fetch(`${origin}/telegram-progress?timeZone=UTC`),
+    fetch(`${origin}/telegram-stats?timeZone=UTC`)
+  ]);
+  assert.equal((await staleProgressResponse.json()).students[0].telegramPresence, 'unknown');
+  const staleStats = await staleStatsResponse.json();
+  assert.equal(staleStats.onlineGroupMembers, null);
+  assert.equal(staleStats.onlineGroupMembersStatus, 'stale');
 
   const invalidTimeZoneResponse = await fetch(`${origin}/telegram-overview?timeZone=Not%2FAZone`);
   assert.equal(invalidTimeZoneResponse.status, 400);
@@ -274,7 +318,7 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
       telegramCelebrationsOptIn: false,
       lessonCompletionTimestamps: [
         new Date(now).toISOString(),
-        new Date(now - 60 * 60 * 1000).toISOString(),
+        new Date(now - 1).toISOString(),
         new Date(now - 9 * 24 * 60 * 60 * 1000).toISOString()
       ]
     },
@@ -315,10 +359,22 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   ]);
   assert.equal(preview.groupConfigured, true);
   assert.equal(preview.botConfigured, true);
+  assert.equal(preview.period, 'weekly');
   assert.match(preview.message, /Zeinab/);
   assert.match(preview.message, /Amina/);
   assert.doesNotMatch(preview.message, /No completions/);
   assert.equal(sentMessages.length, 0);
+
+  const dailyResponse = await fetch(`${leaderboardUrl}?period=daily`);
+  assert.equal(dailyResponse.status, 200);
+  const dailyPreview = await dailyResponse.json();
+  assert.equal(dailyPreview.period, 'daily');
+  assert.deepEqual(dailyPreview.students.map(student => [student.name, student.lessonsCompleted]), [
+    ['Zeinab', 2],
+    ['Amina', 1]
+  ]);
+  assert.match(dailyPreview.message, /لوحة إنجازات اليوم/);
+  assert.doesNotMatch(dailyPreview.message, /No completions/);
 
   const shareResponse = await fetch(leaderboardUrl, {
     method: 'POST',
@@ -332,6 +388,22 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].chatId, '-1001');
   assert.equal(sentMessages[0].message, preview.message);
+
+  const shareDailyResponse = await fetch(`${leaderboardUrl}?period=daily`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  assert.equal(shareDailyResponse.status, 200);
+  const sharedDaily = await shareDailyResponse.json();
+  assert.equal(sharedDaily.sent, true);
+  assert.equal(sharedDaily.period, 'daily');
+  assert.equal(sharedDaily.studentsCount, 2);
+  assert.equal(sentMessages.length, 2);
+  assert.equal(sentMessages[1].message, dailyPreview.message);
+
+  const invalidPeriodResponse = await fetch(`${leaderboardUrl}?period=monthly`);
+  assert.equal(invalidPeriodResponse.status, 400);
 });
 
 const sampleData = {
@@ -2738,6 +2810,8 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
   const telegramAgentStatusFile = path.join(temporaryDirectory, 'telegram_agent_status.json');
   const telegramUpdateQueueFile = path.join(temporaryDirectory, 'telegram_update_queue.json');
   const telegramAgentControlFile = path.join(temporaryDirectory, 'telegram_agent_control.json');
+  const telegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
+  const telegramLessonSkipRequestsFile = path.join(temporaryDirectory, 'telegram_lesson_skip_requests.json');
   const telegramAgentMediaActivityFile = path.join(temporaryDirectory, 'telegram_agent_media_activity.json');
   const telegramAgentMediaRetryRequestsFile = path.join(temporaryDirectory, 'telegram_media_retry_requests.json');
   const lessonsFile = path.join(temporaryDirectory, 'lessons.json');
@@ -2762,6 +2836,28 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
     }],
     updatedAt: new Date().toISOString()
   }));
+  fs.writeFileSync(telegramProgressFile, JSON.stringify({
+    'telegram:-100123:44': { name: 'Ali', telegramUserId: 44 },
+    'telegram:-100123:45': { name: 'Sara', telegramUserId: 45 }
+  }));
+  const adminActionQueue = new LessonSkipQueue(telegramLessonSkipRequestsFile);
+  const processingRequest = adminActionQueue.enqueue({
+    requestType: 'send_lesson',
+    studentKey: 'telegram:-100123:44',
+    userId: '44',
+    currentLessonId: 'lesson_1',
+    nextLessonId: 'lesson_10',
+    nextLessonTitle: 'Lesson 10'
+  }).request;
+  adminActionQueue.enqueue({
+    requestType: 'regrade_task',
+    studentKey: 'telegram:-100123:45',
+    userId: '45',
+    currentLessonId: 'lesson_2',
+    nextLessonId: 'lesson_2',
+    nextLessonTitle: 'Recheck latest task answers'
+  });
+  adminActionQueue.claimNext();
   writeAgentMediaActivity({
     id: 'telegram-failed-video-1',
     platform: 'Telegram',
@@ -2783,6 +2879,8 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
     telegramAgentStatusFile,
     telegramUpdateQueueFile,
     telegramAgentControlFile,
+    telegramProgressFile,
+    telegramLessonSkipRequestsFile,
     telegramAgentMediaActivityFile,
     telegramAgentMediaRetryRequestsFile,
     lessonsFile
@@ -2796,6 +2894,15 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
     assert.equal(queueResponse.status, 200);
     assert.equal(queue.waiting[0].name, 'Ali');
     assert.equal(JSON.stringify(queue).includes('private student answer'), false);
+    assert.deepEqual(queue.adminActions.map(action => ({
+      name: action.name,
+      action: action.action,
+      status: action.status
+    })), [
+      { name: 'Ali', action: 'Send Lesson 10', status: 'processing' },
+      { name: 'Sara', action: 'Recheck latest task answers', status: 'queued' }
+    ]);
+    assert.equal(queue.adminActions[0].id, processingRequest.id);
 
     const pauseResponse = await fetch(`${origin}/api/admin/telegram-chat-queue-mode`, {
       method: 'POST',
@@ -3026,9 +3133,14 @@ test('student workbook API reports current data and downloads an Excel file', as
 test('dashboard event stream pushes Telegram progress updates', async () => {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-events-test-'));
   const telegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
+  const telegramLessonSkipRequestsFile = path.join(
+    temporaryDirectory,
+    'telegram_lesson_skip_requests.json'
+  );
   const server = createAdminDashboardServer({
     readData: () => sampleData,
-    telegramProgressFile
+    telegramProgressFile,
+    telegramLessonSkipRequestsFile
   });
   const controller = new AbortController();
   let reader;
@@ -3053,6 +3165,18 @@ test('dashboard event stream pushes Telegram progress updates', async () => {
     ]);
     assert.match(update, /event: dashboard-update/);
     assert.match(update, /telegram_progress\.json/);
+
+    fs.writeFileSync(telegramLessonSkipRequestsFile, JSON.stringify([{
+      id: 'recheck-1',
+      studentKey: 'telegram:-100123:44',
+      status: 'processing'
+    }]));
+    const queueUpdate = await Promise.race([
+      reader.read().then(result => decoder.decode(result.value)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for lesson queue update.')), 2_000))
+    ]);
+    assert.match(queueUpdate, /event: dashboard-update/);
+    assert.match(queueUpdate, /telegram_lesson_skip_requests\.json/);
   } finally {
     controller.abort();
     if (reader) await reader.cancel().catch(() => {});
@@ -3150,7 +3274,8 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
         telegramUserId: 11,
         telegramChatId: '-1001',
         telegramPrivateChatId: '11',
-        telegramAnnouncementsOptIn: true
+        telegramAnnouncementsOptIn: true,
+        lessonsCompleted: 4
       },
       'telegram:-1001:12': {
         name: 'Opted-out learner',
@@ -3192,8 +3317,24 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       const url = `${origin}/api/admin/telegram-user-broadcasts`;
       const summary = await (await fetch(url)).json();
       assert.equal(summary.optedInCount, 2);
-      assert.equal(summary.optedInStudents[0].name, 'Opted-in learner');
+      assert.equal('optedInStudents' in summary, false);
       assert.equal(summary.workerConnected, false);
+      const recipients = await (await fetch(`${url}?includeStudents=true`)).json();
+      assert.deepEqual(
+        recipients.optedInStudents.map(student => student.name),
+        ['Opted-in learner', 'Returning lesson learner']
+      );
+      assert.deepEqual(
+        recipients.optedInStudents.map(student => student.userId),
+        ['11', '15']
+      );
+      assert.deepEqual(
+        recipients.optedInStudents.map(student => student.lessonsCompleted),
+        [4, 0]
+      );
+      assert.equal(recipients.optedInOffset, 0);
+      const nextRecipients = await (await fetch(`${url}?includeStudents=true&offset=1`)).json();
+      assert.deepEqual(nextRecipients.optedInStudents.map(student => student.name), ['Returning lesson learner']);
 
       const denied = await fetch(url, {
         method: 'POST',
@@ -3225,6 +3366,233 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       assert.equal(cancelled.status, 200);
       const refreshed = await (await fetch(url)).json();
       assert.equal(refreshed.jobs[0].status, 'cancelled');
+
+      const expandedProgress = JSON.parse(fs.readFileSync(progressFile, 'utf8'));
+      for (let index = 0; index < 31; index += 1) {
+        const userId = 100 + index;
+        expandedProgress[`telegram:-1001:${userId}`] = {
+          name: `Eligible learner ${index}`,
+          telegramUserId: userId,
+          telegramChatId: '-1001',
+          telegramPrivateChatId: String(userId),
+          telegramAnnouncementsOptIn: true
+        };
+      }
+      fs.writeFileSync(progressFile, JSON.stringify(expandedProgress));
+      const firstPage = await (await fetch(`${url}?includeStudents=true`)).json();
+      assert.equal(firstPage.optedInCount, 33);
+      assert.equal(firstPage.optedInStudents.length, 30);
+      const finalPage = await (await fetch(`${url}?includeStudents=true&offset=30`)).json();
+      assert.equal(finalPage.optedInStudents.length, 3);
+      expandedProgress['telegram:-1001:11'].lessonsCompleted = 5;
+      fs.writeFileSync(progressFile, JSON.stringify(expandedProgress));
+      const updatedRecipients = await (await fetch(`${url}?includeStudents=true`)).json();
+      assert.equal(updatedRecipients.optedInStudents[0].lessonsCompleted, 5);
+
+      const personalizedWithoutName = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Special discount for you',
+          personalized: true,
+          expectedCount: 33
+        })
+      });
+      assert.equal(personalizedWithoutName.status, 400);
+
+      const stalePreview = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}',
+          personalized: true,
+          expectedCount: 32
+        })
+      });
+      assert.equal(stalePreview.status, 409);
+
+      const staleExclusion = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}',
+          personalized: true,
+          expectedCount: 33,
+          excludedUserIds: ['9999']
+        })
+      });
+      assert.equal(staleExclusion.status, 409);
+
+      const noRecipientsSelected = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}',
+          personalized: true,
+          expectedCount: 33,
+          excludedUserIds: [
+            '11',
+            '15',
+            ...Array.from({ length: 31 }, (_, index) => String(100 + index))
+          ]
+        })
+      });
+      assert.equal(noRecipientsSelected.status, 409);
+
+      const personalizedResponse = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}, enjoy your discount.',
+          personalized: true,
+          expectedCount: 33,
+          excludedUserIds: ['11']
+        })
+      });
+      assert.equal(personalizedResponse.status, 202);
+      const queuedPersonalized = await personalizedResponse.json();
+      assert.equal(queuedPersonalized.total, 32);
+      const updatedRequests = JSON.parse(fs.readFileSync(requestsFile, 'utf8'));
+      assert.equal(updatedRequests[1].personalized, true);
+      assert.equal(updatedRequests[1].text, 'Hello {{name}}, enjoy your discount.');
+      assert.deepEqual(updatedRequests[1].excludedUserIds, ['11']);
+      assert.equal(updatedRequests[1].recipients.some(recipient => recipient.userId === '11'), false);
+      assert.equal(updatedRequests[1].recipients.length, 32);
+
+      const rosterUpdatedAt = new Date().toISOString();
+      const groupRoster = [
+        { userId: '201', name: 'Group member without bot chat' },
+        { userId: '202', name: 'Opted-out group member' },
+        { userId: '203', name: 'Another group member' }
+      ];
+      const progressWithPrivateChats = JSON.parse(fs.readFileSync(progressFile, 'utf8'));
+      progressWithPrivateChats['telegram:-1001:202'] = {
+        telegramChatId: '-1001',
+        telegramUserId: 202,
+        telegramPrivateChatId: '202'
+      };
+      fs.writeFileSync(progressFile, JSON.stringify(progressWithPrivateChats));
+      fs.writeFileSync(stateFile, JSON.stringify({
+        jobs: {},
+        worker: { connected: true, lastHeartbeatAt: new Date().toISOString() },
+        groupRoster,
+        groupRosterSyncedAt: new Date().toISOString(),
+        groupRosterUpdatedAt: rosterUpdatedAt
+      }));
+      const groupPreview = await (await fetch(
+        `${url}?audience=group-members&includeStudents=true`
+      )).json();
+      assert.equal(groupPreview.groupMemberCount, 3);
+      assert.deepEqual(groupPreview.groupMembers.map(member => member.userId), [
+        '201',
+        '202',
+        '203'
+      ]);
+      assert.deepEqual(groupPreview.groupMembers.map(member => member.name), [
+        'Group member without bot chat',
+        'Opted-out group member',
+        'Another group member'
+      ]);
+      assert.deepEqual(groupPreview.groupMembers.map(member => member.hasPrivateChat), [
+        false,
+        true,
+        false
+      ]);
+      const noPrivateMessagePreview = await (await fetch(
+        `${url}?audience=group-members&filter=not-messaged-privately&includeStudents=true`
+      )).json();
+      assert.equal(noPrivateMessagePreview.groupMemberCount, 2);
+      assert.equal(noPrivateMessagePreview.allGroupMemberCount, 3);
+      assert.deepEqual(noPrivateMessagePreview.groupMembers.map(member => member.userId), [
+        '201',
+        '203'
+      ]);
+
+      const staleRoster = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}',
+          personalized: true,
+          audience: 'group-members',
+          expectedCount: 3,
+          expectedRosterUpdatedAt: new Date(Date.parse(rosterUpdatedAt) - 1000).toISOString(),
+          expectedAudienceVersion: groupPreview.groupAudienceVersion
+        })
+      });
+      assert.equal(staleRoster.status, 409);
+
+      const groupOfferResponse = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}, enjoy your discount.',
+          personalized: true,
+          audience: 'group-members',
+          audienceFilter: 'all',
+          expectedCount: 3,
+          expectedRosterUpdatedAt: rosterUpdatedAt,
+          expectedAudienceVersion: groupPreview.groupAudienceVersion,
+          excludedUserIds: ['202']
+        })
+      });
+      assert.equal(groupOfferResponse.status, 202);
+      const groupOffer = await groupOfferResponse.json();
+      assert.equal(groupOffer.total, 2);
+      const groupRequests = JSON.parse(fs.readFileSync(requestsFile, 'utf8'));
+      const queuedGroupOffer = groupRequests.find(request => request.id === groupOffer.id);
+      assert.equal(queuedGroupOffer.audience, 'group-members');
+      assert.deepEqual(queuedGroupOffer.recipients, [
+        { userId: '201', name: 'Group member without bot chat' },
+        { userId: '203', name: 'Another group member' }
+      ]);
+
+      const filteredGroupOfferResponse = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}, your offer is ready.',
+          personalized: true,
+          audience: 'group-members',
+          audienceFilter: 'not-messaged-privately',
+          expectedCount: noPrivateMessagePreview.groupMemberCount,
+          expectedRosterUpdatedAt: noPrivateMessagePreview.groupRosterUpdatedAt,
+          expectedAudienceVersion: noPrivateMessagePreview.groupAudienceVersion
+        })
+      });
+      assert.equal(filteredGroupOfferResponse.status, 202);
+      const filteredGroupOffer = await filteredGroupOfferResponse.json();
+      assert.equal(filteredGroupOffer.total, 2);
+      const afterFilteredRequests = JSON.parse(fs.readFileSync(requestsFile, 'utf8'));
+      const queuedFilteredOffer = afterFilteredRequests.find(request =>
+        request.id === filteredGroupOffer.id);
+      assert.equal(queuedFilteredOffer.audienceFilter, 'not-messaged-privately');
+      assert.deepEqual(queuedFilteredOffer.recipients, [
+        { userId: '201', name: 'Group member without bot chat' },
+        { userId: '203', name: 'Another group member' }
+      ]);
+
+      const progressAfterPrivateMessage = JSON.parse(fs.readFileSync(progressFile, 'utf8'));
+      progressAfterPrivateMessage['telegram:-1001:201'] = {
+        telegramChatId: '-1001',
+        telegramUserId: 201,
+        telegramPrivateChatId: '201'
+      };
+      fs.writeFileSync(progressFile, JSON.stringify(progressAfterPrivateMessage));
+      const stalePrivateStatusOffer = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}',
+          personalized: true,
+          audience: 'group-members',
+          audienceFilter: 'not-messaged-privately',
+          expectedCount: noPrivateMessagePreview.groupMemberCount,
+          expectedRosterUpdatedAt: noPrivateMessagePreview.groupRosterUpdatedAt,
+          expectedAudienceVersion: noPrivateMessagePreview.groupAudienceVersion
+        })
+      });
+      assert.equal(stalePrivateStatusOffer.status, 409);
     } finally {
       await new Promise(resolve => server.close(resolve));
       fs.rmSync(temporaryDirectory, { recursive: true, force: true });

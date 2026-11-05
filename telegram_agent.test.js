@@ -208,6 +208,51 @@ test('Telegram /lesson sends the lesson privately and confirms in the group', as
   assert.equal(progress.name, 'Student 44');
 });
 
+test('Telegram lesson questions resume the active lesson from student progress', async t => {
+  const { agent, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  const progress = agent.progress['telegram:-100123:44'];
+  progress.correctQuestionNumbers = [];
+  agent.saveProgress();
+
+  await agent.handleUpdate(privateUpdate({ text: 'وين الحصة؟' }));
+
+  assert.equal(sent.filter(message => message.type === 'video').length, 2);
+  assert.equal(sent.at(-2).video.toString(), 'lesson_1');
+  assert.equal(sent.at(-1).text, 'Answer question 1.');
+  assert.equal(progress.currentLessonId, 'lesson_1');
+  assert.equal(progress.status, 'awaiting_task');
+});
+
+test('Telegram lesson questions continue to the next lesson when current work is complete', async t => {
+  const { agent, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  const progress = agent.progress['telegram:-100123:44'];
+  progress.status = 'awaiting_content';
+  agent.saveProgress();
+
+  await agent.handleUpdate(privateUpdate({ text: 'الدرس وين' }));
+
+  assert.equal(sent.filter(message => message.type === 'video').length, 2);
+  assert.equal(sent.at(-2).video.toString(), 'lesson_2');
+  assert.equal(sent.at(-1).text, 'Answer question 2.');
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_2');
+  assert.equal(agent.progress['telegram:-100123:44'].status, 'awaiting_task');
+});
+
+test('Telegram ignores standalone acknowledgments instead of replying or grading them', async t => {
+  const { agent, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  const previousMessageCount = sent.length;
+  const progress = agent.progress['telegram:-100123:44'];
+
+  await agent.handleUpdate(privateUpdate({ text: 'تمام' }));
+
+  assert.equal(sent.length, previousMessageCount);
+  assert.equal(progress.status, 'awaiting_task');
+  assert.equal(progress.submissionsReceived || 0, 0);
+});
+
 test('Telegram suppresses rapid repeated group lesson requests but allows a later resend', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson', messageId: 17 }));
@@ -270,29 +315,28 @@ test('Telegram lesson requests include students in announcements unless they exp
   assert.equal(agent.progress['telegram:-100123:44'].telegramAnnouncementsOptIn, false);
 });
 
-test('Telegram students can opt into and out of group achievement celebrations', async t => {
+test('Telegram explains group celebrations are automatic when legacy commands are used', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
   assert.equal(agent.progress['telegram:-100123:44'].telegramCelebrationsOptIn, undefined);
   await agent.handleUpdate(privateUpdate({ text: '/start' }));
   assert.match(sent.find(message =>
-    message.type === 'text' && message.text.includes('/celebrations_off')).text, /الاحتفال باسمك في القروب اختياري/);
+    message.type === 'text' && message.text.includes('حنحتفل بيك في القروب')).text,
+    /حنحتفل بيك في القروب/
+  );
 
   await agent.handleUpdate(privateUpdate({ text: '/celebrations_on' }));
-  assert.equal(agent.progress['telegram:-100123:44'].telegramCelebrationsOptIn, true);
-  assert.ok(agent.progress['telegram:-100123:44'].telegramCelebrationsOptInAt);
-  assert.match(sent.at(-1).text, /رجعنا الاحتفال باسمك في القروب/);
+  assert.equal(agent.progress['telegram:-100123:44'].telegramCelebrationsOptIn, undefined);
+  assert.match(sent.at(-1).text, /بيحصل تلقائياً/);
 
   await agent.handleUpdate(privateUpdate({ text: '/celebrations_off' }));
-  assert.equal(agent.progress['telegram:-100123:44'].telegramCelebrationsOptIn, false);
-  assert.equal(agent.progress['telegram:-100123:44'].telegramCelebrationsOptInAt, null);
-  assert.match(sent.at(-1).text, /تم إيقاف الاحتفال باسمك في القروب/);
+  assert.equal(agent.progress['telegram:-100123:44'].telegramCelebrationsOptIn, undefined);
+  assert.match(sent.at(-1).text, /بيحصل تلقائياً/);
 });
 
-test('Telegram celebrates all-correct lessons in the group only after student opt-in', async t => {
+test('Telegram celebrates every all-correct lesson in the group without opt-in', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
-  await agent.handleUpdate(privateUpdate({ text: '/celebrations_on' }));
 
   await agent.handleUpdate(privateUpdate({ text: 'correct answer' }));
 
@@ -301,7 +345,7 @@ test('Telegram celebrates all-correct lessons in the group only after student op
   assert.equal(celebrations.length, 1);
   assert.equal(celebrations[0].text, `عايز أحتفل معاكم
 🎉 برافو يا Student 44!
-جاوبت تمرين الحصة Lesson 1 كامل وكل إجاباتك صحيحة 👏🌟
+تم حل تمرين الحصة Lesson 1 كامل وكل إجاباتك صحيحة 👏🌟
 
 يلا نستمر كدا بي نفس التركيز، وعقبال الشهادة يا رب! 💪`);
   assert.ok(sent.filter(message => message.type === 'text' && message.chatId === '44').some(message =>
@@ -495,23 +539,23 @@ test('Telegram accepts a typo-corrected answer and shows the right spelling priv
   assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
 });
 
-test('Telegram does not announce a group achievement before explicit student opt-in', async t => {
+test('Telegram announces a group achievement without student opt-in', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
   await agent.handleUpdate(privateUpdate({ text: 'correct answer' }));
 
   assert.equal(sent.filter(message =>
-    message.chatId === '-100123' && message.text.startsWith('عايز أحتفل معاكم')).length, 0);
+    message.chatId === '-100123' && message.text.startsWith('عايز أحتفل معاكم')).length, 1);
 });
 
-test('Telegram does not post group celebrations for students who opted out', async t => {
+test('Telegram group celebrations are not suppressed by legacy opt-out settings', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
-
+  agent.progress['telegram:-100123:44'].telegramCelebrationsOptIn = false;
   await agent.handleUpdate(privateUpdate({ text: '/celebrations_off' }));
   await agent.handleUpdate(privateUpdate({ text: 'correct answer' }));
   assert.equal(sent.filter(message =>
-    message.chatId === '-100123' && message.text.startsWith('عايز أحتفل معاكم')).length, 0);
+    message.chatId === '-100123' && message.text.startsWith('عايز أحتفل معاكم')).length, 1);
 });
 
 test('Telegram does not celebrate a lesson completed after a second wrong answer', async t => {
@@ -824,7 +868,6 @@ test('Telegram grading keeps students isolated and sends the next lesson after a
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ userId: 44, text: '/lesson', messageId: 10 }));
   await agent.handleUpdate(groupUpdate({ userId: 45, text: '/lesson', messageId: 11 }));
-  await agent.handleUpdate(privateUpdate({ userId: 44, text: '/celebrations_on' }));
   await agent.handleUpdate(privateUpdate({
     userId: 44,
     text: 'correct answer',
@@ -1061,8 +1104,10 @@ test('incorrect Telegram task answers require a reattempt without advancing', as
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
   assert.equal(agent.progress['telegram:-100123:44'].status, 'awaiting_reattempt');
   assert.match(sent.at(-1).text, /الإجابة المحتاجة تصحيح: السؤال 1: «wrong answer»/);
+  assert.match(sent.at(-1).text, /الإجابة الصحيحة «answer 1»/);
+  assert.match(sent.at(-1).text, /بعد الفاعل المفرد بنضيف s للفعل في المضارع البسيط/);
   assert.match(sent.at(-1).text, /الأسئلة المحتاجة تصحيح أو إجابة: 1/);
-  assert.match(sent.at(-1).text, /ما محتاج تعيد الإجابات الصحيحة/);
+  assert.match(sent.at(-1).text, /ما في داعي لإعادة الإجابات الصحيحة|ما محتاج تعيد الإجابات الصحيحة/);
   assert.match(sent.at(-1).text, /بدون رقم/);
   assert.equal(sent.filter(message => message.type === 'video').length, 1);
 });
@@ -1215,7 +1260,7 @@ test('Telegram explains an answer after one failed correction and sends the next
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
   assert.deepEqual(agent.progress['telegram:-100123:44'].retryQuestionNumbers, [1]);
   assert.match(sent.at(-1).text, /السؤال 1: «go»/);
-  assert.match(sent.at(-1).text, /ما محتاج تعيد الإجابات الصحيحة/);
+  assert.match(sent.at(-1).text, /ما في داعي لإعادة الإجابات الصحيحة|ما محتاج تعيد الإجابات الصحيحة/);
   assert.equal(sent.filter(message => message.type === 'video').length, 1);
 
   await agent.handleUpdate(privateUpdate({ text: 'go' }));

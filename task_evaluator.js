@@ -45,11 +45,24 @@ const TASK_EVALUATION_FORMAT = {
   additionalProperties: false
 };
 
-function getTaskFeedback(isTaskSubmission, allCorrect) {
+function getTaskFeedback(isTaskSubmission, allCorrect, incorrectAnswers = [], answerKey = []) {
   if (!isTaskSubmission) return '';
-  return allCorrect
-    ? 'صحيح، ممتاز.'
-    : 'في إجابة محتاجة تصحيح. حاول تاني.';
+  if (allCorrect) return 'صحيح، ممتاز.';
+  const explanations = incorrectAnswers.map(answer => {
+    const [expectedAnswer, answerKeyExplanation = ''] = String(
+      answerKey[answer.questionNumber - 1] || ''
+    ).split(/\s+—\s+/, 2);
+    const savedArabicExplanation = /[\u0600-\u06FF]/.test(answerKeyExplanation)
+      ? answerKeyExplanation.trim()
+      : '';
+    const explanation = savedArabicExplanation ||
+      (typeof answer.explanation === 'string' ? answer.explanation.trim() : '') ||
+      'راجع قاعدة الدرس وحاول تاني.';
+    return `السؤال ${answer.questionNumber}: الإجابة الصحيحة «${expectedAnswer.trim()}». ${explanation}`;
+  });
+  return explanations.length
+    ? explanations.join('\n')
+    : 'تمام، حفظت الإجابات الصحيحة. أرسل إجابات الأسئلة الباقية.';
 }
 
 /**
@@ -60,7 +73,7 @@ function getTaskFeedback(isTaskSubmission, allCorrect) {
  * @param {string} studentSubmission The message sent by the student
  * @param {string} studentName The student's name
  * @param {object} options Optional pending question numbers for partial corrections
- * @returns {Promise<{ isTaskSubmission: boolean, allCorrect: boolean, answeredQuestionNumbers: number[], correctQuestionNumbers: number[], incorrectAnswers: { questionNumber: number, studentAnswer: string }[], feedback: string }>}
+ * @returns {Promise<{ isTaskSubmission: boolean, allCorrect: boolean, answeredQuestionNumbers: number[], correctQuestionNumbers: number[], uncertainQuestionNumbers: number[], incorrectAnswers: { questionNumber: number, studentAnswer: string, explanation: string }[], feedback: string }>}
  */
 export async function evaluateStudentTask(
   lesson,
@@ -122,14 +135,20 @@ export async function evaluateStudentTask(
       uncertainQuestionNumbers: [],
       incorrectAnswers: [],
       ...(correctedAnswers.length ? { correctedAnswers } : {}),
-      feedback: getTaskFeedback(true, correctQuestionNumbers.length === pending.length)
+      feedback: getTaskFeedback(
+        true,
+        correctQuestionNumbers.length === pending.length,
+        [],
+        lesson.answerKey
+      )
     };
   }
 
   const pendingAnswers = remainingPending.map(questionNumber => ({
     questionNumber,
     expectedAnswer: parsedAnswers.get(questionNumber).expectedAnswer,
-    acceptedAnswers: parsedAnswers.get(questionNumber).acceptedAnswers
+    acceptedAnswers: parsedAnswers.get(questionNumber).acceptedAnswers,
+    ruleExplanation: parsedAnswers.get(questionNumber).explanation
   }));
   const gradingSubmission = remainingSubmission || studentSubmission;
 
@@ -141,7 +160,7 @@ STUDENT: "${gradingSubmission}"
 
 Only grade answers in the student's latest message; previously accepted answers are not part of this message. If the message is unrelated to this exercise, return isTaskSubmission=false and empty arrays. Otherwise, identify which pending question numbers the student actually answered. Do not require students to number their answers: infer the question from answer content, task wording, context, and order. When there is only one pending question, match a clear answer to it even if it is unnumbered. For multiple unnumbered answers, match by meaning and order when they clearly fit the remaining questions. If the mapping is genuinely ambiguous, do not guess; leave the ambiguous answer unmatched and do not mark it wrong. Never treat a missing answer as wrong or answered.
 
-Judge meaning and the grammar being tested, not exact wording. Treat listed acceptedAnswers as correct. Accept correct paraphrases, synonyms, valid equivalent forms, contractions, concise answers, and minor typos that do not change meaning. A one-word answer can be complete. Reject answers that change meaning or use the wrong form when that form is tested. If you are not confident an answer is wrong, classify its question number as uncertain instead of incorrect. An uncertain answer must appear in answeredQuestionNumbers and uncertainQuestionNumbers, but not in correctQuestionNumbers or incorrectAnswers. Never turn uncertainty into a wrong answer. answeredQuestionNumbers contains only questions answered in this message. correctQuestionNumbers and uncertainQuestionNumbers are subsets of answeredQuestionNumbers and must not overlap. incorrectAnswers must contain one entry for each answered but incorrect question; studentAnswer must be copied verbatim from the student's latest message as a concise contiguous excerpt, excluding any question-number prefix. explanation must be a concise, accurate explanation in Sudanese Arabic of why the expected answer is correct; do not reveal the expected answer inside explanation because the app supplies it separately. allCorrect is true only when this message answers every question in PENDING ANSWERS and every one is correct, with no uncertain answers.
+Judge meaning and the grammar being tested, not exact wording. Treat listed acceptedAnswers as correct. Accept correct paraphrases, synonyms, valid equivalent forms, contractions, concise answers, and minor typos that do not change meaning. A one-word answer can be complete. Reject answers that change meaning or use the wrong form when that form is tested. If you are not confident an answer is wrong, classify its question number as uncertain instead of incorrect. An uncertain answer must appear in answeredQuestionNumbers and uncertainQuestionNumbers, but not in correctQuestionNumbers or incorrectAnswers. Never turn uncertainty into a wrong answer. answeredQuestionNumbers contains only questions answered in this message. correctQuestionNumbers and uncertainQuestionNumbers are subsets of answeredQuestionNumbers and must not overlap. incorrectAnswers must contain one entry for each answered but incorrect question; studentAnswer must be copied verbatim from the student's latest message as a concise contiguous excerpt, excluding any question-number prefix. explanation must be a concise, accurate explanation in simple Sudanese Arabic of the grammar rule, using any provided ruleExplanation as guidance; do not reveal the expected answer inside explanation because the app supplies it separately. allCorrect is true only when this message answers every question in PENDING ANSWERS and every one is correct, with no uncertain answers.
 
 Return only this JSON shape. Do not generate feedback; the app sends it:
 {
@@ -178,7 +197,7 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
         if (keyIndex > 0) {
           console.log(`[Grader] Used API key ${keyIndex + 1} for task evaluation.`);
         }
-        return combineExactMatches(parsed, exactMatches, pending, correctedAnswers);
+        return combineExactMatches(parsed, exactMatches, pending, correctedAnswers, lesson);
       } catch (err) {
         lastError = err;
         console.warn(`[Grader Warning] Model ${modelName} with API key ${keyIndex + 1} grading failed:`, err.message);
@@ -197,7 +216,7 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
       throw new Error('Ollama returned task grading in an invalid format.');
     }
     console.log('[Grader] Task evaluated using local Ollama.');
-    return combineExactMatches(parsed, exactMatches, pending, correctedAnswers);
+    return combineExactMatches(parsed, exactMatches, pending, correctedAnswers, lesson);
   } catch (localError) {
     console.error('[Grader Error] Gemini and local Ollama failed:', localError.message, lastError?.message || '');
     throw new Error(`Could not evaluate the student's task: ${localError.message}`);
@@ -256,7 +275,10 @@ function parseAnswerKey(answerKeyEntry) {
     : [];
   return {
     expectedAnswer: expectedAnswer.trim(),
-    acceptedAnswers
+    acceptedAnswers,
+    explanation: acceptedMatch
+      ? explanation.slice(0, acceptedMatch.index).trim()
+      : explanation.trim()
   };
 }
 
@@ -367,7 +389,7 @@ function findNumberedAnswers(submission, pending, parsedAnswers) {
   };
 }
 
-function combineExactMatches(result, exactMatches, pending, correctedAnswers = []) {
+function combineExactMatches(result, exactMatches, pending, correctedAnswers = [], lesson) {
   const exactCorrect = [...exactMatches];
   const answeredQuestionNumbers = [...new Set([
     ...exactCorrect,
@@ -381,6 +403,16 @@ function combineExactMatches(result, exactMatches, pending, correctedAnswers = [
     .filter(number => !exactMatches.has(number))
     .sort((a, b) => a - b);
   const allCorrect = pending.every(number => correctQuestionNumbers.includes(number));
+  const incorrectAnswers = result.incorrectAnswers;
+  const incorrectFeedback = getTaskFeedback(
+    result.isTaskSubmission || exactCorrect.length > 0,
+    allCorrect,
+    incorrectAnswers,
+    lesson.answerKey
+  );
+  const uncertaintyFeedback = uncertainQuestionNumbers.length
+    ? 'ما قدرت أتأكد من بعض الإجابات، وما اعتبرتها غلط. وضّح الإجابات المحددة عشان أراجعها.'
+    : '';
   return {
     ...result,
     ...(correctedAnswers.length ? { correctedAnswers } : {}),
@@ -389,8 +421,6 @@ function combineExactMatches(result, exactMatches, pending, correctedAnswers = [
     answeredQuestionNumbers,
     correctQuestionNumbers,
     uncertainQuestionNumbers,
-    feedback: uncertainQuestionNumbers.length
-      ? 'ما قدرت أتأكد من بعض الإجابات، وما اعتبرتها غلط. وضّح الإجابات المحددة عشان أراجعها.'
-      : getTaskFeedback(result.isTaskSubmission, allCorrect)
+    feedback: [incorrectFeedback, uncertaintyFeedback].filter(Boolean).join('\n')
   };
 }
