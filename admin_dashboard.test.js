@@ -3367,6 +3367,66 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       const refreshed = await (await fetch(url)).json();
       assert.equal(refreshed.jobs[0].status, 'cancelled');
 
+      fs.writeFileSync(stateFile, JSON.stringify({
+        jobs: {
+          [queued.id]: {
+            status: 'running',
+            total: 2,
+            sent: 1,
+            skipped: 0,
+            uncertain: 0,
+            nextIndex: 1,
+            recipientResults: [
+              { index: 0, userId: '11', name: 'Opted-in learner', status: 'sent' }
+            ]
+          }
+        }
+      }));
+      const inProgressJob = (await (await fetch(`${url}?jobId=${queued.id}`)).json()).jobs[0];
+      assert.deepEqual(inProgressJob.recipientOutcomes.remaining.map(recipient => recipient.name), [
+        'Returning lesson learner'
+      ]);
+
+      fs.writeFileSync(stateFile, JSON.stringify({
+        jobs: {
+          [queued.id]: {
+            status: 'failed',
+            total: 2,
+            sent: 1,
+            skipped: 0,
+            uncertain: 1,
+            nextIndex: 1,
+            recipientResults: [
+              { index: 0, userId: '11', name: 'Opted-in learner', status: 'sent' },
+              {
+                index: 1,
+                userId: '15',
+                name: 'Returning lesson learner',
+                status: 'uncertain',
+                reason: 'Telegram send failed'
+              }
+            ],
+            error: 'Telegram send failed'
+          }
+        }
+      }));
+      const detailedJob = (await (await fetch(`${url}?jobId=${queued.id}`)).json()).jobs[0];
+      assert.equal(detailedJob.recipientDetailsComplete, true);
+      assert.deepEqual(detailedJob.recipientOutcomes.sent.map(recipient => recipient.name), [
+        'Opted-in learner'
+      ]);
+      assert.deepEqual(detailedJob.recipientOutcomes.uncertain.map(recipient => ({
+        name: recipient.name,
+        reason: recipient.reason
+      })), [{
+        name: 'Returning lesson learner',
+        reason: 'Telegram send failed'
+      }]);
+      assert.deepEqual(detailedJob.recipientOutcomes.skipped, []);
+      assert.deepEqual(detailedJob.recipientOutcomes.remaining, []);
+      const summaryJobs = (await (await fetch(url)).json()).jobs;
+      assert.equal('recipientOutcomes' in summaryJobs[0], false);
+
       const expandedProgress = JSON.parse(fs.readFileSync(progressFile, 'utf8'));
       for (let index = 0; index < 31; index += 1) {
         const userId = 100 + index;
@@ -3461,9 +3521,9 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
 
       const rosterUpdatedAt = new Date().toISOString();
       const groupRoster = [
-        { userId: '201', name: 'Group member without bot chat' },
-        { userId: '202', name: 'Opted-out group member' },
-        { userId: '203', name: 'Another group member' }
+        { userId: '201', name: 'Group member without bot chat', presence: 'online' },
+        { userId: '202', name: 'Opted-out group member', presence: 'offline' },
+        { userId: '203', name: 'Another group member', presence: 'unknown' }
       ];
       const progressWithPrivateChats = JSON.parse(fs.readFileSync(progressFile, 'utf8'));
       progressWithPrivateChats['telegram:-1001:202'] = {
@@ -3507,6 +3567,12 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
         '201',
         '203'
       ]);
+      const onlinePreview = await (await fetch(
+        `${url}?audience=group-members&filter=online-only&includeStudents=true`
+      )).json();
+      assert.equal(onlinePreview.groupMemberCount, 1);
+      assert.equal(onlinePreview.groupMembers[0].userId, '201');
+      assert.equal(onlinePreview.groupMembers[0].name, 'Group member without bot chat');
 
       const staleRoster = await fetch(url, {
         method: 'POST',
@@ -3545,6 +3611,50 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       assert.deepEqual(queuedGroupOffer.recipients, [
         { userId: '201', name: 'Group member without bot chat' },
         { userId: '203', name: 'Another group member' }
+      ]);
+      const onlineOfferResponse = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}, a reminder.',
+          personalized: true,
+          audience: 'group-members',
+          audienceFilter: 'online-only',
+          expectedCount: 1,
+          expectedRosterUpdatedAt: rosterUpdatedAt,
+          expectedAudienceVersion: groupPreview.groupAudienceVersion
+        })
+      });
+      assert.equal(onlineOfferResponse.status, 202);
+      const onlineOffer = await onlineOfferResponse.json();
+      const requestsAfterOnlineOffer = JSON.parse(fs.readFileSync(requestsFile, 'utf8'));
+      const queuedOnlineOffer = requestsAfterOnlineOffer.find(request =>
+        request.id === onlineOffer.id);
+      assert.deepEqual(queuedOnlineOffer.recipients, [
+        { userId: '201', name: 'Group member without bot chat' }
+      ]);
+      fs.writeFileSync(stateFile, JSON.stringify({
+        jobs: {
+          [groupOffer.id]: {
+            status: 'failed',
+            total: 2,
+            sent: 1,
+            skipped: 0,
+            uncertain: 1,
+            nextIndex: 1,
+            error: 'Telegram send failed'
+          }
+        }
+      }));
+      const legacyDetailedJob = (await (await fetch(
+        `${url}?jobId=${groupOffer.id}`
+      )).json()).jobs[0];
+      assert.equal(legacyDetailedJob.recipientDetailsComplete, true);
+      assert.deepEqual(legacyDetailedJob.recipientOutcomes.sent.map(recipient => recipient.name), [
+        'Group member without bot chat'
+      ]);
+      assert.deepEqual(legacyDetailedJob.recipientOutcomes.uncertain.map(recipient => recipient.name), [
+        'Another group member'
       ]);
 
       const filteredGroupOfferResponse = await fetch(url, {

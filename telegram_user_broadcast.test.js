@@ -93,6 +93,24 @@ test('Telegram user broadcasts send only to group participants who remain opted 
   assert.equal(state.jobs['job-1'].sent, 2);
   assert.equal(state.jobs['job-1'].skipped, 2);
   assert.equal(state.jobs['job-1'].nextIndex, 4);
+  assert.deepEqual(state.jobs['job-1'].recipientResults, [
+    { index: 0, userId: '11', name: 'Telegram user 11', status: 'sent' },
+    {
+      index: 1,
+      userId: '12',
+      name: 'Telegram user 12',
+      status: 'skipped',
+      reason: 'No longer eligible for private announcements.'
+    },
+    {
+      index: 2,
+      userId: '13',
+      name: 'Telegram user 13',
+      status: 'skipped',
+      reason: 'No longer a current group member.'
+    },
+    { index: 3, userId: '14', name: 'Telegram user 14', status: 'sent' }
+  ]);
 });
 
 test('Telegram user broadcasts replace every personalized name with the current student name', async t => {
@@ -286,4 +304,11 @@ test('Telegram user broadcasts stop after a send error and mark delivery uncerta
   assert.equal(state.jobs['job-error'].status, 'failed');
   assert.equal(state.jobs['job-error'].uncertain, 1);
   assert.equal(state.jobs['job-error'].nextIndex, 0);
+  assert.deepEqual(state.jobs['job-error'].recipientResults, [{
+    index: 0,
+    userId: '11',
+    name: 'Telegram user 11',
+    status: 'uncertain',
+    reason: 'Telegram send failed'
+  }]);
 });

@@ -248,6 +248,7 @@ export class TelegramUserBroadcastWorker {
         skipped: 0,
         uncertain: 0,
         nextIndex: 0,
+        recipientResults: [],
         createdAt: job.createdAt
       };
       if (!Number.isInteger(current.nextIndex) ||
@@ -268,6 +269,15 @@ export class TelegramUserBroadcastWorker {
       let skipped = current.skipped || 0;
       let uncertain = current.uncertain || 0;
       let nextIndex = current.nextIndex;
+      const recipientResults = Array.isArray(current.recipientResults)
+        ? [...current.recipientResults]
+        : [];
+      const recordRecipientResult = result => {
+        const existingIndex = recipientResults.findIndex(item => item.index === result.index);
+        if (existingIndex >= 0) recipientResults[existingIndex] = result;
+        else recipientResults.push(result);
+        recipientResults.sort((left, right) => left.index - right.index);
+      };
       this.saveJobState(state, job.id, {
         ...current,
         status: 'running',
@@ -275,7 +285,8 @@ export class TelegramUserBroadcastWorker {
         sent,
         skipped,
         uncertain,
-        nextIndex
+        nextIndex,
+        recipientResults
       });
 
       while (nextIndex < job.recipients.length) {
@@ -300,44 +311,73 @@ export class TelegramUserBroadcastWorker {
         const recipient = job.recipients[nextIndex];
         const userId = String(recipient.userId);
         const latestProgress = this.getProgress();
-        const currentStudent = Object.values(latestProgress).find(student =>
+        const knownStudent = Object.values(latestProgress).find(student =>
           String(student.telegramUserId) === userId &&
-          (job.audience === 'group-members'
-            ? String(student.telegramChatId) === this.groupId
-            : isTelegramAnnouncementRecipient(student, this.groupId)));
+          String(student.telegramChatId) === this.groupId);
+        const currentStudent = knownStudent &&
+          (job.audience === 'group-members' ||
+            isTelegramAnnouncementRecipient(knownStudent, this.groupId))
+          ? knownStudent
+          : null;
         const participant = participantEntities.get(userId);
+        const recipientName = knownStudent?.name || knownStudent?.telegramUsername ||
+          recipient.name || (participant ? getGroupMemberName(participant) : `Telegram user ${userId}`);
         if ((job.audience !== 'group-members' && !currentStudent) || !participant) {
+          const reason = !participant
+            ? 'No longer a current group member.'
+            : 'No longer eligible for private announcements.';
           skipped += 1;
+          recordRecipientResult({
+            index: nextIndex,
+            userId,
+            name: recipientName,
+            status: 'skipped',
+            reason
+          });
           nextIndex += 1;
-          this.saveJobState(latestState, job.id, {
+          const stateBeforeSave = this.getState();
+          this.saveJobState(stateBeforeSave, job.id, {
+            ...stateBeforeSave.jobs[job.id],
             status: 'running',
             total: job.recipients.length,
             sent,
             skipped,
             uncertain,
-            nextIndex: nextIndex + 1,
+            nextIndex,
+            recipientResults: [...recipientResults],
             createdAt: job.createdAt
           });
           continue;
         }
 
         try {
-          const recipientName = currentStudent?.name || currentStudent?.telegramUsername ||
-            recipient.name || getGroupMemberName(participant) ||
-            `Telegram user ${userId}`;
           const message = job.personalized === true
             ? job.text.replaceAll('{{name}}', recipientName)
             : job.text;
           await this.client.sendMessage(participant, { message });
           sent += 1;
+          recordRecipientResult({
+            index: nextIndex,
+            userId,
+            name: recipientName,
+            status: 'sent'
+          });
           nextIndex += 1;
-          this.saveJobState(latestState, job.id, {
-            status: nextIndex >= job.recipients.length ? 'completed' : 'running',
+          const stateBeforeSave = this.getState();
+          const latestJobState = stateBeforeSave.jobs[job.id] || {};
+          this.saveJobState(stateBeforeSave, job.id, {
+            ...latestJobState,
+            status: nextIndex >= job.recipients.length
+              ? 'completed'
+              : latestJobState.status === 'cancellation_requested'
+                ? 'cancellation_requested'
+                : 'running',
             total: job.recipients.length,
             sent,
             skipped,
             uncertain,
             nextIndex,
+            recipientResults: [...recipientResults],
             createdAt: job.createdAt,
             ...(nextIndex >= job.recipients.length ? { completedAt: new Date().toISOString() } : {})
           });
@@ -346,13 +386,23 @@ export class TelegramUserBroadcastWorker {
           }
         } catch (error) {
           uncertain += 1;
-          this.saveJobState(latestState, job.id, {
+          recordRecipientResult({
+            index: nextIndex,
+            userId,
+            name: recipientName,
+            status: 'uncertain',
+            reason: error.message
+          });
+          const stateBeforeSave = this.getState();
+          this.saveJobState(stateBeforeSave, job.id, {
+            ...stateBeforeSave.jobs[job.id],
             status: 'failed',
             total: job.recipients.length,
             sent,
             skipped,
             uncertain,
             nextIndex,
+            recipientResults: [...recipientResults],
             error: error.message,
             createdAt: job.createdAt,
             completedAt: new Date().toISOString()
@@ -371,6 +421,7 @@ export class TelegramUserBroadcastWorker {
           skipped,
           uncertain,
           nextIndex,
+          recipientResults: [...recipientResults],
           createdAt: job.createdAt,
           completedAt: new Date().toISOString()
         });

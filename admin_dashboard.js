@@ -1936,7 +1936,7 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
     const privateChatUserIds = getTelegramPrivateChatUserIds(progress, groupId);
     const audienceVersion = getTelegramGroupAudienceVersion(groupRoster, privateChatUserIds);
     const audienceFilter = body.audienceFilter || 'all';
-    if (!['all', 'not-messaged-privately'].includes(audienceFilter)) {
+    if (!['all', 'not-messaged-privately', 'online-only'].includes(audienceFilter)) {
       sendJson(res, 400, { error: 'Choose a supported group member filter.' });
       return;
     }
@@ -1970,7 +1970,8 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
           : `Telegram user ${member.userId}`,
         hasPrivateChat: privateChatUserIds.has(String(member.userId))
       })).filter(member =>
-        audienceFilter !== 'not-messaged-privately' || !member.hasPrivateChat)
+        (audienceFilter !== 'not-messaged-privately' || !member.hasPrivateChat) &&
+        (audienceFilter !== 'online-only' || member.presence === 'online'))
       : Object.values(progress)
         .filter(student => isTelegramAnnouncementRecipient(student, groupId))
         .map(student => ({ userId: String(student.telegramUserId) }));
@@ -2497,6 +2498,13 @@ export function createAdminDashboardServer({
   }
 
   const server = http.createServer((req, res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    res.setHeader('Cache-Control', 'no-store');
     const requestUrl = new URL(req.url, 'http://127.0.0.1');
 
     if (requestUrl.pathname.startsWith('/api/admin/auth/')) {
@@ -2560,6 +2568,15 @@ export function createAdminDashboardServer({
 
     if (requestUrl.pathname.startsWith('/api/admin/') && !authManager.isAuthenticated(req)) {
       sendJson(res, 401, { error: 'Dashboard login required.' });
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith('/api/admin/') &&
+        ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) &&
+        !isSameOriginLoopbackRequest(req)) {
+      sendJson(res, 403, {
+        error: 'State-changing dashboard requests must come from this local dashboard.'
+      });
       return;
     }
 
@@ -3347,7 +3364,7 @@ export function createAdminDashboardServer({
         const privateChatUserIds = getTelegramPrivateChatUserIds(progress, telegramGroupId);
         const audienceVersion = getTelegramGroupAudienceVersion(groupRoster, privateChatUserIds);
         const audienceFilter = requestUrl.searchParams.get('filter') || 'all';
-        if (!['all', 'not-messaged-privately'].includes(audienceFilter)) {
+        if (!['all', 'not-messaged-privately', 'online-only'].includes(audienceFilter)) {
           sendJson(res, 400, { error: 'Choose a supported group member filter.' });
           return;
         }
@@ -3357,11 +3374,18 @@ export function createAdminDashboardServer({
             hasPrivateChat: privateChatUserIds.has(String(member.userId))
           }))
           .filter(member =>
-            audienceFilter !== 'not-messaged-privately' || !member.hasPrivateChat);
+            (audienceFilter !== 'not-messaged-privately' || !member.hasPrivateChat) &&
+            (audienceFilter !== 'online-only' || member.presence === 'online'));
         const heartbeat = Date.parse(state.worker?.lastHeartbeatAt || '');
         const workerConnected = state.worker?.connected === true &&
           Number.isFinite(heartbeat) && Date.now() - heartbeat < 30_000;
-        const jobs = requests.slice(-20).reverse().map(request => {
+        const detailedJobId = requestUrl.searchParams.get('jobId');
+        const recentRequests = requests.slice(-20).reverse();
+        if (detailedJobId && !recentRequests.some(request => request.id === detailedJobId)) {
+          sendJson(res, 404, { error: 'Telegram broadcast not found in recent announcements.' });
+          return;
+        }
+        const jobs = recentRequests.map(request => {
           const jobState = state.jobs[request.id] || {
             status: request.cancelled ? 'cancelled' : 'queued',
             total: request.recipients.length,
@@ -3369,7 +3393,7 @@ export function createAdminDashboardServer({
             skipped: 0,
             uncertain: 0
           };
-          return {
+          const job = {
             id: request.id,
             status: request.cancelled && jobState.status === 'running'
               ? 'cancellation_requested'
@@ -3382,6 +3406,94 @@ export function createAdminDashboardServer({
             completedAt: jobState.completedAt || null,
             error: jobState.error || null
           };
+          if (request.id === detailedJobId) {
+            const recipientResults = Array.isArray(jobState.recipientResults)
+              ? jobState.recipientResults
+              : [];
+            const resultByIndex = new Map();
+            for (const result of recipientResults) {
+              if (!Number.isSafeInteger(result?.index) ||
+                  result.index < 0 ||
+                  result.index >= request.recipients.length ||
+                  String(request.recipients[result.index]?.userId) !== String(result.userId) ||
+                  !['sent', 'skipped', 'uncertain'].includes(result.status)) continue;
+              resultByIndex.set(result.index, {
+                index: result.index,
+                userId: String(result.userId),
+                name: typeof result.name === 'string' && result.name.trim()
+                  ? result.name.trim()
+                  : request.recipients[result.index].name ||
+                    `Telegram user ${result.userId}`,
+                ...(typeof result.reason === 'string' && result.reason
+                  ? { reason: result.reason }
+                  : {}),
+                status: result.status
+              });
+            }
+            const uncertainCount = Number.isSafeInteger(jobState.uncertain) ? jobState.uncertain : 0;
+            const recordedUncertain = [...resultByIndex.values()]
+              .filter(result => result.status === 'uncertain').length;
+            if (jobState.status === 'failed' &&
+                recordedUncertain < uncertainCount &&
+                Number.isSafeInteger(jobState.nextIndex) &&
+                jobState.nextIndex >= 0 &&
+                jobState.nextIndex < request.recipients.length) {
+              const index = jobState.nextIndex;
+              const recipient = request.recipients[index];
+              resultByIndex.set(index, {
+                index,
+                userId: String(recipient.userId),
+                name: recipient.name || `Telegram user ${recipient.userId}`,
+                ...(jobState.error ? { reason: jobState.error } : {}),
+                status: 'uncertain'
+              });
+            }
+            const sentCount = Number.isSafeInteger(jobState.sent) ? jobState.sent : 0;
+            const skippedCount = Number.isSafeInteger(jobState.skipped) ? jobState.skipped : 0;
+            if (resultByIndex.size === 0 &&
+                skippedCount === 0 &&
+                sentCount > 0 &&
+                Number.isSafeInteger(jobState.nextIndex) &&
+                sentCount <= jobState.nextIndex) {
+              for (let index = 0; index < sentCount; index += 1) {
+                const recipient = request.recipients[index];
+                resultByIndex.set(index, {
+                  index,
+                  userId: String(recipient.userId),
+                  name: typeof recipient.name === 'string' && recipient.name.trim()
+                    ? recipient.name.trim()
+                    : `Telegram user ${recipient.userId}`,
+                  status: 'sent'
+                });
+              }
+            }
+            const results = [...resultByIndex.values()];
+            const outcomes = {
+              sent: results.filter(result => result.status === 'sent'),
+              skipped: results.filter(result => result.status === 'skipped'),
+              uncertain: results.filter(result => result.status === 'uncertain'),
+              remaining: request.recipients
+                .map((recipient, index) => ({ recipient, index }))
+                .filter(({ index }) =>
+                  index >= (Number.isSafeInteger(jobState.nextIndex) ? jobState.nextIndex : 0) &&
+                  !resultByIndex.has(index))
+                .map(({ recipient, index }) => ({
+                  index,
+                  userId: String(recipient.userId),
+                  name: typeof recipient.name === 'string' && recipient.name.trim()
+                    ? recipient.name.trim()
+                    : `Telegram user ${recipient.userId}`,
+                  status: 'remaining'
+                }))
+            };
+            const recipientDetailsComplete =
+              outcomes.sent.length === sentCount &&
+              outcomes.skipped.length === skippedCount &&
+              outcomes.uncertain.length === uncertainCount;
+            job.recipientOutcomes = outcomes;
+            job.recipientDetailsComplete = recipientDetailsComplete;
+          }
+          return job;
         });
         sendJson(res, 200, {
           optedInCount: optedInStudents.length,

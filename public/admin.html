@@ -36,10 +36,17 @@
     .auth-card h1 { margin: 0 0 5px; font-size: 22px; letter-spacing: -.5px; }
     .auth-card > p { margin: 0 0 20px; color: var(--muted); font-size: 12px; }
     .auth-form { display: grid; gap: 12px; }
-    .auth-form label { display: grid; gap: 5px; font-size: 11px; font-weight: 650; }
-    .auth-form label[hidden] { display: none; }
+    .auth-form .auth-field { display: grid; gap: 5px; }
+    .auth-form .auth-field[hidden] { display: none; }
+    .auth-form label { font-size: 11px; font-weight: 650; }
     .auth-form input { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; }
     .auth-form input:focus { outline: 0; border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
+    .auth-password-control { position: relative; }
+    .auth-password-control input { padding-right: 64px; }
+    .auth-password-toggle { position: absolute; top: 50%; right: 9px; transform: translateY(-50%); border: 0; padding: 4px; color: #326a4f; background: transparent; font-size: 11px; font-weight: 700; }
+    .auth-password-toggle:focus-visible { outline: 2px solid #137b5a; outline-offset: 2px; border-radius: 3px; }
+    .auth-caps-warning { margin: 0; color: #9a5c08; font-size: 10px; font-weight: 650; }
+    .auth-caps-warning[hidden] { display: none; }
     .auth-form .primary-button { min-height: 42px; margin-top: 4px; }
     .auth-error { min-height: 18px; margin: 0; color: var(--red); font-size: 11px; }
     .auth-help { margin-top: 15px; color: var(--muted); font-size: 10px; }
@@ -227,6 +234,11 @@
     .telegram-stats-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
     .telegram-stats-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
     .telegram-stat-card { padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .telegram-stat-action { width: 100%; color: inherit; font: inherit; text-align: left; }
+    .telegram-stat-action > span { display: block; }
+    .telegram-stat-action:not(:disabled) { cursor: pointer; }
+    .telegram-stat-action:not(:disabled):hover, .telegram-stat-action:not(:disabled):focus-visible { border-color: #9dc8ae; box-shadow: 0 0 0 3px #137b5a15; outline: none; }
+    .telegram-stat-action:disabled { cursor: default; }
     .telegram-stat-label { color: var(--muted); font-size: 10px; font-weight: 650; }
     .telegram-stat-value { margin-top: 5px; font-size: 21px; font-weight: 760; }
     .telegram-stat-foot { margin-top: 2px; color: #94a099; font-size: 9px; }
@@ -602,9 +614,14 @@
     .discount-offer-delivery-progress::-webkit-progress-value { border-radius: 99px; background: var(--green); transition: width .25s ease; }
     .discount-offer-delivery-progress::-moz-progress-bar { border-radius: 99px; background: var(--green); }
     .discount-offer-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
-    .discount-offer-metric { padding: 8px; border-radius: 7px; background: white; }
-    .discount-offer-metric span { display: block; color: var(--muted); font-size: 9px; }
+    .discount-offer-metric { min-width: 0; padding: 8px; border-radius: 7px; background: white; }
+    .discount-offer-metric summary { display: flex; align-items: baseline; justify-content: space-between; gap: 5px; color: var(--muted); font-size: 9px; cursor: pointer; }
     .discount-offer-metric strong { display: block; margin-top: 3px; font-size: 15px; }
+    .discount-offer-metric summary strong { margin-top: 0; }
+    .discount-offer-outcome-list { max-height: 120px; overflow-y: auto; margin: 7px 0 0; padding-left: 17px; color: var(--ink); font-size: 10px; }
+    .discount-offer-outcome-list li { margin: 3px 0; overflow-wrap: anywhere; }
+    .discount-offer-outcome-list small { display: block; color: var(--muted); font-size: 9px; }
+    .discount-offer-details-note { color: var(--muted) !important; font-size: 10px !important; }
     .discount-offer-delivery-error { color: var(--red) !important; }
     .discount-offer-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
     @media (max-width: 460px) { .discount-offer-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -780,8 +797,22 @@
       <h1 id="auth-title">Unlock your dashboard</h1>
       <p id="auth-description">Enter your dashboard password to view student and contact information.</p>
       <form class="auth-form" id="auth-form">
-        <label for="auth-password">Password<input id="auth-password" type="password" autocomplete="current-password" required></label>
-        <label for="auth-confirm-password" id="auth-confirm-label" hidden>Confirm password<input id="auth-confirm-password" type="password" autocomplete="new-password"></label>
+        <div class="auth-field">
+          <label for="auth-password">Password</label>
+          <span class="auth-password-control">
+            <input id="auth-password" type="password" autocomplete="current-password" aria-describedby="auth-password-caps" required>
+            <button class="auth-password-toggle" type="button" aria-controls="auth-password" aria-pressed="false">Show</button>
+          </span>
+          <span class="auth-caps-warning" id="auth-password-caps" role="status" hidden>Caps Lock is on.</span>
+        </div>
+        <div class="auth-field" id="auth-confirm-field" hidden>
+          <label for="auth-confirm-password">Confirm password</label>
+          <span class="auth-password-control">
+            <input id="auth-confirm-password" type="password" autocomplete="new-password" aria-describedby="auth-confirm-password-caps">
+            <button class="auth-password-toggle" type="button" aria-controls="auth-confirm-password" aria-pressed="false">Show</button>
+          </span>
+          <span class="auth-caps-warning" id="auth-confirm-password-caps" role="status" hidden>Caps Lock is on.</span>
+        </div>
         <p class="auth-error" id="auth-error" aria-live="polite"></p>
         <button class="primary-button" id="auth-submit" type="submit">Unlock dashboard</button>
       </form>
@@ -1427,12 +1458,13 @@
       <dialog class="discount-offer-dialog" id="discount-offer-dialog" aria-labelledby="discount-offer-title">
         <form class="discount-offer-form" id="discount-offer-form">
           <h2 id="discount-offer-title">Send a personalized discount offer</h2>
-          <p>The recipient list includes all current human members of the configured Telegram group, even if they have never privately messaged the bot. While this dialog is open, it refreshes for new members about every 10 seconds (the sender syncs the group list about every 30 seconds). The offer's audience is fixed when you confirm it; later joiners appear in future offers. The sender checks group membership again before delivery, so departed members may be skipped.</p>
+          <p id="discount-offer-description">The recipient list includes all current human members of the configured Telegram group, even if they have never privately messaged the bot. While this dialog is open, it refreshes for new members about every 10 seconds (the sender syncs the group list about every 30 seconds). The offer's audience is fixed when you confirm it; later joiners appear in future offers. The sender checks group membership again before delivery, so departed members may be skipped.</p>
           <p id="discount-offer-audience" aria-live="polite">Loading recipient count and sender status…</p>
           <label for="discount-offer-filter">Recipient filter
             <select id="discount-offer-filter">
               <option value="all">All current group members</option>
               <option value="not-messaged-privately">Have not messaged the bot privately</option>
+              <option value="online-only">Reported online in the latest snapshot</option>
             </select>
           </label>
           <label for="discount-offer-message">Message template <span>Use <code>{{name}}</code> for the student's name.</span></label>
@@ -1453,12 +1485,13 @@
             </div>
             <progress class="discount-offer-delivery-progress" id="discount-offer-delivery-progress" max="1" value="0" aria-label="Discount offer delivery progress"></progress>
             <div class="discount-offer-metrics">
-              <div class="discount-offer-metric"><span>Sent</span><strong id="discount-offer-sent">0</strong></div>
-              <div class="discount-offer-metric"><span>Skipped</span><strong id="discount-offer-skipped">0</strong></div>
-              <div class="discount-offer-metric"><span>Uncertain</span><strong id="discount-offer-uncertain">0</strong></div>
-              <div class="discount-offer-metric"><span>Remaining</span><strong id="discount-offer-remaining">0</strong></div>
+              <details class="discount-offer-metric" data-discount-offer-outcome="sent"><summary>Sent <strong id="discount-offer-sent">0</strong></summary><ul class="discount-offer-outcome-list" id="discount-offer-sent-list"></ul></details>
+              <details class="discount-offer-metric" data-discount-offer-outcome="skipped"><summary>Skipped <strong id="discount-offer-skipped">0</strong></summary><ul class="discount-offer-outcome-list" id="discount-offer-skipped-list"></ul></details>
+              <details class="discount-offer-metric" data-discount-offer-outcome="uncertain"><summary>Uncertain <strong id="discount-offer-uncertain">0</strong></summary><ul class="discount-offer-outcome-list" id="discount-offer-uncertain-list"></ul></details>
+              <details class="discount-offer-metric" data-discount-offer-outcome="remaining"><summary>Remaining <strong id="discount-offer-remaining">0</strong></summary><ul class="discount-offer-outcome-list" id="discount-offer-remaining-list"></ul></details>
             </div>
             <p id="discount-offer-delivery-detail">Waiting for the sender to start.</p>
+            <p class="discount-offer-details-note" id="discount-offer-details-note" hidden></p>
             <p class="discount-offer-delivery-error" id="discount-offer-delivery-error" hidden></p>
           </section>
           <p id="discount-offer-status" role="status" aria-live="polite"></p>
@@ -2211,7 +2244,7 @@
       $('#auth-description').textContent = setupRequired
         ? 'Choose a strong password to protect student and contact information on this device.'
         : 'Enter your dashboard password to view student and contact information.';
-      $('#auth-confirm-label').hidden = !setupRequired;
+      $('#auth-confirm-field').hidden = !setupRequired;
       $('#auth-password').autocomplete = setupRequired ? 'new-password' : 'current-password';
       $('#auth-confirm-password').required = setupRequired;
       $('#auth-submit').textContent = setupRequired ? 'Set password and unlock' : 'Unlock dashboard';
@@ -2221,6 +2254,12 @@
       $('#auth-error').textContent = '';
       $('#auth-password').value = '';
       $('#auth-confirm-password').value = '';
+      document.querySelectorAll('.auth-password-control input').forEach(input => {
+        input.type = 'password';
+        input.nextElementSibling.textContent = 'Show';
+        input.nextElementSibling.setAttribute('aria-pressed', 'false');
+        input.closest('.auth-field').querySelector('.auth-caps-warning').hidden = true;
+      });
       $('#auth-password').focus();
     }
 
@@ -2832,17 +2871,19 @@
           <div class="telegram-stat-value">${escapeHtml(memberValue)}</div>
           <div class="telegram-stat-foot">${escapeHtml(memberFoot)}</div>
         </div>
-        <div class="telegram-stat-card">
-        <div class="telegram-stat-label">Online now</div>
-        <div class="telegram-stat-value">${stats.onlineGroupMembers === null
+        <button class="telegram-stat-card telegram-stat-action" type="button" data-open-online-members
+          aria-label="View group members reported online and prepare a message"
+          ${stats.onlineGroupMembersStatus !== 'available' ? 'disabled' : ''}>
+        <span class="telegram-stat-label">Online now · View names</span>
+        <span class="telegram-stat-value">${stats.onlineGroupMembers === null
           ? 'Unavailable'
-          : stats.onlineGroupMembers.toLocaleString()}</div>
-        <div class="telegram-stat-foot">${stats.onlineGroupMembersStatus === 'available'
-          ? `Telegram account checked ${escapeHtml(new Date(stats.onlineGroupMembersUpdatedAt).toLocaleTimeString())}`
+          : stats.onlineGroupMembers.toLocaleString()}</span>
+        <span class="telegram-stat-foot">${stats.onlineGroupMembersStatus === 'available'
+          ? `Snapshot from ${escapeHtml(new Date(stats.onlineGroupMembersUpdatedAt).toLocaleTimeString())}`
           : stats.onlineGroupMembersStatus === 'stale'
             ? `Last checked ${escapeHtml(new Date(stats.onlineGroupMembersUpdatedAt).toLocaleTimeString())}; waiting for a fresh sync`
-            : 'Waiting for Telegram account presence sync'}</div>
-        </div>
+            : 'Waiting for Telegram account presence sync'}</span>
+        </button>
         <div class="telegram-stat-card">
           <div class="telegram-stat-label">Tracked learners</div>
           <div class="telegram-stat-value">${stats.trackedLearners.toLocaleString()}</div>
@@ -4895,6 +4936,12 @@
     let discountOfferQueued = false;
     let discountOfferJobId = null;
     let discountOfferJobTerminal = false;
+    let discountOfferRecipientOutcomes = {
+      sent: [],
+      skipped: [],
+      uncertain: [],
+      remaining: []
+    };
     let discountOfferTrackingTimer = null;
     let discountOfferRosterTimer = null;
 
@@ -4942,7 +4989,9 @@
       const selectedCount = discountOfferCount - discountOfferExcludedUserIds.size;
       const filterLabel = discountOfferAudienceFilter === 'not-messaged-privately'
         ? 'group member who has not messaged the bot privately'
-        : 'current group member';
+        : discountOfferAudienceFilter === 'online-only'
+          ? 'member reported online in the latest snapshot'
+          : 'current group member';
       const workerStatus = discountOfferWorkerConnected
         ? 'Personal Telegram account sender is connected.'
         : 'Sender is offline; start it on this computer with npm run telegram-broadcast.';
@@ -4954,7 +5003,9 @@
         `${selectedCount.toLocaleString()} of ${discountOfferCount.toLocaleString()} ${filterLabel}${discountOfferCount === 1 ? '' : 's'} selected for this offer. ${workerStatus}${discountOfferWorkerConnected && !rosterIsFresh ? ' Waiting for a fresh group roster; restart the Telegram account sender if this persists.' : ''}${selectedCount > 500 ? ' Offers are limited to 500 recipients; remove some members to continue.' : ''}${discountOfferWorkerError ? ` Last error: ${discountOfferWorkerError}` : ''}`;
       $('#discount-offer-list-heading').textContent = discountOfferAudienceFilter === 'not-messaged-privately'
         ? 'Members who have not messaged the bot privately'
-        : 'Current group members';
+        : discountOfferAudienceFilter === 'online-only'
+          ? 'Members reported online in the latest snapshot'
+          : 'Current group members';
       const moreButton = $('#discount-offer-more');
       moreButton.hidden = discountOfferRecipients.length >= discountOfferCount;
       moreButton.textContent =
@@ -5045,12 +5096,21 @@
       }
     }
 
-    async function openDiscountOfferDialog() {
+    async function openDiscountOfferDialog(audienceFilter = 'all') {
       const dialog = $('#discount-offer-dialog');
       if (discountOfferJobId && !discountOfferJobTerminal) {
         dialog.showModal();
         return;
       }
+      discountOfferAudienceFilter = audienceFilter;
+      $('#discount-offer-filter').value = audienceFilter;
+      const onlineOnly = audienceFilter === 'online-only';
+      $('#discount-offer-title').textContent = onlineOnly
+        ? 'Prepare a message for online members'
+        : 'Send a personalized discount offer';
+      $('#discount-offer-description').textContent = onlineOnly
+        ? 'This list includes group members Telegram reported online in the latest roster snapshot. Presence can change quickly and some members may hide their status. Edit the message, review the names, remove anyone you do not want to contact, then confirm before sending.'
+        : 'The recipient list includes all current human members of the configured Telegram group, even if they have never privately messaged the bot. While this dialog is open, it refreshes for new members about every 10 seconds (the sender syncs the group list about every 30 seconds). The offer’s audience is fixed when you confirm it; later joiners appear in future offers. The sender checks group membership again before delivery, so departed members may be skipped.';
       $('#discount-offer-message').value =
         'مرحباً {{name}}، لدينا لك عرض خصم خاص على رسوم الدراسة. راسلنا لمعرفة التفاصيل.';
       $('#discount-offer-status').textContent = '';
@@ -5061,6 +5121,19 @@
       discountOfferQueued = false;
       discountOfferJobId = null;
       discountOfferJobTerminal = false;
+      discountOfferRecipientOutcomes = {
+        sent: [],
+        skipped: [],
+        uncertain: [],
+        remaining: []
+      };
+      document.querySelectorAll('[data-discount-offer-outcome]').forEach(details => {
+        details.open = false;
+        const category = details.dataset.discountOfferOutcome;
+        const list = $(`#discount-offer-${category}-list`);
+        list.textContent = '';
+      });
+      $('#discount-offer-details-note').hidden = true;
       if (discountOfferRosterTimer) {
         clearTimeout(discountOfferRosterTimer);
         discountOfferRosterTimer = null;
@@ -5090,6 +5163,17 @@
       }
     }
 
+    function renderDiscountOfferOutcomeList(category) {
+      const recipients = discountOfferRecipientOutcomes[category] || [];
+      const list = $(`#discount-offer-${category}-list`);
+      list.innerHTML = recipients.length
+        ? recipients.map(recipient => `
+          <li>${escapeHtml(recipient.name || `Telegram user ${recipient.userId}`)}${recipient.reason
+            ? `<small>${escapeHtml(recipient.reason)}</small>`
+            : ''}</li>`).join('')
+        : '<li>None</li>';
+    }
+
     function renderDiscountOfferDelivery(job) {
       const total = Number.isSafeInteger(job.total) && job.total >= 0 ? job.total : 0;
       const sent = Number.isSafeInteger(job.sent) && job.sent >= 0 ? job.sent : 0;
@@ -5115,6 +5199,19 @@
       $('#discount-offer-skipped').textContent = skipped.toLocaleString();
       $('#discount-offer-uncertain').textContent = uncertain.toLocaleString();
       $('#discount-offer-remaining').textContent = remaining.toLocaleString();
+      discountOfferRecipientOutcomes = job.recipientOutcomes || {
+        sent: [],
+        skipped: [],
+        uncertain: [],
+        remaining: []
+      };
+      document.querySelectorAll('[data-discount-offer-outcome][open]').forEach(details =>
+        renderDiscountOfferOutcomeList(details.dataset.discountOfferOutcome));
+      const detailsNote = $('#discount-offer-details-note');
+      detailsNote.textContent = job.recipientDetailsComplete === false
+        ? 'Some earlier outcomes were saved as counts only, so those recipient names are unavailable.'
+        : '';
+      detailsNote.hidden = !detailsNote.textContent;
       $('#discount-offer-delivery-detail').textContent =
         `${processed.toLocaleString()} of ${total.toLocaleString()} recipients processed.`;
       const error = $('#discount-offer-delivery-error');
@@ -5128,7 +5225,9 @@
       if (!discountOfferJobId || discountOfferJobTerminal) return;
       try {
         clearDashboardApiCache();
-        const data = await api('/api/admin/telegram-user-broadcasts');
+        const data = await api(
+          `/api/admin/telegram-user-broadcasts?jobId=${encodeURIComponent(discountOfferJobId)}`
+        );
         const job = data.jobs.find(candidate => candidate.id === discountOfferJobId);
         if (!job) {
           $('#discount-offer-delivery-error').textContent =
@@ -5186,9 +5285,19 @@
           discountOfferRosterSyncedAt = current.groupRosterSyncedAt;
         }
         const selectedCount = discountOfferCount - discountOfferExcludedUserIds.size;
+        const selectedAudience = discountOfferAudienceFilter === 'online-only'
+          ? 'members reported online in the latest snapshot'
+          : discountOfferAudienceFilter === 'not-messaged-privately'
+            ? 'members who have not messaged the bot privately'
+            : 'group members';
         if (!await dashboardConfirm(
-          `Queue this personalized private offer for ${selectedCount.toLocaleString()} selected ${discountOfferAudienceFilter === 'not-messaged-privately' ? 'members who have not messaged the bot privately' : 'group members'}? The sender rechecks group membership before each delivery, so members who leave may be skipped. Members who join later will be available for future offers. Once queued, sent messages cannot be recalled.`,
-          { title: 'Confirm discount offer', confirmText: 'Queue offer' }
+          `Queue this personalized message for ${selectedCount.toLocaleString()} selected ${selectedAudience}? Presence can change before delivery; the sender rechecks group membership but not online status. Once queued, sent messages cannot be recalled.`,
+          {
+            title: discountOfferAudienceFilter === 'online-only'
+              ? 'Confirm online-member message'
+              : 'Confirm discount offer',
+            confirmText: 'Queue message'
+          }
         )) return;
         const result = await api('/api/admin/telegram-user-broadcasts', {
           method: 'POST',
@@ -5213,6 +5322,17 @@
         $('#discount-offer-skipped').textContent = '0';
         $('#discount-offer-uncertain').textContent = '0';
         $('#discount-offer-remaining').textContent = result.total.toLocaleString();
+        discountOfferRecipientOutcomes = {
+          sent: [],
+          skipped: [],
+          uncertain: [],
+          remaining: []
+        };
+        document.querySelectorAll('[data-discount-offer-outcome]').forEach(details => {
+          details.open = false;
+          $(`#discount-offer-${details.dataset.discountOfferOutcome}-list`).textContent = '';
+        });
+        $('#discount-offer-details-note').hidden = true;
         $('#discount-offer-delivery-detail').textContent =
           `0 of ${result.total.toLocaleString()} recipients processed.`;
         $('#discount-offer-delivery-error').hidden = true;
@@ -5715,6 +5835,17 @@
     $('#open-discount-offer').addEventListener('click', () => {
       openDiscountOfferDialog();
     });
+    $('#telegram-stats-summary').addEventListener('click', event => {
+      if (!event.target.closest('[data-open-online-members]')) return;
+      openDiscountOfferDialog('online-only').catch(error =>
+        showError(`Could not load online group members: ${error.message}`));
+    });
+    $('#discount-offer-delivery').addEventListener('toggle', event => {
+      const details = event.target;
+      if (details.matches('[data-discount-offer-outcome]') && details.open) {
+        renderDiscountOfferOutcomeList(details.dataset.discountOfferOutcome);
+      }
+    }, true);
     $('#discount-offer-close').addEventListener('click', () => {
       $('#discount-offer-dialog').close();
     });
@@ -6496,6 +6627,22 @@
       } finally {
         button.disabled = false;
       }
+    });
+    document.querySelectorAll('.auth-password-control input').forEach(input => {
+      const toggle = input.nextElementSibling;
+      const capsWarning = input.closest('.auth-field').querySelector('.auth-caps-warning');
+      toggle.addEventListener('click', () => {
+        const showing = input.type === 'password';
+        input.type = showing ? 'text' : 'password';
+        toggle.textContent = showing ? 'Hide' : 'Show';
+        toggle.setAttribute('aria-pressed', String(showing));
+      });
+      const updateCapsWarning = event => {
+        capsWarning.hidden = !event.getModifierState('CapsLock');
+      };
+      input.addEventListener('keydown', updateCapsWarning);
+      input.addEventListener('keyup', updateCapsWarning);
+      input.addEventListener('blur', () => { capsWarning.hidden = true; });
     });
     $('#auth-form').addEventListener('submit', async event => {
       event.preventDefault();

@@ -96,6 +96,12 @@ test('dashboard API and event stream require a valid password session', async ()
     const unauthenticated = await fetch(apiUrl);
     assert.equal(unauthenticated.status, 401);
     assert.equal((await fetch(`${origin}/api/admin/events`)).status, 401);
+    const unauthenticatedMutation = await fetch(`${origin}/api/admin/chat-read`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jid: '123@s.whatsapp.net' })
+    });
+    assert.equal(unauthenticatedMutation.status, 401);
     assert.equal((await fetch(origin)).status, 200);
 
     const csrfRejected = await fetch(`${origin}/api/admin/auth/setup`, {
@@ -131,15 +137,53 @@ test('dashboard API and event stream require a valid password session', async ()
 
     const authorizedResponse = await fetch(apiUrl, { headers: { Cookie: cookie.split(';', 1)[0] } });
     assert.equal(authorizedResponse.status, 200);
+    assert.equal(authorizedResponse.headers.get('x-frame-options'), 'DENY');
+    assert.equal(authorizedResponse.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(authorizedResponse.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(authorizedResponse.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+    assert.equal(authorizedResponse.headers.get('cache-control'), 'no-store');
     const eventResponse = await fetch(`${origin}/api/admin/events`, {
       headers: { Cookie: cookie.split(';', 1)[0] }
     });
     assert.equal(eventResponse.status, 200);
     await eventResponse.body.cancel();
 
+    const cookieHeader = cookie.split(';', 1)[0];
+    const forgedMutation = await fetch(`${origin}/api/admin/chat-read`, {
+      method: 'POST',
+      headers: {
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ jid: '123@s.whatsapp.net' })
+    });
+    assert.equal(forgedMutation.status, 403);
+
+    const crossOriginMutation = await fetch(`${origin}/api/admin/chat-read`, {
+      method: 'POST',
+      headers: {
+        Origin: 'http://example.com',
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ jid: '123@s.whatsapp.net' })
+    });
+    assert.equal(crossOriginMutation.status, 403);
+
+    const sameOriginMutation = await fetch(`${origin}/api/admin/chat-read`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ jid: '123@s.whatsapp.net' })
+    });
+    assert.equal(sameOriginMutation.status, 404);
+
     const logoutResponse = await fetch(`${origin}/api/admin/auth/logout`, {
       method: 'POST',
-      headers: { Origin: origin, Cookie: cookie.split(';', 1)[0] }
+      headers: { Origin: origin, Cookie: cookieHeader }
     });
     assert.equal(logoutResponse.status, 200);
     assert.equal(logoutResponse.headers.get('set-cookie'), `${cookie.split('=', 1)[0]}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
