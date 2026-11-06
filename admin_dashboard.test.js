@@ -507,6 +507,7 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   const whatsappQueueFile = path.join(directory, 'whatsapp-skip.json');
   const telegramQueueFile = path.join(directory, 'telegram-skip.json');
   const telegramProgressFile = path.join(directory, 'telegram-progress.json');
+  const telegramMediaActivityFile = path.join(directory, 'telegram-media.json');
   const agentStatusFile = path.join(directory, 'agent_status.json');
   fs.writeFileSync(firstVideoFile, 'video 1');
   fs.writeFileSync(videoFile, 'video');
@@ -563,6 +564,7 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
     agentStatusFile,
     lessonsFile,
     telegramProgressFile,
+    telegramAgentMediaActivityFile: telegramMediaActivityFile,
     whatsappLessonSkipRequestsFile: whatsappQueueFile,
     telegramLessonSkipRequestsFile: telegramQueueFile
   });
@@ -621,9 +623,27 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   const queuedLesson = JSON.parse(fs.readFileSync(telegramQueueFile, 'utf8'))
     .find(request => request.requestType === 'send_lesson');
   assert.equal(queuedLesson.nextLessonId, 'lesson_1');
+  writeAgentMediaActivity({
+    id: 'telegram-lesson-upload',
+    platform: 'Telegram',
+    mediaType: 'video',
+    studentKey: telegramStudent.jid,
+    lessonId: 'lesson_1',
+    status: 'uploading',
+    loaded: 512,
+    total: 1024,
+    percent: 50,
+    updatedAt: new Date(Date.parse(queuedLesson.createdAt) + 1).toISOString()
+  }, telegramMediaActivityFile);
   const sendStatusResponse = await fetch(`${origin}/api/admin/telegram-progress?timeZone=UTC`);
   const sendStatus = await sendStatusResponse.json();
   assert.equal(sendStatus.students[0].sendLessonRequest.status, 'queued');
+  assert.deepEqual(sendStatus.students[0].sendLessonRequest.progress, {
+    status: 'uploading',
+    percent: 50,
+    loaded: 512,
+    total: 1024
+  });
   const conflictingSkip = await postSkip('Telegram', 'telegram:-100123:44');
   assert.equal(conflictingSkip.status, 409);
 

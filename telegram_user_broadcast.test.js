@@ -10,6 +10,20 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
 }
 
+test('Telegram user broadcasts wait ten seconds between messages by default', () => {
+  const worker = new TelegramUserBroadcastWorker({
+    client: {
+      getDialogs: async () => [],
+      async *iterParticipants() {},
+      sendMessage: async () => {}
+    },
+    groupId: '-100123',
+    logger: { info() {}, error() {} }
+  });
+
+  assert.equal(worker.sendIntervalMs, 10_000);
+});
+
 test('Telegram user broadcasts send only to group participants who remain opted in', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-user-broadcast-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

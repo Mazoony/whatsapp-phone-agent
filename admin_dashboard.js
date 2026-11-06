@@ -2262,7 +2262,7 @@ export function createAdminDashboardServer({
     };
     return cachedDashboardData;
   };
-  const getTelegramProgressSnapshot = (timeZone, now = Date.now()) => {
+  const getTelegramProgressSnapshot = (timeZone, now = Date.now(), includeMediaProgress = false) => {
     const telegramAccountState = readJsonFileOr(telegramUserBroadcastFiles.state, {});
     const rosterSyncedAt = Date.parse(telegramAccountState.groupRosterSyncedAt || '');
     const presenceIsFresh = Number.isFinite(rosterSyncedAt) &&
@@ -2285,6 +2285,9 @@ export function createAdminDashboardServer({
     };
     const genderOverrides = telegramStudentGenders.list();
     const progress = listDashboardStudentProgress(data, now, timeZone);
+    const telegramMediaActivities = includeMediaProgress
+      ? readAgentMediaActivities(telegramAgentMediaActivityFile)
+      : [];
     const latestSkipRequests = new Map();
     const latestSendRequests = new Map();
     const latestRegradeRequests = new Map();
@@ -2307,6 +2310,15 @@ export function createAdminDashboardServer({
         const sendRequest = latestSendRequests.get(student.jid);
         const regradeRequest = latestRegradeRequests.get(student.jid);
         const reminderRequest = latestReminderRequests.get(student.jid);
+        const sendActivity = sendRequest
+          ? telegramMediaActivities
+            .filter(activity =>
+              activity.platform === 'Telegram' &&
+              activity.studentKey === student.jid &&
+              activity.lessonId === sendRequest.nextLessonId &&
+              Date.parse(activity.updatedAt || '') >= Date.parse(sendRequest.createdAt || ''))
+            .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0]
+          : null;
         const telegramStudent = data.telegramProgress[student.jid];
         return {
           ...student,
@@ -2344,7 +2356,17 @@ export function createAdminDashboardServer({
                 status: sendRequest.status,
                 error: sendRequest.error,
                 nextLessonId: sendRequest.nextLessonId,
-                nextLessonTitle: sendRequest.nextLessonTitle
+                nextLessonTitle: sendRequest.nextLessonTitle,
+                progress: sendActivity
+                  ? {
+                      status: sendActivity.status,
+                      percent: Number.isFinite(sendActivity.percent)
+                        ? Math.max(0, Math.min(100, sendActivity.percent))
+                        : null,
+                      loaded: Number.isFinite(sendActivity.loaded) ? sendActivity.loaded : null,
+                      total: Number.isFinite(sendActivity.total) ? sendActivity.total : null
+                    }
+                  : null
               }
             : null,
           regradeRequest: regradeRequest?.currentLessonId === student.currentLessonId
@@ -2607,7 +2629,11 @@ export function createAdminDashboardServer({
 
       try {
         const now = Date.now();
-        const progress = getTelegramProgressSnapshot(timeZone, now);
+        const progress = getTelegramProgressSnapshot(
+          timeZone,
+          now,
+          requestUrl.pathname === '/api/admin/telegram-progress'
+        );
         if (requestUrl.pathname === '/api/admin/telegram-progress') {
           sendJson(res, 200, progress);
           return;

@@ -13,7 +13,7 @@ const DATA_DIR = path.join(APP_DIR, 'data');
 export const TELEGRAM_USER_SESSION_FILE = path.join(DATA_DIR, 'telegram_user_session.txt');
 export const TELEGRAM_USER_BROADCAST_REQUESTS_FILE = path.join(DATA_DIR, 'telegram_user_broadcasts.json');
 export const TELEGRAM_USER_BROADCAST_STATE_FILE = path.join(DATA_DIR, 'telegram_user_broadcast_state.json');
-const SEND_INTERVAL_MS = 3_000;
+const SEND_INTERVAL_MS = 10_000;
 const MAX_GROUP_PARTICIPANTS = 10_000;
 const GROUP_ROSTER_SYNC_INTERVAL_MS = 30_000;
 

@@ -183,6 +183,20 @@ test('transient Gemini service errors are retried once', async () => {
   assert.equal(waitedMs, 1500);
 });
 
+test('transient Gemini fetch failures are retried once', async () => {
+  let attempts = 0;
+  let waitedMs = 0;
+  const result = await generateWithTransientRetry(async () => {
+    attempts++;
+    if (attempts === 1) throw new TypeError('fetch failed');
+    return 'reply';
+  }, async ms => { waitedMs += ms; });
+
+  assert.equal(result, 'reply');
+  assert.equal(attempts, 2);
+  assert.equal(waitedMs, 1500);
+});
+
 test('permanent Gemini request errors are not retried', async () => {
   let attempts = 0;
   await assert.rejects(generateWithTransientRetry(async () => {

@@ -68,6 +68,8 @@
     h1 { font-size: clamp(23px, 3vw, 30px); letter-spacing: -1px; margin: 0 0 4px; }
     .subheading { margin: 0; color: var(--muted); }
     .top-actions { display: flex; align-items: center; gap: 10px; }
+    .notification-toggle { white-space: nowrap; }
+    .notification-status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     .local-tag { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #d8e8dd; background: #f7fcf8; color: #326a4f; border-radius: 999px; padding: 7px 11px; font-size: 11px; font-weight: 700; white-space: nowrap; }
     .local-dot { width: 7px; height: 7px; background: #2eaa71; border-radius: 50%; }
     .refresh { width: 36px; height: 36px; background: white; border: 1px solid var(--line); color: var(--ink); border-radius: 10px; box-shadow: 0 2px 6px #17362e0a; }
@@ -248,6 +250,7 @@
     .telegram-stats-chart .telegram-stats-grid { stroke: #e5ebe7; stroke-width: 1; }
     .telegram-stats-chart .telegram-joins-line { fill: none; stroke: #23875a; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
     .telegram-stats-chart .telegram-active-line { fill: none; stroke: #5278c7; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .telegram-stats-chart .telegram-members-line { stroke: #d47b2d; stroke-width: 2; stroke-dasharray: 6 4; }
     .telegram-stats-chart .telegram-joins-point { fill: white; stroke: #23875a; stroke-width: 2; }
     .telegram-stats-chart .telegram-active-point { fill: white; stroke: #5278c7; stroke-width: 2; }
     .telegram-stats-chart .telegram-stats-point { cursor: pointer; }
@@ -255,11 +258,13 @@
     .telegram-stats-chart .telegram-value-label { font-size: 9px; font-weight: 750; paint-order: stroke; stroke: white; stroke-width: 3px; stroke-linejoin: round; }
     .telegram-stats-chart .telegram-joins-label { fill: #176b43; }
     .telegram-stats-chart .telegram-active-label { fill: #355a9e; }
+    .telegram-stats-chart .telegram-members-label { fill: #9a541b; font-size: 10px; font-weight: 700; }
     .telegram-stats-tooltip { position: absolute; z-index: 2; max-width: 230px; padding: 8px 10px; border: 1px solid #dce5df; border-radius: 7px; background: white; color: var(--ink); box-shadow: 0 5px 16px rgba(20, 45, 32, .16); font-size: 10px; line-height: 1.5; pointer-events: none; }
     .telegram-stats-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; color: var(--muted); font-size: 10px; }
     .telegram-stats-legend span { display: inline-flex; align-items: center; gap: 5px; }
     .telegram-stats-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: #23875a; }
     .telegram-stats-legend .telegram-active-key { background: #5278c7; }
+    .telegram-stats-legend .telegram-members-key { height: 0; border-top: 2px dashed #d47b2d; background: transparent; }
     .telegram-presence { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
     .telegram-presence::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
     .telegram-presence.online { color: #18764d; background: #e6f4ed; }
@@ -568,6 +573,10 @@
     .send-lesson-button:disabled, .skip-lesson-button:disabled { opacity: .58; cursor: not-allowed; box-shadow: none; transform: none; }
     .send-lesson-button-icon { font-size: 12px; }
     .send-lesson-status { display: block; color: var(--muted); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+    .student-action-progress { display: grid; grid-template-columns: minmax(70px, 1fr) auto; align-items: center; gap: 5px 8px; width: 100%; color: var(--muted); font-size: 10px; line-height: 1.4; }
+    .student-action-progress progress { grid-column: 1 / -1; width: 100%; height: 8px; accent-color: var(--green); }
+    .student-action-progress.is-complete { color: #23734d; }
+    .student-action-progress.is-failed { display: block; color: #a3423c; overflow-wrap: anywhere; }
     .skip-lesson-controls { display: grid; justify-items: start; gap: 3px; padding-top: 9px; border-top: 1px solid #eff2f0; }
     .skip-lesson-button { color: #35664e; border-color: #d7e7dc; background: #f6faf7; }
     .skip-lesson-button:hover:not(:disabled) { border-color: #a9cbb5; background: #eaf5ee; }
@@ -587,7 +596,11 @@
     .discount-offer-dialog { width: min(680px, calc(100% - 24px)); max-width: none; max-height: 92vh; overflow-y: auto; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: white; color: var(--ink); box-shadow: 0 24px 70px rgba(10, 35, 25, .28); }
     .discount-offer-dialog::backdrop { background: rgba(18, 38, 30, .58); backdrop-filter: blur(4px); }
     .discount-offer-form { display: grid; gap: 12px; padding: 20px; }
+    .discount-offer-titlebar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .discount-offer-form h2 { margin: 0; font-size: 17px; }
+    .discount-offer-minimize { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; color: var(--ink); background: white; font: inherit; font-size: 10px; font-weight: 700; }
+    .discount-offer-restore { position: fixed; right: 20px; bottom: 20px; z-index: 1000; border: 0; border-radius: 999px; padding: 11px 16px; color: white; background: var(--green); box-shadow: 0 8px 24px #17362e35; font: inherit; font-size: 12px; font-weight: 700; }
+    .discount-offer-restore[hidden] { display: none; }
     .discount-offer-form p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
     .discount-offer-form label { display: grid; gap: 6px; font-size: 11px; font-weight: 650; }
     .discount-offer-form textarea, .discount-offer-form select { width: 100%; min-height: 40px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; font: inherit; font-size: 12px; }
@@ -839,7 +852,7 @@
     <main>
       <header class="topbar">
         <div><h1 id="page-title">Telegram overview</h1><p class="subheading" id="page-subtitle">Monitor bot status, learners, and lesson progress. <span class="live-update-indicator" id="live-update-status">Live updates on</span></p></div>
-        <div class="top-actions"><span class="local-tag"><i class="local-dot"></i> Local only</span><button class="pagination button" id="dashboard-logout" type="button">Lock</button><button class="refresh" id="refresh" title="Refresh data" aria-label="Refresh data">↻</button></div>
+        <div class="top-actions"><span class="local-tag"><i class="local-dot"></i> Local only</span><button class="pagination button notification-toggle" id="dashboard-notifications" type="button" aria-pressed="false">Enable notifications</button><span class="notification-status" id="dashboard-notification-status" role="status" aria-live="polite"></span><button class="pagination button" id="dashboard-logout" type="button">Lock</button><button class="refresh" id="refresh" title="Refresh data" aria-label="Refresh data">↻</button></div>
       </header>
       <div id="error" class="error" hidden></div>
 
@@ -867,7 +880,7 @@
         <article class="panel telegram-stats-panel" aria-labelledby="telegram-stats-title">
           <div>
             <h2 id="telegram-stats-title">Telegram group statistics</h2>
-            <p>Group membership and online count from Telegram, plus recorded joins and learner activity over the last 30 days.</p>
+            <p>Group membership and online count from Telegram, plus recorded joins and learner activity over the last 30 days. The dashed line marks the latest total member count; historical daily totals are not available.</p>
           </div>
           <div class="telegram-stats-summary" id="telegram-stats-summary" aria-live="polite">
             <div class="telegram-stat-card"><div class="telegram-stat-label">Total group members</div><div class="telegram-stat-value">Loading…</div></div>
@@ -883,6 +896,7 @@
           <div class="telegram-stats-legend" aria-label="Telegram graph legend">
             <span><i></i>Daily recorded group joins</span>
             <span><i class="telegram-active-key"></i>Active tracked learners</span>
+            <span id="telegram-stats-members-legend"><i class="telegram-members-key"></i>Current total group members</span>
           </div>
         </article>
         <article class="panel agent-log-panel">
@@ -1440,7 +1454,7 @@
             <button class="pagination button telegram-recipient-preview-more" id="telegram-user-broadcast-preview-more" type="button" hidden>Show more</button>
           </div>
           <p id="telegram-user-broadcast-worker" aria-live="polite">Checking account sender…</p>
-          <p>Students who request a lesson with <code>/lesson</code> (or have lesson progress) are included if they have started a private chat. They can opt out at any time by privately messaging the bot <code>/announcements_off</code>, or opt back in with <code>/announcements_on</code>. Only current members of the configured group are eligible. Messages are sent individually from your Telegram account, with a 3-second pause between recipients. Telegram privacy settings or rate limits can still prevent delivery.</p>
+          <p>Students who request a lesson with <code>/lesson</code> (or have lesson progress) are included if they have started a private chat. They can opt out at any time by privately messaging the bot <code>/announcements_off</code>, or opt back in with <code>/announcements_on</code>. Only current members of the configured group are eligible. Messages are sent individually from your Telegram account, with a 10-second pause between recipients. Telegram privacy settings or rate limits can still prevent delivery.</p>
           <form id="telegram-user-broadcast-form">
             <label for="telegram-user-broadcast-message">Message to send</label>
             <textarea id="telegram-user-broadcast-message" maxlength="4096" required placeholder="Write the announcement…"></textarea>
@@ -1457,7 +1471,10 @@
       </section>
       <dialog class="discount-offer-dialog" id="discount-offer-dialog" aria-labelledby="discount-offer-title">
         <form class="discount-offer-form" id="discount-offer-form">
-          <h2 id="discount-offer-title">Send a personalized discount offer</h2>
+          <div class="discount-offer-titlebar">
+            <h2 id="discount-offer-title">Send a personalized discount offer</h2>
+            <button class="discount-offer-minimize" id="discount-offer-minimize" type="button">Hide window</button>
+          </div>
           <p id="discount-offer-description">The recipient list includes all current human members of the configured Telegram group, even if they have never privately messaged the bot. While this dialog is open, it refreshes for new members about every 10 seconds (the sender syncs the group list about every 30 seconds). The offer's audience is fixed when you confirm it; later joiners appear in future offers. The sender checks group membership again before delivery, so departed members may be skipped.</p>
           <p id="discount-offer-audience" aria-live="polite">Loading recipient count and sender status…</p>
           <label for="discount-offer-filter">Recipient filter
@@ -1501,6 +1518,9 @@
           </div>
         </form>
       </dialog>
+      <button class="discount-offer-restore" id="discount-offer-restore" type="button" aria-live="polite" hidden>
+        Show offer window
+      </button>
 
       <section class="section" id="section-scheduled-lessons" hidden>
         <div class="section-heading">
@@ -1899,6 +1919,13 @@
     let dashboardPollTimer = null;
     let agentPollTimer = null;
     let telegramAgentPollTimer = null;
+    let notificationAgentPollTimer = null;
+    let dashboardNotificationsEnabled = false;
+    let notificationBaselinePending = false;
+    let queuedNotificationFiles = new Set();
+    let dashboardNotificationSnapshots = null;
+    let notificationRefreshQueue = Promise.resolve();
+    const DASHBOARD_NOTIFICATIONS_STORAGE_KEY = 'eshool-dashboard-notifications-enabled';
     let pendingAgentReplyMode = null;
     let pendingAgentQueuePause = null;
     let pendingTelegramQueuePause = null;
@@ -2186,7 +2213,8 @@
 
     async function api(path, options = {}) {
       const method = (options.method || 'GET').toUpperCase();
-      const cacheKey = method === 'GET' && !options.body
+      const { skipDashboardCache = false, ...requestOptions } = options;
+      const cacheKey = !skipDashboardCache && method === 'GET' && !requestOptions.body
         ? dashboardApiCacheKey(path)
         : null;
       if (cacheKey) {
@@ -2198,10 +2226,10 @@
       const cacheGeneration = dashboardCacheGeneration;
       const request = (async () => {
         const response = await fetch(path, {
-          headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
+          headers: { Accept: 'application/json', ...(requestOptions.body ? { 'Content-Type': 'application/json' } : {}) },
           cache: 'no-store',
           credentials: 'same-origin',
-          ...options
+          ...requestOptions
         });
         const data = await response.json();
         if (response.status === 401) {
@@ -2226,6 +2254,266 @@
       }
     }
 
+    function dashboardNotificationsWereEnabled() {
+      try {
+        return localStorage.getItem(DASHBOARD_NOTIFICATIONS_STORAGE_KEY) === 'true';
+      } catch (error) {
+        console.warn('[Dashboard Notifications] Could not read notification preference:', error.message);
+        return false;
+      }
+    }
+
+    function setDashboardNotificationsPreference(enabled) {
+      try {
+        if (enabled) localStorage.setItem(DASHBOARD_NOTIFICATIONS_STORAGE_KEY, 'true');
+        else localStorage.removeItem(DASHBOARD_NOTIFICATIONS_STORAGE_KEY);
+      } catch (error) {
+        console.warn('[Dashboard Notifications] Could not save notification preference:', error.message);
+      }
+    }
+
+    function updateDashboardNotificationsControl(message = '') {
+      const button = $('#dashboard-notifications');
+      const status = $('#dashboard-notification-status');
+      if (!button || !status) return;
+      button.setAttribute('aria-pressed', String(dashboardNotificationsEnabled));
+      button.textContent = dashboardNotificationsEnabled ? 'Disable notifications' : 'Enable notifications';
+      button.title = dashboardNotificationsEnabled
+        ? 'Turn off dashboard notifications'
+        : 'Get notifications while this dashboard is open';
+      status.textContent = message;
+    }
+
+    function showDashboardNotification(title, body, tag) {
+      if (!dashboardNotificationsEnabled) return;
+      if (Notification.permission !== 'granted') {
+        dashboardNotificationsEnabled = false;
+        setDashboardNotificationsPreference(false);
+        if (notificationAgentPollTimer) clearInterval(notificationAgentPollTimer);
+        notificationAgentPollTimer = null;
+        updateDashboardNotificationsControl('Notifications are blocked in browser settings.');
+        return;
+      }
+      try {
+        const notification = new Notification(title, { body, tag, renotify: false });
+        notification.onclick = () => window.focus();
+      } catch (error) {
+        console.warn('[Dashboard Notifications] Could not show browser notification:', error.message);
+      }
+    }
+
+    function compareDashboardNotificationSnapshots(previous, next, changed) {
+      if (changed.has('telegram_progress.json')) {
+        for (const [jid, student] of next.students) {
+          const oldStudent = previous.students.get(jid);
+          const oldMessageCount = oldStudent?.totalIncomingMessages || 0;
+          const newMessageCount = student.totalIncomingMessages || 0;
+          const submissionChanged = Boolean(
+            student.lastTaskSubmissionAt &&
+            student.lastTaskSubmissionAt !== oldStudent?.lastTaskSubmissionAt
+          );
+          const activityChanged = Boolean(
+            student.lastStudentActivityAt &&
+            student.lastStudentActivityAt !== oldStudent?.lastStudentActivityAt
+          );
+          if (submissionChanged || activityChanged || newMessageCount > oldMessageCount) {
+            const body = submissionChanged
+              ? 'A student submitted a lesson task.'
+              : 'A student sent a new message.';
+            showDashboardNotification(
+              'New student activity',
+              body,
+              `student-activity-${jid}-${student.lastTaskSubmissionAt || student.lastStudentActivityAt || newMessageCount}`
+            );
+          }
+          if (student.deliveredAt && student.deliveredAt !== oldStudent?.deliveredAt) {
+            showDashboardNotification(
+              'Lesson delivered',
+              'A lesson was delivered to a student.',
+              `lesson-delivered-${jid}-${student.deliveredAt}`
+            );
+          }
+        }
+      }
+
+      if (changed.has('student_payment_ledger.json')) {
+        for (const [key, payment] of next.payments) {
+          const oldPayment = previous.payments.get(key);
+          if (payment.status !== oldPayment?.status &&
+              ['pending_review', 'paid', 'rejected'].includes(payment.status)) {
+            const title = payment.status === 'paid'
+              ? 'Payment confirmed'
+              : payment.status === 'rejected' ? 'Payment rejected' : 'Payment needs review';
+            showDashboardNotification(
+              title,
+              'A student payment status changed.',
+              `payment-${key}-${payment.status}-${payment.updatedAt || ''}`
+            );
+          }
+        }
+      }
+
+      if (changed.has('telegram_agent_media_activity.json')) {
+        for (const [id, status] of next.media) {
+          const oldStatus = previous.media.get(id);
+          if (oldStatus && oldStatus !== status && ['sent', 'failed'].includes(status)) {
+            showDashboardNotification(
+              status === 'sent' ? 'Lesson video delivered' : 'Lesson video delivery failed',
+              status === 'sent' ? 'A Telegram lesson video was delivered.' : 'A Telegram lesson video could not be delivered.',
+              `lesson-video-${id}-${status}`
+            );
+          }
+        }
+      }
+
+      if (changed.has('telegram_user_broadcasts.json') ||
+          changed.has('telegram_user_broadcast_state.json')) {
+        for (const [id, status] of next.broadcasts) {
+          const oldStatus = previous.broadcasts.get(id);
+          if (oldStatus && oldStatus !== status &&
+              ['completed', 'failed', 'cancelled'].includes(status)) {
+            showDashboardNotification(
+              status === 'completed' ? 'Announcement completed' :
+                status === 'cancelled' ? 'Announcement stopped' : 'Announcement failed',
+              'A Telegram announcement or offer has finished.',
+              `announcement-${id}-${status}`
+            );
+          }
+        }
+      }
+
+      if (previous.agent === 'connected' &&
+          next.agent === 'disconnected' &&
+          changed.has('telegram_agent_status.json')) {
+        showDashboardNotification(
+          'Telegram bot offline',
+          'The Telegram bot is no longer connected.',
+          `telegram-agent-offline-${Date.now()}`
+        );
+      }
+    }
+
+    async function refreshDashboardNotificationSnapshots(files, baseline = false) {
+      if (!dashboardNotificationsEnabled) return;
+      const changed = new Set(files);
+      const needsProgress = baseline || changed.has('telegram_progress.json');
+      const needsPayments = baseline || changed.has('student_payment_ledger.json');
+      const needsAgent = baseline || changed.has('telegram_agent_status.json');
+      const needsBroadcasts = baseline ||
+        changed.has('telegram_user_broadcasts.json') ||
+        changed.has('telegram_user_broadcast_state.json');
+      const needsMedia = baseline || changed.has('telegram_agent_media_activity.json');
+      if (!baseline && !needsProgress && !needsPayments && !needsAgent && !needsBroadcasts && !needsMedia) return;
+
+      const request = (path) => api(path, { skipDashboardCache: true });
+      const [progress, ledger, agent, broadcasts, media] = await Promise.all([
+        needsProgress ? request('/api/admin/telegram-progress?timeZone=UTC') : null,
+        needsPayments ? request('/api/admin/payment-ledger') : null,
+        needsAgent ? request('/api/admin/telegram-agent-status') : null,
+        needsBroadcasts ? request('/api/admin/telegram-user-broadcasts') : null,
+        needsMedia ? request('/api/admin/telegram-agent-media') : null
+      ]);
+      const previous = dashboardNotificationSnapshots;
+      const next = {
+        students: progress
+          ? new Map(progress.students.map(student => [student.jid, student]))
+          : previous?.students || new Map(),
+        payments: ledger
+          ? new Map(ledger.students.map(student => {
+            const payment = student.payment || {};
+            return [`${student.studentKey}:${payment.periodStart || 'current'}`, payment];
+          }))
+          : previous?.payments || new Map(),
+        agent: agent?.connectionState || previous?.agent || 'unknown',
+        broadcasts: broadcasts
+          ? new Map(broadcasts.jobs.map(job => [job.id, job.status]))
+          : previous?.broadcasts || new Map(),
+        media: media
+          ? new Map(media.activities.map(activity => [activity.id, activity.status]))
+          : previous?.media || new Map()
+      };
+      dashboardNotificationSnapshots = next;
+      if (previous && !baseline) compareDashboardNotificationSnapshots(previous, next, changed);
+    }
+
+    function queueDashboardNotificationRefresh(files) {
+      if (!dashboardNotificationsEnabled) return;
+      for (const file of files) queuedNotificationFiles.add(file);
+      if (notificationBaselinePending) return;
+      const changedFiles = [...queuedNotificationFiles];
+      queuedNotificationFiles.clear();
+      notificationRefreshQueue = notificationRefreshQueue.then(() =>
+        refreshDashboardNotificationSnapshots(changedFiles)
+      ).catch(error => {
+        console.warn('[Dashboard Notifications] Could not refresh notification data:', error.message);
+        updateDashboardNotificationsControl('Notifications are on, but the latest update could not be checked.');
+      });
+    }
+
+    async function enableDashboardNotifications() {
+      if (!('Notification' in window)) {
+        updateDashboardNotificationsControl('Browser notifications are not supported here.');
+        return;
+      }
+      if (!window.isSecureContext) {
+        updateDashboardNotificationsControl('Notifications require HTTPS or localhost.');
+        return;
+      }
+      let permission;
+      try {
+        permission = Notification.permission === 'granted'
+          ? 'granted'
+          : await Notification.requestPermission();
+      } catch (error) {
+        updateDashboardNotificationsControl(`Could not request notification permission: ${error.message}`);
+        return;
+      }
+      if (permission !== 'granted') {
+        dashboardNotificationsEnabled = false;
+        setDashboardNotificationsPreference(false);
+        updateDashboardNotificationsControl(
+          permission === 'denied'
+            ? 'Notifications are blocked in browser settings.'
+            : 'Notification permission was not granted.'
+        );
+        return;
+      }
+      dashboardNotificationsEnabled = true;
+      dashboardNotificationSnapshots = null;
+      notificationBaselinePending = true;
+      try {
+        await refreshDashboardNotificationSnapshots([], true);
+        setDashboardNotificationsPreference(true);
+        updateDashboardNotificationsControl('Notifications are on while this dashboard is open.');
+        if (dashboardStarted) startDashboardNotificationAgentPolling();
+      } catch (error) {
+        dashboardNotificationsEnabled = false;
+        setDashboardNotificationsPreference(false);
+        dashboardNotificationSnapshots = null;
+        updateDashboardNotificationsControl(`Could not enable notifications: ${error.message}`);
+      } finally {
+        notificationBaselinePending = false;
+        const pendingFiles = [...queuedNotificationFiles];
+        queuedNotificationFiles.clear();
+        if (dashboardNotificationsEnabled && pendingFiles.length) {
+          queueDashboardNotificationRefresh(pendingFiles);
+        }
+      }
+    }
+
+    function startDashboardNotificationAgentPolling() {
+      if (notificationAgentPollTimer) clearInterval(notificationAgentPollTimer);
+      if (!dashboardNotificationsEnabled || !dashboardStarted) return;
+      notificationAgentPollTimer = setInterval(() => {
+        const changedFiles = ['telegram_agent_status.json'];
+        notificationRefreshQueue = notificationRefreshQueue.then(() =>
+          refreshDashboardNotificationSnapshots(changedFiles)
+        ).catch(error => {
+          console.warn('[Dashboard Notifications] Could not check Telegram bot status:', error.message);
+        });
+      }, 30000);
+    }
+
     function showAuthenticationScreen(setupRequired) {
       clearDashboardApiCache();
       if (dashboardEvents) dashboardEvents.close();
@@ -2233,9 +2521,15 @@
       if (dashboardPollTimer) clearInterval(dashboardPollTimer);
       if (agentPollTimer) clearInterval(agentPollTimer);
       if (telegramAgentPollTimer) clearInterval(telegramAgentPollTimer);
+      if (notificationAgentPollTimer) clearInterval(notificationAgentPollTimer);
       dashboardPollTimer = null;
       agentPollTimer = null;
       telegramAgentPollTimer = null;
+      notificationAgentPollTimer = null;
+      dashboardNotificationsEnabled = false;
+      notificationBaselinePending = false;
+      queuedNotificationFiles.clear();
+      dashboardNotificationSnapshots = null;
       dashboardStarted = false;
       authSetupRequired = setupRequired;
       document.body.classList.add('auth-locked');
@@ -2270,6 +2564,15 @@
       $('#auth-confirm-password').value = '';
       if (dashboardStarted) return;
       dashboardStarted = true;
+      updateDashboardNotificationsControl();
+      if (dashboardNotificationsWereEnabled()) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          enableDashboardNotifications();
+        } else {
+          setDashboardNotificationsPreference(false);
+          updateDashboardNotificationsControl('Notifications are no longer permitted in browser settings.');
+        }
+      }
       refreshAll();
       loadTelegramStats().catch(error =>
         showError(`Could not load Telegram statistics: ${error.message}`));
@@ -2278,7 +2581,9 @@
         try {
           const update = JSON.parse(event.data);
           clearDashboardApiCache();
-          scheduleDashboardRefresh(Array.isArray(update.files) ? update.files : []);
+          const files = Array.isArray(update.files) ? update.files : [];
+          scheduleDashboardRefresh(files);
+          queueDashboardNotificationRefresh(files);
         } catch (error) {
           showError(`Could not process dashboard update: ${error.message}`);
         }
@@ -2906,10 +3211,10 @@
       }
       const days = stats.dailyStats;
       const width = 860;
-      const height = 280;
+      const height = 298;
       const left = 44;
       const right = 44;
-      const top = 26;
+      const top = 44;
       const bottom = 52;
       const plotWidth = width - left - right;
       const plotHeight = height - top - bottom;
@@ -2932,6 +3237,13 @@
       });
       const joinsLine = points.map(point => `${point.x},${point.joinsY}`).join(' ');
       const activeLine = points.map(point => `${point.x},${point.activeY}`).join(' ');
+      const hasGroupMemberCount = Number.isSafeInteger(stats.totalGroupMembers) &&
+        stats.totalGroupMembers >= 0;
+      const groupMembersLine = hasGroupMemberCount
+        ? `<line class="telegram-members-line" x1="${left}" y1="35" x2="${width - right}" y2="35"></line>
+          <text class="telegram-members-label" x="${left}" y="29">Current group members: ${stats.totalGroupMembers.toLocaleString()}</text>`
+        : '';
+      $('#telegram-stats-members-legend').hidden = !hasGroupMemberCount;
       const marks = points.map((point, index) => {
         const label = new Intl.DateTimeFormat(undefined, {
           month: 'numeric',
@@ -2956,10 +3268,11 @@
       }).join('');
       chart.innerHTML = `
         <svg viewBox="0 0 ${width} ${height}" role="img"
-          aria-label="Telegram daily group joins and active tracked learners over the last 30 days. Left scale is joins; right scale is active learners.">
+          aria-label="Telegram daily group joins and active tracked learners over the last 30 days. Left scale is joins; right scale is active learners. ${hasGroupMemberCount ? `Current total group members: ${stats.totalGroupMembers}.` : ''}">
           ${grid}
           <text x="${left}" y="14">Joins</text>
           <text x="${width - right}" y="14" text-anchor="end">Active learners</text>
+          ${groupMembersLine}
           <polyline class="telegram-joins-line" points="${joinsLine}"></polyline>
           <polyline class="telegram-active-line" points="${activeLine}"></polyline>
           ${marks}
@@ -3555,6 +3868,39 @@
       gradeFilter.dataset.filterInitialized = 'true';
     }
 
+    function renderStudentActionProgress(request, action) {
+      if (!request || !['queued', 'processing', 'sent', 'failed'].includes(request.status)) return '';
+      const progress = action === 'lesson' ? request.progress : null;
+      const failed = request.status === 'failed';
+      const complete = request.status === 'sent';
+      let label;
+      let percent = null;
+      if (failed) {
+        label = `${action === 'lesson' ? 'Lesson delivery' : 'Reminder'} failed: ${request.error || 'delivery error'}`;
+      } else if (complete) {
+        label = action === 'lesson' ? 'Lesson delivered' : 'Reminder sent';
+        percent = 100;
+      } else if (action === 'lesson' && progress?.status === 'uploading') {
+        percent = Number.isFinite(progress.percent) ? progress.percent : null;
+        label = percent === null
+          ? 'Uploading lesson video…'
+          : `Uploading lesson video · ${Math.round(percent)}%`;
+      } else if (action === 'lesson' && progress?.status === 'sent') {
+        label = 'Video delivered · finishing lesson…';
+      } else if (request.status === 'queued') {
+        label = action === 'lesson' ? 'Waiting for the Telegram bot…' : 'Reminder queued…';
+      } else {
+        label = action === 'lesson' ? 'Preparing lesson delivery…' : 'Sending reminder…';
+      }
+
+      return `<div class="student-action-progress${complete ? ' is-complete' : ''}${failed ? ' is-failed' : ''}"
+        role="status" aria-live="polite" aria-label="${escapeHtml(label)}">
+        ${failed ? escapeHtml(label) : `<progress max="100"${percent === null ? '' : ` value="${percent}"`}
+          aria-label="${action === 'lesson' ? 'Lesson delivery' : 'Reminder'} progress"></progress>
+          <span>${escapeHtml(label)}</span>${percent === null || complete ? '' : `<span>${Math.round(percent)}%</span>`}`}
+      </div>`;
+    }
+
     function applyProgressFilters() {
       const query = $('#progress-search').value.trim().toLocaleLowerCase();
       const grade = $('#progress-grade-filter').value;
@@ -3575,6 +3921,7 @@
         row.hidden = !matches;
         if (matches) visible += 1;
       }
+
       const count = $('#progress-filter-count');
       count.textContent = rows.length
         ? `Showing ${visible.toLocaleString()} of ${rows.length.toLocaleString()} tracked learners`
@@ -3662,9 +4009,6 @@
       const isRegradingTask = ['queued', 'processing'].includes(regradeRequest?.status);
       const actions = [];
       if (student.availableLessons?.length) {
-        const failure = sendRequest?.status === 'failed'
-          ? `Last send failed: ${sendRequest.error || 'delivery error'}`
-          : isSendingLesson ? 'The selected lesson is being sent.' : 'Sending a lesson replaces the active exercise.';
         actions.push(`<div class="student-profile-action">
           <label>Send a lesson
             <select data-profile-lesson ${hasPendingLessonRequest ? 'disabled' : ''}>
@@ -3674,7 +4018,10 @@
             </select>
           </label>
           <button type="button" data-profile-action="send" disabled>${isSendingLesson ? 'Sending…' : 'Send lesson'}</button>
-          <small class="student-profile-note">${escapeHtml(failure)}</small>
+          ${renderStudentActionProgress(sendRequest, 'lesson')}
+          ${isSendingLesson || sendRequest?.status === 'failed'
+            ? ''
+            : '<small class="student-profile-note">Sending a lesson replaces the active exercise.</small>'}
         </div>`);
       }
       if (student.canRegradeTask) {
@@ -3690,16 +4037,13 @@
       }
       if (student.canSendReminder) {
         const isSendingReminder = ['queued', 'processing'].includes(reminderRequest?.status);
-        const reminderNote = isSendingReminder
-          ? 'The reminder is queued and will be sent privately.'
-          : reminderRequest?.status === 'failed'
-            ? `Last reminder failed: ${reminderRequest.error || 'delivery error'}`
-            : reminderRequest?.status === 'sent'
-              ? `Last reminder sent ${formatDate(reminderRequest.updatedAt)}`
-              : 'Sends the standard lesson reminder privately.';
+        const reminderNote = isSendingReminder || ['failed', 'sent'].includes(reminderRequest?.status)
+          ? ''
+          : 'Sends the standard lesson reminder privately.';
         actions.push(`<div class="student-profile-action">
           <button type="button" data-profile-action="remind" ${isSendingReminder ? 'disabled' : ''}>${isSendingReminder ? 'Reminder queued…' : reminderRequest?.status === 'failed' ? 'Retry reminder' : 'Send reminder'}</button>
-          <small class="student-profile-note">${escapeHtml(reminderNote)}</small>
+          ${renderStudentActionProgress(reminderRequest, 'reminder')}
+          ${reminderNote ? `<small class="student-profile-note">${escapeHtml(reminderNote)}</small>` : ''}
         </div>`);
       }
       if (student.canSkipToNextLesson) {
@@ -3915,7 +4259,37 @@
           : '';
         const availableLessons = student.platform === 'Telegram' ? student.availableLessons || [] : [];
         const sendLessonAction = availableLessons.length
-          ? `<div class="send-lesson-controls"><div class="send-lesson-picker" data-send-lesson-picker><span>Choose a lesson</span><button class="send-lesson-picker-trigger" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a lesson for ${escapeHtml(student.name)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-picker-value" data-selected-lesson>Select from curriculum…</span><span class="send-lesson-picker-chevron" aria-hidden="true">⌄</span></button><div class="send-lesson-menu" role="listbox" aria-label="Available lessons for ${escapeHtml(student.name)}" hidden>${availableLessons.map(lesson => `<button class="send-lesson-option" type="button" role="option" aria-selected="false" data-lesson-id="${escapeHtml(lesson.id)}"><span>${escapeHtml(lesson.title)}</span><span class="send-lesson-option-check" aria-hidden="true"></span></button>`).join('')}</div></div><button class="send-lesson-button" type="button" data-send-lesson-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${hasPendingLessonRequest ? 'disabled' : ''}><span class="send-lesson-button-icon" aria-hidden="true">➤</span>${isSendingLesson ? sendRequest.status === 'processing' ? 'Sending…' : 'Queued…' : 'Send lesson'}</button>${sendRequest?.status === 'failed' ? `<small class="send-lesson-status">Last send failed: ${escapeHtml(sendRequest.error || 'delivery error')}</small>` : isSendingLesson ? '<small class="send-lesson-status">The selected lesson is being sent.</small>' : '<small class="send-lesson-status">This becomes their active lesson.</small>'}</div>`
+          ? `<div class="send-lesson-controls">
+              <div class="send-lesson-picker" data-send-lesson-picker>
+                <span>Choose a lesson</span>
+                <button class="send-lesson-picker-trigger" type="button"
+                  data-send-lesson-jid="${escapeHtml(student.jid)}" aria-haspopup="listbox"
+                  aria-expanded="false" aria-label="Choose a lesson for ${escapeHtml(student.name)}"
+                  ${hasPendingLessonRequest ? 'disabled' : ''}>
+                  <span class="send-lesson-picker-value" data-selected-lesson>Select from curriculum…</span>
+                  <span class="send-lesson-picker-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div class="send-lesson-menu" role="listbox"
+                  aria-label="Available lessons for ${escapeHtml(student.name)}" hidden>
+                  ${availableLessons.map(lesson => `<button class="send-lesson-option" type="button"
+                    role="option" aria-selected="false" data-lesson-id="${escapeHtml(lesson.id)}">
+                    <span>${escapeHtml(lesson.title)}</span>
+                    <span class="send-lesson-option-check" aria-hidden="true"></span>
+                  </button>`).join('')}
+                </div>
+              </div>
+              <button class="send-lesson-button" type="button"
+                data-send-lesson-jid="${escapeHtml(student.jid)}"
+                data-current-lesson="${escapeHtml(student.currentLessonId)}"
+                ${hasPendingLessonRequest ? 'disabled' : ''}>
+                <span class="send-lesson-button-icon" aria-hidden="true">➤</span>
+                ${isSendingLesson ? sendRequest.status === 'processing' ? 'Sending…' : 'Queued…' : 'Send lesson'}
+              </button>
+              ${renderStudentActionProgress(sendRequest, 'lesson')}
+              ${sendRequest?.status === 'failed' || isSendingLesson
+                ? ''
+                : '<small class="send-lesson-status">This becomes their active lesson.</small>'}
+            </div>`
           : '';
         const regradeAction = student.canRegradeTask
           ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-regrade-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${isRegradingTask || hasPendingLessonRequest ? 'disabled' : ''}>${regradeButtonLabel}</button><small class="skip-lesson-status">${regradeStatusText}</small></div>`
@@ -4934,6 +5308,7 @@
     let discountOfferLoadingMore = false;
     let discountOfferSending = false;
     let discountOfferQueued = false;
+    let discountOfferWindowMinimized = false;
     let discountOfferJobId = null;
     let discountOfferJobTerminal = false;
     let discountOfferRecipientOutcomes = {
@@ -5096,12 +5471,35 @@
       }
     }
 
+    function updateDiscountOfferRestoreButton() {
+      const restoreButton = $('#discount-offer-restore');
+      restoreButton.hidden = !discountOfferWindowMinimized;
+      restoreButton.textContent = discountOfferQueued ? 'Show offer progress' : 'Show offer window';
+    }
+
+    function minimizeDiscountOfferDialog() {
+      discountOfferWindowMinimized = true;
+      updateDiscountOfferRestoreButton();
+      if ($('#discount-offer-dialog').open) $('#discount-offer-dialog').close();
+    }
+
+    function restoreDiscountOfferDialog() {
+      discountOfferWindowMinimized = false;
+      updateDiscountOfferRestoreButton();
+      $('#discount-offer-dialog').showModal();
+      if (!discountOfferQueued) refreshDiscountOfferRoster();
+    }
+
     async function openDiscountOfferDialog(audienceFilter = 'all') {
       const dialog = $('#discount-offer-dialog');
       if (discountOfferJobId && !discountOfferJobTerminal) {
+        discountOfferWindowMinimized = false;
+        updateDiscountOfferRestoreButton();
         dialog.showModal();
         return;
       }
+      discountOfferWindowMinimized = false;
+      updateDiscountOfferRestoreButton();
       discountOfferAudienceFilter = audienceFilter;
       $('#discount-offer-filter').value = audienceFilter;
       const onlineOnly = audienceFilter === 'online-only';
@@ -5291,7 +5689,7 @@
             ? 'members who have not messaged the bot privately'
             : 'group members';
         if (!await dashboardConfirm(
-          `Queue this personalized message for ${selectedCount.toLocaleString()} selected ${selectedAudience}? Presence can change before delivery; the sender rechecks group membership but not online status. Once queued, sent messages cannot be recalled.`,
+          `Queue this personalized message for ${selectedCount.toLocaleString()} selected ${selectedAudience}? The sender waits 10 seconds between messages. Presence can change before delivery; the sender rechecks group membership but not online status. Once queued, sent messages cannot be recalled.`,
           {
             title: discountOfferAudienceFilter === 'online-only'
               ? 'Confirm online-member message'
@@ -5661,7 +6059,12 @@
         if (has('telegram_update_queue.json', 'telegram_agent_control.json')) {
           tasks.push(loadTelegramUpdateQueue());
         }
-        if (has('telegram_agent_media_activity.json')) tasks.push(loadTelegramAgentMediaActivity());
+        if (has('telegram_agent_media_activity.json')) {
+          tasks.push(loadTelegramAgentMediaActivity());
+          if (document.querySelector('#section-progress').classList.contains('active')) {
+            tasks.push(loadProgress());
+          }
+        }
         if (has('telegram_user_broadcast_state.json')) {
           if (document.querySelector('#section-overview').classList.contains('active')) {
             tasks.push(loadTelegramStats());
@@ -5781,7 +6184,7 @@
       if (!text) return;
       const count = Number($('#telegram-user-broadcast-recipients').dataset.count || 0);
       if (!await dashboardConfirm(
-        `Send this message from your Telegram account individually to ${count} eligible lesson learners, with a 3-second pause between messages?`,
+        `Send this message from your Telegram account individually to ${count} eligible lesson learners, with a 10-second pause between messages?`,
         { title: 'Send Telegram announcement', confirmText: 'Queue announcement' }
       )) return;
       const button = $('#telegram-user-broadcast-send');
@@ -5849,6 +6252,8 @@
     $('#discount-offer-close').addEventListener('click', () => {
       $('#discount-offer-dialog').close();
     });
+    $('#discount-offer-minimize').addEventListener('click', minimizeDiscountOfferDialog);
+    $('#discount-offer-restore').addEventListener('click', restoreDiscountOfferDialog);
     $('#discount-offer-message').addEventListener('input', renderDiscountOfferPreview);
     $('#discount-offer-filter').addEventListener('change', () => {
       discountOfferAudienceFilter = $('#discount-offer-filter').value;
@@ -6701,6 +7106,18 @@
       } catch (error) {
         showError(error.message);
       }
+    });
+    $('#dashboard-notifications').addEventListener('click', () => {
+      if (dashboardNotificationsEnabled) {
+        dashboardNotificationsEnabled = false;
+        setDashboardNotificationsPreference(false);
+        if (notificationAgentPollTimer) clearInterval(notificationAgentPollTimer);
+        notificationAgentPollTimer = null;
+        dashboardNotificationSnapshots = null;
+        updateDashboardNotificationsControl('Notifications are off.');
+        return;
+      }
+      enableDashboardNotifications();
     });
     $('#agent-connection').addEventListener('click', async event => {
       const button = event.currentTarget;

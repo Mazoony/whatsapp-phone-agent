@@ -36,7 +36,9 @@ export async function generateWithTransientRetry(generate, wait = ms =>
   try {
     return await generate();
   } catch (error) {
-    if (!getModelErrorStatus(error)) throw error;
+    const transientNetworkError =
+      error instanceof TypeError && /fetch failed/i.test(error.message);
+    if (!getModelErrorStatus(error) && !transientNetworkError) throw error;
     await wait(1500);
     return generate();
   }
