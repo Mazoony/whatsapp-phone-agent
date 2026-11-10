@@ -79,7 +79,7 @@
     .section-heading h2 { font-size: 16px; margin: 0; letter-spacing: -.2px; }
     .section-heading p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
     .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
-    .telegram-overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 960px; }
+    .telegram-overview-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 1200px; }
     .gender-overview-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
     .gender-overview-value { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 10px; }
     .gender-overview-value strong { color: var(--ink); font-size: 20px; font-weight: 760; }
@@ -234,6 +234,26 @@
     .telegram-stats-panel { margin: 14px 0; padding: 15px 17px 12px; }
     .telegram-stats-panel h2 { margin: 0; font-size: 15px; }
     .telegram-stats-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+    .telegram-class-panel { margin: 14px 0; padding: 15px 17px; }
+    .telegram-class-panel h2 { margin: 0; font-size: 15px; }
+    .telegram-class-panel > p { margin: 4px 0 12px; color: var(--muted); font-size: 11px; }
+    .telegram-class-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .telegram-class-card { min-width: 0; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+    .telegram-class-card h3 { margin: 0; font-size: 13px; }
+    .telegram-class-groups { margin-top: 3px; color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+    .telegram-class-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+    .telegram-class-metric { padding: 8px; border-radius: 7px; background: #f5f8f6; }
+    .telegram-class-metric span, .telegram-class-metric strong { display: block; }
+    .telegram-class-metric span { color: var(--muted); font-size: 9px; }
+    .telegram-class-metric strong { margin-top: 3px; font-size: 16px; }
+    .telegram-class-trend { display: flex; align-items: end; gap: 2px; height: 45px; margin-top: 12px; padding: 0 2px; border-bottom: 1px solid var(--line); }
+    .telegram-class-trend-day { display: flex; flex: 1; align-items: end; justify-content: center; gap: 1px; height: 100%; }
+    .telegram-class-trend-day i { display: block; width: 40%; min-height: 1px; border-radius: 2px 2px 0 0; background: #23875a; }
+    .telegram-class-trend-day i + i { background: #5278c7; }
+    .telegram-class-trend-legend { display: flex; gap: 10px; margin-top: 5px; color: var(--muted); font-size: 9px; }
+    .telegram-class-trend-legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .telegram-class-trend-legend i { width: 9px; height: 3px; border-radius: 2px; background: #23875a; }
+    .telegram-class-trend-legend span + span i { background: #5278c7; }
     .telegram-stats-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
     .telegram-stat-card { padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
     .telegram-stat-action { width: 100%; color: inherit; font: inherit; text-align: left; }
@@ -472,6 +492,82 @@
     #progress-rows > tr[data-progress-student]:focus-within > td:first-child { box-shadow: inset 3px 0 #73b28e; }
     .progress-student-link { border: 0; padding: 0; background: transparent; color: var(--green); font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
     .progress-student-link:hover, .progress-student-link:focus-visible { text-decoration: underline; }
+    .recent-student-answers { margin: 14px 0; }
+    .recent-student-answers h3 { margin: 0; font-size: 14px; }
+    .recent-student-answers > p { margin: 5px 0 12px; color: var(--muted); font-size: 11px; }
+    .student-answer-list { display: grid; gap: 8px; }
+    .student-answer-item { border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .student-answer-item summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; padding: 10px 12px; cursor: pointer; font-size: 11px; }
+    .student-answer-meta { color: var(--muted); font-size: 10px; }
+    .student-answer-status { flex: 0 0 auto; border-radius: 999px; padding: 3px 8px; font-size: 10px; font-weight: 700; }
+    .student-answer-status.checked { background: #e8f5ed; color: #17653a; }
+    .student-answer-status.not-checked { background: #fff3d8; color: #805500; }
+    .student-answer-text { margin: 0 12px 12px; padding: 10px; border-radius: 7px; background: #f7faf8; color: var(--ink); font: inherit; font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .student-answer-reply { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 0 12px 12px; }
+    .student-answer-reply textarea { min-height: 54px; resize: vertical; }
+    .student-answer-reply button { align-self: end; }
+    .student-answer-reply-status { grid-column: 1 / -1; min-height: 14px; color: var(--muted); font-size: 10px; }
+    .student-answer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 12px 10px; }
+    .student-answer-recheck { border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; color: var(--ink); background: #f7faf8; font: inherit; font-size: 10px; font-weight: 700; }
+    .student-answer-recheck:disabled { cursor: wait; opacity: .6; }
+    .student-answer-recheck-status { color: var(--muted); font-size: 10px; }
+    .student-chat-panel { display: grid; grid-template-columns: minmax(230px, 30%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); width: 100%; height: min(72vh, 760px); min-height: 480px; margin: 14px 0; overflow: hidden; padding: 0; border: 1px solid #d5e0e8; background: #e7edf1; }
+    aside.student-chat-list { position: relative; inset: auto; display: grid; grid-template-rows: auto auto minmax(0, 1fr); width: auto; height: 100%; min-width: 0; min-height: 0; overflow: hidden; padding: 0; flex-direction: initial; gap: 0; border-right: 1px solid #d5e0e8; background: #fff; color: inherit; }
+    .student-chat-list-head { padding: 15px 14px 10px; border-bottom: 1px solid #edf1f3; }
+    .student-chat-list-head h2 { margin: 0 0 10px; color: #263746; font-size: 15px; }
+    .student-chat-search { width: 100%; min-height: 34px; border: 1px solid #e0e7eb; border-radius: 18px; padding: 7px 12px; background: #f2f5f7; font: inherit; font-size: 11px; }
+    .student-chat-list-count { padding: 8px 14px 4px; color: #80909b; font-size: 9px; }
+    .student-chat-list-items { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .student-chat-list-item { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 10px; width: 100%; min-height: 64px; padding: 9px 12px; border: 0; border-bottom: 1px solid #f0f3f5; background: white; color: #263746; text-align: left; cursor: pointer; }
+    .student-chat-list-item:hover { background: #f3f7fa; }
+    .student-chat-list-item.active { background: #e7f1f8; }
+    .student-chat-list-avatar { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 50%; background: #d7e8f3; color: #35617e; font-size: 14px; font-weight: 750; }
+    .student-chat-list-copy { display: grid; gap: 4px; min-width: 0; }
+    .student-chat-list-copy strong, .student-chat-list-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .student-chat-list-copy strong { font-size: 11px; }
+    .student-chat-list-copy small { color: #80909b; font-size: 9px; }
+    .student-chat-presence { display: inline-flex; align-items: center; gap: 5px; color: #dcecf4; font-size: 10px; }
+    .student-chat-presence i { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #aab8c0; }
+    .student-chat-presence.online { color: #e5ffe9; }
+    .student-chat-presence.online i { background: #56db81; }
+    .student-chat-list-presence { display: inline-flex; align-items: center; gap: 4px; color: #758590; font-size: 9px; }
+    .student-chat-list-presence i { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #aab8c0; }
+    .student-chat-list-presence.online { color: #258044; }
+    .student-chat-list-presence.online i { background: #39b866; }
+    .student-chat-list-empty { padding: 18px 12px; color: #80909b; font-size: 10px; text-align: center; }
+    .student-chat-conversation { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; width: 100%; min-width: 0; min-height: 0; height: 100%; background: #e7edf1; }
+    .student-chat-header { display: flex; align-items: center; gap: 12px; min-height: 70px; padding: 11px 16px; background: #5682a3; color: white; }
+    .student-chat-back { display: none; flex: 0 0 32px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: #ffffff24; color: white; font-size: 19px; }
+    .student-chat-avatar { display: grid; flex: 0 0 44px; width: 44px; height: 44px; place-items: center; border-radius: 50%; background: #d7e8f3; color: #35617e; font-size: 18px; font-weight: 750; }
+    .student-chat-contact { min-width: 0; flex: 1; }
+    .student-chat-contact strong, .student-chat-contact small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .student-chat-contact strong { font-size: 13px; }
+    .student-chat-contact small { margin-top: 3px; color: #e4eff6; font-size: 10px; }
+    .student-chat-messages { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px clamp(12px, 4vw, 36px); background-color: #dce7ed; background-image: radial-gradient(circle at 20% 20%, #ffffff44 0 2px, transparent 2.5px), radial-gradient(circle at 80% 75%, #a9c1cf38 0 2px, transparent 2.5px); background-size: 42px 42px, 54px 54px; }
+    .student-chat-message { position: relative; max-width: min(78%, 640px); padding: 9px 12px 7px; border-radius: 11px; background: #fff; box-shadow: 0 1px 1px #3854681c; align-self: flex-start; }
+    .student-chat-message.bot { background: #effdde; align-self: flex-end; }
+    .student-chat-message p { margin: 0; color: #263746; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .student-chat-message small { display: block; margin-top: 4px; color: #80909b; font-size: 9px; text-align: right; }
+    .student-chat-message.bot small { color: #75a278; }
+    .student-chat-empty { display: grid; flex: 1; place-items: center; color: #627885; font-size: 11px; text-align: center; }
+    .student-chat-composer-wrap { padding: 10px 14px 6px; background: #f7f9fa; }
+    .student-chat-reply { display: grid; grid-template-columns: minmax(0, 1fr) 42px; align-items: end; gap: 9px; }
+    .student-chat-reply textarea { min-height: 42px; max-height: 140px; resize: vertical; border-color: #dbe3e8; border-radius: 11px; padding: 11px 13px; background: white; font-size: 12px; }
+    .student-chat-reply button { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 50%; padding: 0; background: #5682a3; font-size: 0; }
+    .student-chat-reply button::before { content: "➤"; color: white; font-size: 17px; }
+    .student-chat-reply button:disabled { opacity: .48; }
+    .student-chat-status { min-height: 24px; margin: 0; padding: 4px 16px 8px; background: #f7f9fa; color: #788994; font-size: 10px; }
+    @media (max-width: 600px) {
+      .student-chat-panel { display: block; height: 72vh; min-height: 420px; }
+      aside.student-chat-list { height: 100%; border-right: 0; }
+      .student-chat-conversation { display: none; height: 100%; }
+      .student-chat-panel.has-selection .student-chat-list { display: none; }
+      .student-chat-panel.has-selection .student-chat-conversation { display: grid; }
+      .student-chat-back { display: grid; place-items: center; }
+      .student-chat-header { padding: 10px 12px; }
+      .student-chat-avatar { flex-basis: 38px; width: 38px; height: 38px; }
+      .student-chat-message { max-width: 90%; }
+    }
     .student-profile-dialog { width: min(760px, calc(100% - 32px)); max-width: none; max-height: min(88vh, 860px); overflow: hidden; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: white; color: var(--ink); box-shadow: 0 24px 70px rgba(10, 35, 25, .28); }
     .student-profile-dialog::backdrop { background: rgba(18, 38, 30, .58); backdrop-filter: blur(4px); }
     .student-profile-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 20px 24px; border-bottom: 1px solid var(--line); background: #fafcfb; }
@@ -710,6 +806,9 @@
     .form-row-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
     .form-row-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
     .lesson-modal-form label { display: grid; gap: 5px; font-size: 11px; font-weight: 650; color: #2e4438; }
+    .lesson-modal-form .curriculum-exercise-toggle { display: flex; align-items: flex-start; gap: 10px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer; }
+    .lesson-modal-form .curriculum-exercise-toggle input { width: auto; flex: 0 0 auto; padding: 0; margin: 2px 0 0; accent-color: var(--green); }
+    .curriculum-exercise-toggle span, .curriculum-exercise-toggle .field-hint { display: block; }
     .lesson-modal-form input, .lesson-modal-form select, .lesson-modal-form textarea { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 12px; background: white; color: var(--ink); }
     .lesson-modal-form input:focus, .lesson-modal-form select:focus, .lesson-modal-form textarea:focus { outline: 0; border-color: #7db59a; box-shadow: 0 0 0 3px #137b5a15; }
     .field-hint { font-size: 10px; color: var(--muted); font-weight: 400; margin-top: 2px; }
@@ -842,6 +941,7 @@
       <nav aria-label="Dashboard sections">
         <button class="nav-item active" data-section="overview"><span class="nav-icon">▦</span>Overview</button>
         <button class="nav-item" data-section="progress"><span class="nav-icon">◷</span>Student progress</button>
+        <button class="nav-item" data-section="student-chat"><span class="nav-icon">☷</span>Students chat</button>
         <button class="nav-item" data-section="telegram-broadcast"><span class="nav-icon">✉</span>Telegram announcements</button>
         <button class="nav-item" data-section="curriculum"><span class="nav-icon">📚</span>Lessons &amp; curriculum</button>
         <button class="nav-item" data-section="payment-ledger"><span class="nav-icon">$</span>Payment ledger</button>
@@ -876,14 +976,26 @@
             </div>
             <div class="metric-foot"><span id="metric-telegram-gender-unknown">— not identified</span> · inferred or manually set</div>
           </article>
+          <article class="metric" aria-label="Telegram lesson completions">
+            <div class="metric-top"><span>Lessons completed</span><span class="metric-icon" aria-hidden="true">✓</span></div>
+            <div class="metric-value" id="metric-telegram-lessons-completed">—</div>
+            <div class="metric-foot" id="metric-telegram-lessons-completed-recent">Last 7 days —</div>
+          </article>
         </div>
+        <article class="panel telegram-class-panel" aria-labelledby="telegram-class-title">
+          <h2 id="telegram-class-title">Class statistics</h2>
+          <p>Each class counts learners separately; the overall learner total counts each Telegram user once. Activity and completions reflect class enrollments.</p>
+          <div class="telegram-class-grid" id="telegram-class-grid" aria-live="polite">
+            <div class="telegram-class-card">Loading class statistics…</div>
+          </div>
+        </article>
         <article class="panel telegram-stats-panel" aria-labelledby="telegram-stats-title">
           <div>
             <h2 id="telegram-stats-title">Telegram group statistics</h2>
-            <p>Group membership and online count from Telegram, plus recorded joins and learner activity over the last 30 days. The dashed line marks the latest total member count; historical daily totals are not available.</p>
+            <p>Membership and online count for the primary Telegram group, plus recorded joins and unique learner activity over the last 30 days. The dashed line marks its latest member count; historical daily totals are not available.</p>
           </div>
           <div class="telegram-stats-summary" id="telegram-stats-summary" aria-live="polite">
-            <div class="telegram-stat-card"><div class="telegram-stat-label">Total group members</div><div class="telegram-stat-value">Loading…</div></div>
+            <div class="telegram-stat-card"><div class="telegram-stat-label">Primary group members</div><div class="telegram-stat-value">Loading…</div></div>
             <div class="telegram-stat-card"><div class="telegram-stat-label">Online now</div><div class="telegram-stat-value">—</div></div>
             <div class="telegram-stat-card"><div class="telegram-stat-label">Tracked learners</div><div class="telegram-stat-value">—</div></div>
             <div class="telegram-stat-card"><div class="telegram-stat-label">Joined today</div><div class="telegram-stat-value">—</div></div>
@@ -896,7 +1008,7 @@
           <div class="telegram-stats-legend" aria-label="Telegram graph legend">
             <span><i></i>Daily recorded group joins</span>
             <span><i class="telegram-active-key"></i>Active tracked learners</span>
-            <span id="telegram-stats-members-legend"><i class="telegram-members-key"></i>Current total group members</span>
+            <span id="telegram-stats-members-legend"><i class="telegram-members-key"></i>Current primary group members</span>
           </div>
         </article>
         <article class="panel agent-log-panel">
@@ -1347,7 +1459,7 @@
       </section>
 
       <section class="section" id="section-progress">
-        <div class="section-heading"><div><h2>Student progress</h2><p>Includes Telegram group members, their recorded join dates, lesson progress, and visible online status.</p></div></div>
+        <div class="section-heading"><div><h2>Student progress</h2><p>Completion rate is lessons passed out of lessons received. Cumulative exercise score counts only the first confidently graded answer for each question; retries cannot change it. Exercises delivered before first-attempt scoring are excluded because their attempt history is unavailable.</p></div></div>
         <article class="panel workbook-panel">
           <div>
             <h3>Student data workbook</h3>
@@ -1405,6 +1517,13 @@
             <div class="roster-follow-up-list" id="progress-follow-up-list-page" aria-live="polite"></div>
           </article>
         </div>
+        <article class="panel recent-student-answers" aria-labelledby="recent-student-answers-title">
+          <h3 id="recent-student-answers-title">Latest student responses</h3>
+          <p>Recent student messages and task answers. Reply here to send a private Telegram message to the student.</p>
+          <div class="student-answer-list" id="recent-student-answer-list" aria-live="polite">
+            <p class="student-insight-empty">Loading student answers…</p>
+          </div>
+        </article>
         <div class="panel table-wrap">
           <div class="progress-filters" aria-label="Filter student progress">
             <label for="progress-search">Find a student
@@ -1433,8 +1552,41 @@
             </label>
             <span class="progress-filter-count" id="progress-filter-count" aria-live="polite">Loading students…</span>
           </div>
-          <table class="progress-table"><thead><tr><th>Platform</th><th>Student</th><th>Presence</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed</th><th>Last delivery</th><th>Actions</th></tr></thead><tbody id="progress-rows"><tr><td colspan="13" class="empty">Loading…</td></tr></tbody></table>
+          <table class="progress-table"><thead><tr><th>Platform</th><th>Student</th><th>Presence</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed / received</th><th>Exercise score</th><th>Last delivery</th><th>Actions</th></tr></thead><tbody id="progress-rows"><tr><td colspan="14" class="empty">Loading…</td></tr></tbody></table>
         </div>
+      </section>
+
+      <section class="section" id="section-student-chat">
+        <article class="panel student-chat-panel" id="telegram-student-chat-panel" aria-labelledby="telegram-student-chat-title">
+          <aside class="student-chat-list" aria-label="Telegram student conversations">
+            <div class="student-chat-list-head">
+              <h2>Students</h2>
+              <input class="student-chat-search" id="telegram-student-chat-search" type="search" placeholder="Search students…" autocomplete="off" aria-label="Search Telegram students">
+            </div>
+            <div class="student-chat-list-count" id="telegram-student-chat-list-count">Loading students…</div>
+            <div class="student-chat-list-items" id="telegram-student-chat-list" role="listbox" aria-label="Students"></div>
+          </aside>
+          <div class="student-chat-conversation" id="telegram-student-chat-conversation">
+            <header class="student-chat-header">
+              <button class="student-chat-back" id="telegram-student-chat-back" type="button" aria-label="Back to students">‹</button>
+              <div class="student-chat-avatar" id="telegram-student-chat-avatar" aria-hidden="true">T</div>
+              <div class="student-chat-contact">
+                <strong id="telegram-student-chat-title">Select a student</strong>
+                <small><span class="student-chat-presence" id="telegram-student-chat-presence"><i aria-hidden="true"></i><span id="telegram-student-chat-presence-label">Offline</span></span> · Telegram private chat</small>
+              </div>
+            </header>
+            <div class="student-chat-messages" id="telegram-student-chat-messages" aria-live="polite">
+              <div class="student-chat-empty">Choose a student to view their private messages.</div>
+            </div>
+            <div class="student-chat-composer-wrap">
+              <form class="student-chat-reply" id="telegram-student-chat-reply">
+                <textarea name="message" maxlength="4096" required placeholder="Write a message…" aria-label="Private reply to selected Telegram student" disabled></textarea>
+                <button class="primary-button" type="submit" aria-label="Send message" disabled>Send message</button>
+              </form>
+            </div>
+            <p class="student-chat-status" id="telegram-student-chat-status" role="status"></p>
+          </div>
+        </article>
       </section>
 
       <section class="section" id="section-telegram-broadcast">
@@ -1743,8 +1895,16 @@
                 </label>
               </div>
 
+              <label class="curriculum-exercise-toggle" for="lesson-form-has-exercise">
+                <input id="lesson-form-has-exercise" type="checkbox" checked>
+                <span>
+                  Include an exercise and answer key
+                  <small class="field-hint">Sequential lessons only: turn this off for a video-only lesson, which is marked complete after delivery.</small>
+                </span>
+              </label>
+
               <!-- Task / Exercises Section -->
-              <div class="curriculum-task-section">
+              <div class="curriculum-task-section" id="lesson-form-task-section">
                 <div class="task-head">
                   <span class="section-sublabel">Task Questions &amp; Exercises (تمرين / واجب الحصة)</span>
                   <button type="button" class="btn-micro" id="insert-task-template-btn">+ Insert Standard eShool Template</button>
@@ -1758,7 +1918,7 @@
               </div>
 
               <!-- AI Answer Key / Grading Rubric -->
-              <div class="curriculum-rubric-section">
+              <div class="curriculum-rubric-section" id="lesson-form-rubric-section">
                 <div class="rubric-head">
                   <div>
                     <span class="section-sublabel">AI Grading Rubric &amp; Answer Key (مفتاح الإجابات للتصحيح الآلي)</span>
@@ -2295,7 +2455,15 @@
         return;
       }
       try {
-        const notification = new Notification(title, { body, tag, renotify: false });
+        const notification = new Notification(`eShool Telegram · ${title}`, {
+          body,
+          tag,
+          icon: '/favicon.svg',
+          badge: '/favicon.svg',
+          lang: 'en',
+          dir: 'auto',
+          renotify: false
+        });
         notification.onclick = () => window.focus();
       } catch (error) {
         console.warn('[Dashboard Notifications] Could not show browser notification:', error.message);
@@ -2599,6 +2767,11 @@
         }
       }, 15000);
       telegramAgentPollTimer = setInterval(() => {
+        if (document.querySelector('#section-student-chat').classList.contains('active')) {
+          renderTelegramStudentChatList();
+          loadTelegramStudentChat({ silent: true }).catch(error =>
+            showError(`Could not refresh Telegram student chat: ${error.message}`));
+        }
         if (document.querySelector('#section-overview').classList.contains('active')) {
           loadTelegramAgentLogs().catch(error => showError(`Could not refresh Telegram agent log: ${error.message}`));
           loadTelegramUpdateQueue().catch(error => showError(`Could not refresh Telegram update queue: ${error.message}`));
@@ -3160,6 +3333,62 @@
         `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats · ${telegramTotal.toLocaleString()} Telegram active learner-days · ${telegramJoinTotal.toLocaleString()} Telegram group joins over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
     }
 
+    function renderTelegramClasses(classes) {
+      const container = $('#telegram-class-grid');
+      if (!Array.isArray(classes) || classes.length === 0) {
+        container.innerHTML = '<div class="agent-queue-empty">No Telegram class groups are configured yet.</div>';
+        return;
+      }
+
+      container.innerHTML = classes.map(classStats => {
+        const dailyStats = Array.isArray(classStats.dailyStats) ? classStats.dailyStats : [];
+        const maxTrendValue = Math.max(
+          1,
+          ...dailyStats.flatMap(day => [day.joins, day.activeLearners])
+        );
+        const trend = dailyStats.map(day => {
+          const joinsHeight = Math.max(1, day.joins / maxTrendValue * 100);
+          const activeHeight = Math.max(1, day.activeLearners / maxTrendValue * 100);
+          return `<span class="telegram-class-trend-day" title="${escapeHtml(
+            `${day.date}: ${day.joins} joins, ${day.activeLearners} active learners`
+          )}">
+            <i style="height:${joinsHeight}%"></i><i style="height:${activeHeight}%"></i>
+          </span>`;
+        }).join('');
+        const groups = Array.isArray(classStats.groupIds) ? classStats.groupIds : [];
+        const metrics = [
+          ['Tracked learners', classStats.students],
+          ['Active · 7 days', classStats.activeLearnersLast7Days],
+          ['Lessons completed', classStats.lessonsCompleted],
+          ['Completed · 7 days', classStats.lessonCompletionsLast7Days],
+          ['Awaiting answer', classStats.awaitingTask],
+          ['Needs reattempt', classStats.awaitingReattempt],
+          ['Task completed', classStats.completed],
+          ['Joined today', classStats.joinedToday],
+          ['Joined · 7 days', classStats.joinedLast7Days]
+        ];
+        return `<section class="telegram-class-card">
+          <h3>${escapeHtml(classStats.name)}</h3>
+          <div class="telegram-class-groups">${groups.length
+            ? `Telegram group${groups.length === 1 ? '' : 's'}: ${groups.map(escapeHtml).join(', ')}`
+            : 'No Telegram group ID recorded'}</div>
+          <div class="telegram-class-metrics">${metrics.map(([label, value]) => `
+            <div class="telegram-class-metric">
+              <span>${escapeHtml(label)}</span>
+              <strong>${Number.isSafeInteger(value) ? value.toLocaleString() : '—'}</strong>
+            </div>`).join('')}
+          </div>
+          <div class="telegram-class-trend" role="img"
+            aria-label="${escapeHtml(`${classStats.name} daily group joins and active learners for the last ${dailyStats.length} days`)}">
+            ${trend}
+          </div>
+          <div class="telegram-class-trend-legend">
+            <span><i></i>Joins</span><span><i></i>Active learners</span>
+          </div>
+        </section>`;
+      }).join('');
+    }
+
     function renderTelegramStats(stats, timeZone) {
       const summary = $('#telegram-stats-summary');
       const memberValue = stats.totalGroupMembers === null
@@ -3172,7 +3401,7 @@
           : 'Could not refresh from Telegram';
       summary.innerHTML = `
         <div class="telegram-stat-card">
-          <div class="telegram-stat-label">Total group members</div>
+          <div class="telegram-stat-label">Primary group members</div>
           <div class="telegram-stat-value">${escapeHtml(memberValue)}</div>
           <div class="telegram-stat-foot">${escapeHtml(memberFoot)}</div>
         </div>
@@ -3325,6 +3554,11 @@
       $('#metric-telegram-students').textContent = data.telegramStudents.toLocaleString();
       $('#metric-telegram-joins').textContent =
         `Joined today ${data.telegramJoinedToday.toLocaleString()} · last 7 days ${data.telegramJoinedLast7Days.toLocaleString()}`;
+      $('#metric-telegram-lessons-completed').textContent =
+        data.telegramLessonsCompleted.toLocaleString();
+      $('#metric-telegram-lessons-completed-recent').textContent =
+        `Last 7 days ${data.telegramLessonCompletionsLast7Days.toLocaleString()}`;
+      renderTelegramClasses(data.telegramClasses);
       const genderStatistics = data.telegramGenderStatistics;
       if (!genderStatistics ||
           !Number.isInteger(genderStatistics.female) ||
@@ -4193,10 +4427,385 @@
           : `No lesson completions recorded ${periodLabel}.`;
     }
 
+    function renderRecentStudentAnswers(students) {
+      const responses = students
+        .filter(student => student.platform === 'Telegram')
+        .map(student => {
+          const submission = student.lastTaskSubmission &&
+            Number.isFinite(Date.parse(student.lastTaskSubmission.submittedAt))
+            ? {
+                text: student.lastTaskSubmission.text,
+                receivedAt: student.lastTaskSubmission.submittedAt,
+                label: student.lastTaskSubmission.lessonTitle,
+                checked: student.lastTaskSubmission.checked,
+                isTaskSubmission: true
+              }
+            : null;
+          const message = student.lastStudentMessage &&
+            Number.isFinite(Date.parse(student.lastStudentMessage.receivedAt))
+            ? {
+                text: student.lastStudentMessage.text,
+                receivedAt: student.lastStudentMessage.receivedAt,
+                label: student.lastStudentMessage.source === 'private'
+                  ? 'Private message'
+                  : 'Group message',
+                checked: student.lastStudentMessage.checked,
+                isTaskSubmission: student.lastStudentMessage.checked === true
+              }
+            : null;
+          const latest = [submission, message]
+            .filter(Boolean)
+            .sort((left, right) =>
+              Date.parse(right.receivedAt) - Date.parse(left.receivedAt))[0];
+          return latest ? {
+            student,
+            response: latest,
+            regradeRequest: student.regradeRequest
+          } : null;
+        })
+        .filter(Boolean)
+        .sort((left, right) =>
+          Date.parse(right.response.receivedAt) - Date.parse(left.response.receivedAt))
+        .slice(0, 12);
+      const container = $('#recent-student-answer-list');
+      const preservedItems = new Map();
+      for (const details of container.querySelectorAll('.student-answer-item')) {
+        const form = details.querySelector('[data-telegram-reply]');
+        if (!form) continue;
+        const textarea = form.elements.message;
+        preservedItems.set(form.dataset.telegramReply, {
+          open: details.open,
+          message: textarea.value,
+          messageDisabled: textarea.disabled,
+          sendDisabled: form.querySelector('button[type="submit"]').disabled,
+          status: form.querySelector('.student-answer-reply-status').textContent
+        });
+      }
+      const activeForm = document.activeElement?.closest?.('[data-telegram-reply]');
+      const activeStudentKey = activeForm?.dataset.telegramReply;
+      const activeTextarea = activeForm?.elements.message === document.activeElement
+        ? activeForm.elements.message
+        : null;
+      const selection = activeTextarea
+        ? [activeTextarea.selectionStart, activeTextarea.selectionEnd, activeTextarea.selectionDirection]
+        : null;
+      container.innerHTML = responses.length
+        ? responses.map(({ student, response, regradeRequest }) => {
+          const canRecheck = response.isTaskSubmission && student.canRegradeTask;
+          const isRechecking = ['queued', 'processing'].includes(regradeRequest?.status);
+          const recheckLabel = regradeRequest?.status === 'processing'
+            ? 'Rechecking…'
+            : regradeRequest?.status === 'queued'
+              ? 'Queued…'
+              : regradeRequest?.status === 'failed'
+                ? 'Retry recheck'
+                : 'Recheck answer';
+          const recheckStatus = regradeRequest?.status === 'queued'
+            ? 'Waiting for the Telegram bot to recheck this answer.'
+            : regradeRequest?.status === 'processing'
+              ? 'The Telegram bot is rechecking this answer.'
+              : regradeRequest?.status === 'failed'
+                ? `Last recheck failed: ${regradeRequest.error || 'grading error'}`
+                : '';
+          return `<details class="student-answer-item">
+            <summary>
+              <strong>${escapeHtml(student.name || 'Telegram student')}</strong>
+              <span class="student-answer-meta">${escapeHtml(response.label)} · ${escapeHtml(formatDate(response.receivedAt))}</span>
+              ${response.isTaskSubmission ? `<span class="student-answer-status ${response.checked ? 'checked' : 'not-checked'}">${response.checked ? 'Checked' : 'Not checked yet'}</span>` : ''}
+            </summary>
+            <pre class="student-answer-text">${escapeHtml(response.text)}</pre>
+            ${canRecheck ? `<div class="student-answer-actions">
+              <button class="student-answer-recheck" type="button"
+                data-response-recheck="${escapeHtml(student.jid)}"
+                data-current-lesson="${escapeHtml(student.currentLessonId)}"
+                ${isRechecking ? 'disabled' : ''}>${recheckLabel}</button>
+              <span class="student-answer-recheck-status" role="status">${escapeHtml(recheckStatus)}</span>
+            </div>` : ''}
+            <form class="student-answer-reply" data-telegram-reply="${escapeHtml(student.jid)}">
+              <textarea name="message" maxlength="4096" required placeholder="Write a private reply…" aria-label="Private reply to ${escapeHtml(student.name || 'Telegram student')}" ${student.canReplyPrivately ? '' : 'disabled'}></textarea>
+              <button class="primary-button" type="submit" ${student.canReplyPrivately ? '' : 'disabled'}>Send reply</button>
+              <span class="student-answer-reply-status" role="status">${student.canReplyPrivately ? '' : 'Student must start a private chat with the bot before you can reply.'}</span>
+            </form>
+          </details>`;
+        }).join('')
+        : '<p class="student-insight-empty">No student responses yet.</p>';
+      for (const details of container.querySelectorAll('.student-answer-item')) {
+        const form = details.querySelector('[data-telegram-reply]');
+        const saved = preservedItems.get(form.dataset.telegramReply);
+        if (!saved) continue;
+        const student = progressStudents.find(item =>
+          item.jid === form.dataset.telegramReply);
+        details.open = saved.open;
+        form.elements.message.value = saved.message;
+        form.elements.message.disabled = saved.messageDisabled ||
+          !student?.canReplyPrivately;
+        form.querySelector('button[type="submit"]').disabled = saved.sendDisabled ||
+          !student?.canReplyPrivately;
+        form.querySelector('.student-answer-reply-status').textContent = saved.status;
+      }
+      if (activeStudentKey && activeTextarea && selection) {
+        const refreshedTextarea = [...container.querySelectorAll('[data-telegram-reply]')]
+          .find(form => form.dataset.telegramReply === activeStudentKey)?.elements.message;
+        if (refreshedTextarea && !refreshedTextarea.disabled) {
+          refreshedTextarea.focus({ preventScroll: true });
+          refreshedTextarea.setSelectionRange(...selection);
+        }
+      }
+    }
+
+    $('#recent-student-answer-list').addEventListener('click', async event => {
+      const button = event.target.closest('[data-response-recheck]');
+      if (!button) return;
+      const student = progressStudents.find(item =>
+        item.platform === 'Telegram' && item.jid === button.dataset.responseRecheck);
+      if (!student?.canRegradeTask ||
+          student.currentLessonId !== button.dataset.currentLesson) {
+        showError('This answer is no longer available to recheck. Refresh the student responses and try again.');
+        return;
+      }
+      if (!await dashboardConfirm(
+        `Ask the bot to recheck ${student.name}'s saved answer for ${student.lessonTitle}? The recheck may update lesson progress and will privately message the student.`,
+        { title: 'Recheck student answer', confirmText: 'Recheck answer' }
+      )) return;
+      const status = button.parentElement.querySelector('.student-answer-recheck-status');
+      button.disabled = true;
+      button.textContent = 'Queuing…';
+      status.textContent = 'Queueing answer recheck…';
+      try {
+        await api('/api/admin/progress/regrade-task', {
+          method: 'POST',
+          body: JSON.stringify({
+            jid: student.jid,
+            currentLessonId: student.currentLessonId
+          })
+        });
+        await loadProgress();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Recheck answer';
+        status.textContent = error.message;
+      }
+    });
+
+    $('#recent-student-answer-list').addEventListener('submit', async event => {
+      const form = event.target.closest('[data-telegram-reply]');
+      if (!form) return;
+      event.preventDefault();
+      const message = form.elements.message.value.trim();
+      const button = form.querySelector('button[type="submit"]');
+      const status = form.querySelector('.student-answer-reply-status');
+      if (!message) return;
+      button.disabled = true;
+      status.textContent = 'Sending private reply…';
+      try {
+        await api('/api/admin/telegram-student-reply', {
+          method: 'POST',
+          body: JSON.stringify({
+            studentKey: form.dataset.telegramReply,
+            message
+          })
+        });
+        form.reset();
+        status.textContent = 'Private reply sent.';
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = !progressStudents.find(student =>
+          student.jid === form.dataset.telegramReply)?.canReplyPrivately;
+      }
+    });
+
+    let telegramStudentChatStudents = [];
+    let selectedTelegramStudentKey = '';
+    const TELEGRAM_STUDENT_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+    const TELEGRAM_PRESENCE_TOOLTIP =
+      'Telegram does not share real online status with bots. Online means activity was seen by the bot within the last 5 minutes.';
+    function isTelegramStudentRecentlyActive(student) {
+      const lastActivityAt = typeof student?.lastStudentActivityAt === 'number'
+        ? student.lastStudentActivityAt
+        : Date.parse(student?.lastStudentActivityAt || '');
+      const elapsed = Date.now() - lastActivityAt;
+      return Number.isFinite(lastActivityAt) && elapsed >= 0 &&
+        elapsed <= TELEGRAM_STUDENT_ONLINE_WINDOW_MS;
+    }
+
+    function updateTelegramStudentPresence(student) {
+      const online = isTelegramStudentRecentlyActive(student);
+      const presence = $('#telegram-student-chat-presence');
+      presence.classList.toggle('online', online);
+      presence.title = TELEGRAM_PRESENCE_TOOLTIP;
+      $('#telegram-student-chat-presence-label').textContent = online ? 'Online' : 'Offline';
+    }
+
+    function getChatStudentName(student) {
+      const name = student?.name?.trim();
+      return name && /[\p{L}\p{N}]/u.test(name)
+        ? name
+        : `Telegram student ${student?.jid?.split(':').at(-1) || ''}`.trim();
+    }
+
+    function renderTelegramStudentChatList() {
+      const query = $('#telegram-student-chat-search').value.trim().toLocaleLowerCase();
+      const visibleStudents = telegramStudentChatStudents.filter(student =>
+        getChatStudentName(student).toLocaleLowerCase().includes(query));
+      $('#telegram-student-chat-list-count').textContent =
+        `${visibleStudents.length.toLocaleString()} students`;
+      $('#telegram-student-chat-list').innerHTML = visibleStudents.length
+        ? visibleStudents.map(student => {
+          const name = getChatStudentName(student);
+          const preview = student.lastStudentMessage?.text ||
+            (student.canReplyPrivately ? 'Private chat started' : 'No private messages yet');
+          const online = isTelegramStudentRecentlyActive(student);
+          return `<button class="student-chat-list-item ${student.jid === selectedTelegramStudentKey ? 'active' : ''}"
+              type="button" role="option" aria-selected="${student.jid === selectedTelegramStudentKey}"
+              data-telegram-chat-student="${escapeHtml(student.jid)}">
+            <span class="student-chat-list-avatar" aria-hidden="true">T</span>
+            <span class="student-chat-list-copy">
+              <strong>${escapeHtml(name)}</strong>
+              <span class="student-chat-list-presence ${online ? 'online' : ''}" title="${TELEGRAM_PRESENCE_TOOLTIP}"><i aria-hidden="true"></i>${online ? 'Online' : 'Offline'}</span>
+              <small>${escapeHtml(preview)}</small>
+            </span>
+          </button>`;
+        }).join('')
+        : '<div class="student-chat-list-empty">No students match your search.</div>';
+    }
+
+    function selectTelegramStudent(studentKey, { showConversation = true } = {}) {
+      const student = telegramStudentChatStudents.find(item => item.jid === studentKey);
+      if (!student) return;
+      selectedTelegramStudentKey = studentKey;
+      lastTelegramStudentChatKey = '';
+      lastTelegramStudentChatSnapshot = '';
+      $('#telegram-student-chat-panel').classList.toggle('has-selection', showConversation);
+      $('#telegram-student-chat-title').textContent = getChatStudentName(student);
+      $('#telegram-student-chat-avatar').textContent = 'T';
+      updateTelegramStudentPresence(student);
+      $('#telegram-student-chat-status').textContent = '';
+      $('#telegram-student-chat-reply').elements.message.disabled =
+        !student.canReplyPrivately;
+      $('#telegram-student-chat-reply').querySelector('button').disabled =
+        !student.canReplyPrivately;
+      renderTelegramStudentChatList();
+      loadTelegramStudentChat().catch(error => {
+        $('#telegram-student-chat-status').textContent = error.message;
+        showError(`Could not load student chat: ${error.message}`);
+      });
+    }
+
+    function renderTelegramStudentChatOptions(students) {
+      telegramStudentChatStudents = students
+        .filter(student => student.platform === 'Telegram')
+        .sort((left, right) =>
+          (right.lastStudentActivityAt || 0) - (left.lastStudentActivityAt || 0) ||
+          getChatStudentName(left).localeCompare(getChatStudentName(right)));
+      if (!telegramStudentChatStudents.some(student =>
+        student.jid === selectedTelegramStudentKey)) {
+        selectedTelegramStudentKey = telegramStudentChatStudents[0]?.jid || '';
+      }
+      renderTelegramStudentChatList();
+      if (selectedTelegramStudentKey) {
+        selectTelegramStudent(selectedTelegramStudentKey, {
+          showConversation: $('#telegram-student-chat-panel').classList.contains('has-selection')
+        });
+      } else {
+        $('#telegram-student-chat-panel').classList.remove('has-selection');
+        $('#telegram-student-chat-title').textContent = 'Select a student';
+        $('#telegram-student-chat-avatar').textContent = 'T';
+        $('#telegram-student-chat-messages').innerHTML =
+          '<div class="student-chat-empty">Choose a student to view their private messages.</div>';
+        $('#telegram-student-chat-reply').elements.message.disabled = true;
+        $('#telegram-student-chat-reply').querySelector('button').disabled = true;
+      }
+    }
+
+    let telegramStudentChatRequest = 0;
+    let lastTelegramStudentChatKey = '';
+    let lastTelegramStudentChatSnapshot = '';
+    async function loadTelegramStudentChat({ silent = false } = {}) {
+      const studentKey = selectedTelegramStudentKey;
+      const messagesContainer = $('#telegram-student-chat-messages');
+      const form = $('#telegram-student-chat-reply');
+      const requestId = ++telegramStudentChatRequest;
+      if (!studentKey) return;
+      const query = new URLSearchParams({ studentKey });
+      const { student, messages } = await api(`/api/admin/telegram-student-chat?${query}`);
+      if (requestId !== telegramStudentChatRequest ||
+          studentKey !== selectedTelegramStudentKey) return;
+      const selectedStudent = telegramStudentChatStudents.find(item => item.jid === studentKey);
+      if (selectedStudent) {
+        selectedStudent.lastStudentActivityAt = student.lastStudentActivityAt;
+        updateTelegramStudentPresence(selectedStudent);
+      }
+      const snapshot = JSON.stringify(messages);
+      if (lastTelegramStudentChatKey !== studentKey ||
+          lastTelegramStudentChatSnapshot !== snapshot) {
+        const wasNearBottom = messagesContainer.scrollHeight -
+          messagesContainer.scrollTop - messagesContainer.clientHeight < 48;
+        messagesContainer.innerHTML = messages.length
+          ? messages.map(message => `
+            <article class="student-chat-message ${message.role === 'bot' ? 'bot' : 'student'}">
+              <p>${escapeHtml(message.text)}</p>
+              <small>${escapeHtml(formatDate(message.timestamp))}${message.role === 'bot' ? ' · ✓✓' : ''}</small>
+            </article>`).join('')
+          : '<div class="student-chat-empty">No saved messages yet. New private messages will appear here.</div>';
+        if (wasNearBottom || lastTelegramStudentChatKey !== studentKey) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        lastTelegramStudentChatKey = studentKey;
+        lastTelegramStudentChatSnapshot = snapshot;
+      }
+      form.elements.message.disabled = !student.canReplyPrivately;
+      form.querySelector('button[type="submit"]').disabled = !student.canReplyPrivately;
+      if (!student.canReplyPrivately) {
+        $('#telegram-student-chat-status').textContent =
+          'The student must start a private chat with the bot before you can reply.';
+      } else if (!silent) {
+        $('#telegram-student-chat-status').textContent = '';
+      }
+    }
+
+    $('#telegram-student-chat-list').addEventListener('click', event => {
+      const studentButton = event.target.closest('[data-telegram-chat-student]');
+      if (studentButton) selectTelegramStudent(studentButton.dataset.telegramChatStudent);
+    });
+    $('#telegram-student-chat-search').addEventListener('input', renderTelegramStudentChatList);
+    $('#telegram-student-chat-back').addEventListener('click', () => {
+      $('#telegram-student-chat-panel').classList.remove('has-selection');
+    });
+
+    $('#telegram-student-chat-reply').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const message = form.elements.message.value.trim();
+      const studentKey = selectedTelegramStudentKey;
+      const button = form.querySelector('button[type="submit"]');
+      if (!message || !studentKey) return;
+      button.disabled = true;
+      $('#telegram-student-chat-status').textContent = 'Sending private reply…';
+      try {
+        await api('/api/admin/telegram-student-reply', {
+          method: 'POST',
+          body: JSON.stringify({ studentKey, message })
+        });
+        form.reset();
+        $('#telegram-student-chat-status').textContent = 'Private reply sent.';
+        await loadTelegramStudentChat();
+        $('#telegram-student-chat-status').textContent = 'Private reply sent.';
+      } catch (error) {
+        $('#telegram-student-chat-status').textContent = error.message;
+        showError(`Could not send private reply: ${error.message}`);
+      } finally {
+        button.disabled = !progressStudents.find(student =>
+          student.jid === studentKey)?.canReplyPrivately;
+      }
+    });
+
     async function loadProgress() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const { students, insights } = await api(`/api/admin/telegram-progress?${new URLSearchParams({ timeZone })}`);
       progressStudents = students;
+      renderTelegramStudentChatOptions(students);
+      renderRecentStudentAnswers(students);
       for (const period of ['daily', 'weekly']) {
         loadTelegramLeaderboard(period).catch(error => {
           const prefix = `telegram-${period}-leaderboard`;
@@ -4318,8 +4927,14 @@
         const presenceCell = presence
           ? `<span class="telegram-presence ${presence}" title="${escapeHtml(presenceTitle)}">${presenceLabel}</span>`
           : '—';
-        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td>${student.lessonsCompleted.toLocaleString()}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || '—'}</div></td></tr>`;
-      }).join('') : '<tr><td colspan="13" class="empty">No student progress recorded yet.</td></tr>';
+        const lessonCompletionLabel = Number.isFinite(student.lessonCompletionPercent)
+          ? `${student.lessonsPassed} / ${student.lessonsReceived} · ${student.lessonCompletionPercent}%`
+          : '—';
+        const exerciseScoreLabel = Number.isFinite(student.exerciseScorePercent)
+          ? `${student.exerciseScorePercent}% · ${student.scoreCorrectQuestions} / ${student.scoreTotalQuestions}`
+          : 'Not recorded';
+        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td title="Lessons passed out of lessons received">${lessonCompletionLabel}</td><td title="Correct answers across delivered exercises; corrected answers also count">${exerciseScoreLabel}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || '—'}</div></td></tr>`;
+      }).join('') : '<tr><td colspan="14" class="empty">No student progress recorded yet.</td></tr>';
       applyProgressFilters();
       $('#progress-rows').querySelectorAll('[data-send-lesson-picker]').forEach(picker => {
         const trigger = picker.querySelector('.send-lesson-picker-trigger');
@@ -4644,10 +5259,12 @@
       const statuses = {
         queued: 'Queued',
         running: 'Sending',
+        waiting: 'Waiting for Telegram rate limit',
         cancellation_requested: 'Cancelling',
         cancelled: 'Cancelled',
         completed: 'Completed',
-        failed: 'Stopped after an error'
+        failed: 'Stopped after an error',
+        needs_review: 'Needs review — not sent automatically'
       };
       const jobs = $('#telegram-user-broadcast-jobs');
       jobs.innerHTML = data.jobs.length ? data.jobs.map(job => `
@@ -4655,9 +5272,10 @@
           <div>
             <strong>${escapeHtml(statuses[job.status] || job.status)}</strong>
             <small>${job.sent.toLocaleString()} sent · ${job.skipped.toLocaleString()} skipped · ${job.uncertain.toLocaleString()} uncertain of ${job.total.toLocaleString()} · ${formatDate(job.createdAt)}</small>
+            ${job.retryAt ? `<small>Will retry after ${formatDate(job.retryAt)}</small>` : ''}
             ${job.error ? `<small>${escapeHtml(job.error)}</small>` : ''}
           </div>
-          ${['queued', 'running', 'cancellation_requested'].includes(job.status)
+          ${['queued', 'running', 'waiting', 'cancellation_requested', 'needs_review'].includes(job.status)
             ? `<button class="btn-action btn-danger" type="button" data-cancel-telegram-broadcast="${escapeHtml(job.id)}" ${job.status === 'cancellation_requested' ? 'disabled' : ''}>${job.status === 'cancellation_requested' ? 'Cancelling…' : 'Cancel'}</button>`
             : ''}
         </div>`).join('') : '<div class="empty">No Telegram announcements yet.</div>';
@@ -5584,10 +6202,12 @@
       const statuses = {
         queued: 'Queued',
         running: 'Sending',
+        waiting: 'Waiting for Telegram rate limit',
         cancellation_requested: 'Cancelling',
         cancelled: 'Cancelled',
         completed: 'Completed',
-        failed: 'Stopped after an error'
+        failed: 'Stopped after an error',
+        needs_review: 'Needs review — not sent automatically'
       };
       $('#discount-offer-delivery').hidden = false;
       $('#discount-offer-delivery-status').textContent = statuses[job.status] || job.status;
@@ -5616,7 +6236,7 @@
       error.textContent = job.error || '';
       error.hidden = !job.error;
       discountOfferJobTerminal =
-        ['cancelled', 'completed', 'failed'].includes(job.status);
+        ['cancelled', 'completed', 'failed', 'needs_review'].includes(job.status);
     }
 
     async function refreshDiscountOfferDelivery() {
@@ -6037,6 +6657,10 @@
           if (document.querySelector('#section-progress').classList.contains('active')) {
             tasks.push(loadProgress());
           }
+          if (has('telegram_progress.json') &&
+              document.querySelector('#section-student-chat').classList.contains('active')) {
+            tasks.push(loadTelegramStudentChat({ silent: true }));
+          }
           if (has('lessons.json') &&
               document.querySelector('#section-curriculum').classList.contains('active')) {
             tasks.push(loadCurriculumOverview());
@@ -6093,7 +6717,7 @@
       $('#agent-queue-panel').hidden = name !== 'agent';
       $('#agent-conversation-panel').hidden = name !== 'agent';
       $('#chat-sort-controls').hidden = handledChatsOnly;
-      if (name === 'progress' && refreshProgress) {
+      if (['progress', 'student-chat'].includes(name) && refreshProgress) {
         loadProgress().catch(error => showError(`Could not load Telegram progress: ${error.message}`));
       }
       if (name === 'curriculum') {
@@ -6118,6 +6742,7 @@
         agent: ['WhatsApp agent', 'A readable live view of incoming messages and the agent’s replies, alongside its terminal log.'],
         'es-contacts': ['Es contacts', 'Review Es contacts synced from your phone book.'],
         progress: ['Student progress', 'Review students and their current lesson status.'],
+        'student-chat': ['Students chat', 'View and reply to Telegram students’ private chats.'],
         'telegram-broadcast': ['Telegram announcements', 'Send private announcements to lesson learners.'],
         'payment-ledger': ['Payment ledger', 'Review student payment claims and confirm the current 30-day period.'],
         'payment-calendar': ['Payment calendar', 'Review historical payment dates and collected amounts.'],
@@ -7043,7 +7668,8 @@
         toggle.setAttribute('aria-pressed', String(showing));
       });
       const updateCapsWarning = event => {
-        capsWarning.hidden = !event.getModifierState('CapsLock');
+        capsWarning.hidden = typeof event?.getModifierState !== 'function' ||
+          !event.getModifierState('CapsLock');
       };
       input.addEventListener('keydown', updateCapsWarning);
       input.addEventListener('keyup', updateCapsWarning);
@@ -7620,6 +8246,23 @@
       }
     }
 
+    function updateLessonExerciseFields() {
+      const exerciseToggle = $('#lesson-form-has-exercise');
+      const videoOnlyAllowed = $('#lesson-form-type').value === 'sequential';
+      exerciseToggle.closest('label').hidden = !videoOnlyAllowed;
+      if (!videoOnlyAllowed) exerciseToggle.checked = true;
+      const hasExercise = exerciseToggle.checked || !videoOnlyAllowed;
+      const exerciseIntro = 'يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇';
+      const videoOnlyIntro = 'يا هلا بيك! الحصة برسل ليك الفيديو هسي 👇';
+      const currentIntro = $('#lesson-form-intro').value.trim();
+      if (currentIntro === exerciseIntro || currentIntro === videoOnlyIntro) {
+        $('#lesson-form-intro').value = hasExercise ? exerciseIntro : videoOnlyIntro;
+      }
+      $('#lesson-form-task-section').hidden = !hasExercise;
+      $('#lesson-form-rubric-section').hidden = !hasExercise;
+      $('#lesson-form-task').required = hasExercise;
+    }
+
     function openLessonModal({
       gradeKey = null,
       lesson = null,
@@ -7687,6 +8330,9 @@
         $('#lesson-form-task').value = '';
         rubricRows = [{ id: 1, text: '' }];
       }
+
+      $('#lesson-form-has-exercise').checked = lesson?.hasExercise !== false;
+      updateLessonExerciseFields();
 
       // Update video status badge
       const currentVideoPath = $('#lesson-form-video-path').value;
@@ -7872,6 +8518,7 @@
       const chatBody = $('#preview-chat-body');
       if (!modal || !chatBody || !lesson) return;
 
+      const hasExercise = lesson.hasExercise !== false;
       const formattedTask = escapeHtml(lesson.taskMessage || '')
         .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
         .replace(/_(.*?)_/g, '<em>$1</em>')
@@ -7879,7 +8526,9 @@
         .replace(/```([^`]+)```/g, '<code style="display:block;white-space:pre-wrap">$1</code>');
 
       chatBody.innerHTML = `
-        <div class="preview-bubble">${escapeHtml(lesson.introMessage || 'يا هلا بيك! دي الحصة برسل ليك الفيديو والتمرين هسي 👇')}</div>
+        <div class="preview-bubble">${escapeHtml(lesson.introMessage || (hasExercise
+          ? 'يا هلا بيك! دي الحصة برسل ليك الفيديو والتمرين هسي 👇'
+          : 'يا هلا بيك! دي الحصة برسل ليك الفيديو هسي 👇'))}</div>
         <div class="preview-bubble video-card">
           <div class="preview-video-placeholder">
             <span>▶️</span>
@@ -7888,7 +8537,7 @@
           </div>
           <div class="preview-caption-text">${escapeHtml(lesson.caption || '')}</div>
         </div>
-        <div class="preview-bubble">${formattedTask}</div>
+        ${hasExercise ? `<div class="preview-bubble">${formattedTask}</div>` : ''}
       `;
       modal.hidden = false;
     }
@@ -7939,6 +8588,7 @@
           if (newKey !== 'grade_3_secondary' && typeSelect.value === 'treasure_island') {
             typeSelect.value = 'sequential';
           }
+          updateLessonExerciseFields();
           if (!$('#lesson-form-video-path').value.startsWith(`media/lessons/${newKey}/`)) {
             clearSelectedLessonVideo();
           }
@@ -7957,6 +8607,7 @@
       }
 
       $('#lesson-form-type')?.addEventListener('change', () => {
+        updateLessonExerciseFields();
         populateLessonVideoOptions(selectedGradeCurriculum);
         const selectedVideo = $('#lesson-form-video-path').value;
         if ($('#lesson-form-type').value === 'treasure_island' &&
@@ -8160,6 +8811,7 @@
       // Lesson Form Submit
       const lessonForm = $('#lesson-form');
       if (lessonForm) {
+        $('#lesson-form-has-exercise').addEventListener('change', updateLessonExerciseFields);
         lessonForm.addEventListener('submit', async event => {
           event.preventDefault();
           const formStatus = $('#lesson-form-status');
@@ -8188,6 +8840,8 @@
             const introMessage = $('#lesson-form-intro').value.trim();
             const caption = $('#lesson-form-caption').value.trim();
             const videoFile = $('#lesson-form-video-path').value.trim();
+            const hasExercise = lessonType !== 'sequential' ||
+              $('#lesson-form-has-exercise').checked;
             const taskMessage = $('#lesson-form-task').value.trim();
 
             let answerKey = [];
@@ -8201,8 +8855,11 @@
               answerKey = rubricRows.map(r => r.text.trim()).filter(Boolean);
             }
 
-            if (answerKey.length === 0) {
+            if (hasExercise && answerKey.length === 0) {
               throw new Error('Please enter at least one answer key item.');
+            }
+            if (hasExercise && !taskMessage) {
+              throw new Error('Please enter the exercise questions.');
             }
 
             await api('/api/admin/curriculum/lesson', {
@@ -8222,6 +8879,7 @@
                   videoFile,
                   caption,
                   introMessage,
+                  hasExercise,
                   taskMessage,
                   answerKey
                 }

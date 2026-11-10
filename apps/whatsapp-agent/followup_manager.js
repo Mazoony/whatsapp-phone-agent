@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { config } from './config.js';
-import { historyManager } from './history.js';
-import { generateStudentFollowUp } from './ai.js';
-import { sendHumanizedMessage } from './humanization.js';
+import { config } from '../../config.js';
+import { historyManager } from '../../history.js';
+import { generateStudentFollowUp } from '../../ai.js';
+import { sendHumanizedMessage } from '../../humanization.js';
 
 const DATA_DIR = path.resolve('data');
 const STATE_FILE = path.join(DATA_DIR, 'followup_state.json');

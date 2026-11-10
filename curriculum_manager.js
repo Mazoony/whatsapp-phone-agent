@@ -278,6 +278,7 @@ export function getGradeCurriculum(gradeKey, lessonsConfig = null, { filePath = 
       videoSizeBytes,
       caption: lesson.caption || '',
       introMessage: lesson.introMessage || '',
+      hasExercise: lesson.hasExercise !== false,
       taskMessage: lesson.taskMessage || '',
       answerKey,
       answerCount: answerKey.length
@@ -343,18 +344,25 @@ export function saveLesson({
     throw new Error('Lesson title is required.');
   }
 
-  const taskMessage = String(lesson.taskMessage || '').trim();
-  if (!taskMessage) {
-    throw new Error('Task exercise message (questions) is required.');
+  const targetType = collectionId || (isStandalone ? 'standalone' : 'sequential');
+  const hasExercise = lesson.hasExercise !== false;
+  if (!hasExercise && targetType !== 'sequential') {
+    throw new Error('Video-only lessons are currently supported for sequential lessons only.');
   }
+  const taskMessage = hasExercise ? String(lesson.taskMessage || '').trim() : '';
 
   let answerKey = [];
-  if (Array.isArray(lesson.answerKey)) {
+  if (!hasExercise) {
+    answerKey = [];
+  } else if (Array.isArray(lesson.answerKey)) {
     answerKey = lesson.answerKey.map(k => String(k || '').trim()).filter(Boolean);
   } else if (typeof lesson.answerKey === 'string') {
     answerKey = lesson.answerKey.split('\n').map(l => l.trim()).filter(Boolean);
   }
-  if (answerKey.length === 0) {
+  if (hasExercise && !taskMessage) {
+    throw new Error('Task exercise message (questions) is required.');
+  }
+  if (hasExercise && answerKey.length === 0) {
     throw new Error('At least one correct answer key entry is required for automated evaluation.');
   }
 
@@ -363,7 +371,6 @@ export function saveLesson({
   const introMessage = String(lesson.introMessage || '').trim();
 
   const config = lessonsConfig || readLessonsFile(filePath);
-  const targetType = collectionId || (isStandalone ? 'standalone' : 'sequential');
   if (sourceType !== null && !['sequential', 'standalone', ...Object.keys(LESSON_COLLECTIONS)].includes(sourceType)) {
     throw new Error('A valid source lesson type is required.');
   }
@@ -443,7 +450,10 @@ export function saveLesson({
     title,
     videoFile,
     caption: caption || `🎬 فيديو ${title} | مستر مازن (eShool)`,
-    introMessage: introMessage || `يا هلا بيك! دي الحصة: ${title}. برسل ليك الفيديو والتمرين هسي 👇`,
+    introMessage: introMessage || (hasExercise
+      ? `يا هلا بيك! دي الحصة: ${title}. برسل ليك الفيديو والتمرين هسي 👇`
+      : `يا هلا بيك! دي الحصة: ${title}. برسل ليك الفيديو هسي 👇`),
+    hasExercise,
     taskMessage,
     answerKey
   };

@@ -13,6 +13,7 @@ const DATA_DIR = path.resolve('data');
 const PROGRESS_FILE = path.join(DATA_DIR, 'student_progress.json');
 const LESSONS_FILE = path.join(APP_DIR, 'lessons.json');
 const DAILY_LESSON_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const EXERCISE_SCORING_POLICY = 'first_attempt';
 
 export function resolveLessonVideoPath(videoFile) {
   if (typeof videoFile !== 'string' || !videoFile.trim()) {
@@ -28,6 +29,13 @@ function readLessonVideo(lesson) {
     throw new Error(`Lesson video is not a non-empty file: ${videoAbsolutePath}`);
   }
   return { videoAbsolutePath, video: fs.readFileSync(videoAbsolutePath) };
+}
+
+function isReadySequentialLesson(lesson) {
+  if (typeof lesson?.videoFile !== 'string' || !lesson.videoFile.trim()) return false;
+  if (lesson.hasExercise === false) return true;
+  return typeof lesson.taskMessage === 'string' && lesson.taskMessage.trim() &&
+    Array.isArray(lesson.answerKey) && lesson.answerKey.length > 0;
 }
 
 function normalizeLessonConsentMessage(message) {
@@ -122,6 +130,10 @@ export function hasLessonDeliveryConsent(message, previousAgentMessage = '') {
 
   if (!isLessonPermissionQuestion(previousAgentMessage)) return false;
   return isAffirmative;
+}
+
+function lessonExerciseVersion(lesson) {
+  return JSON.stringify([lesson.taskMessage, lesson.answerKey]);
 }
 
 class LessonManager {
@@ -554,8 +566,7 @@ class LessonManager {
 
   getWelcomeSampleLesson(gradeKey) {
     const lesson = this.lessonsConfig[gradeKey]?.lessons?.[0];
-    if (!lesson?.videoFile || typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
-        !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0) {
+    if (!isReadySequentialLesson(lesson)) {
       return null;
     }
     const videoPath = resolveLessonVideoPath(lesson.videoFile);
@@ -598,10 +609,7 @@ class LessonManager {
     const nextNumber = Number(currentNumber[1]) + 1;
     const lessons = this.lessonsConfig[gradeKey]?.lessons || [];
     const lessonIndex = lessons.findIndex(lesson => {
-      if (lesson.id !== `lesson_${nextNumber}` ||
-          typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
-          !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0 ||
-          typeof lesson.videoFile !== 'string') {
+      if (lesson.id !== `lesson_${nextNumber}` || !isReadySequentialLesson(lesson)) {
         return false;
       }
       try {
@@ -628,10 +636,7 @@ class LessonManager {
     if (previousNumber < 1) return { status: 'completed' };
     const lessons = this.lessonsConfig[gradeKey]?.lessons || [];
     const lessonIndex = lessons.findIndex(lesson => {
-      if (lesson.id !== `lesson_${previousNumber}` ||
-          typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
-          !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0 ||
-          typeof lesson.videoFile !== 'string') {
+      if (lesson.id !== `lesson_${previousNumber}` || !isReadySequentialLesson(lesson)) {
         return false;
       }
       try {
@@ -933,11 +938,43 @@ class LessonManager {
     // 4. Update student progress state
     const previousProgress = this.getStudent(jid, phoneJid);
     const deliveredAt = new Date().toISOString();
+    const previousLessonHistory = Array.isArray(previousProgress?.lessonHistory)
+      ? previousProgress.lessonHistory
+      : [];
+    const lessonHistory = [...new Set([...previousLessonHistory, lesson.id])];
+    const completedLessonIds = Array.isArray(previousProgress?.completedLessonIds)
+      ? previousProgress.completedLessonIds
+      : [];
+    if (lesson.hasExercise === false && !completedLessonIds.includes(lesson.id)) {
+      completedLessonIds.push(lesson.id);
+    }
+    const exerciseScores = previousProgress?.exerciseScores &&
+      typeof previousProgress.exerciseScores === 'object' &&
+      !Array.isArray(previousProgress.exerciseScores)
+      ? { ...previousProgress.exerciseScores }
+      : {};
+    if (lesson.hasExercise !== false) {
+      const taskVersion = lessonExerciseVersion(lesson);
+      if (exerciseScores[lesson.id]?.taskVersion !== taskVersion ||
+          exerciseScores[lesson.id]?.scoringPolicy !== EXERCISE_SCORING_POLICY) {
+        exerciseScores[lesson.id] = {
+          taskVersion,
+          scoringPolicy: EXERCISE_SCORING_POLICY,
+          totalQuestions: lesson.answerKey.length,
+          attemptedQuestionNumbers: [],
+          correctQuestionNumbers: []
+        };
+      }
+    }
     const progressEntry = {
+      ...previousProgress,
       grade: gradeKey,
       currentLessonIndex: lessonIndex,
       currentLessonId: lesson.id,
-      status: 'awaiting_task',
+      lessonHistory,
+      completedLessonIds,
+      exerciseScores,
+      status: lesson.hasExercise === false ? 'completed' : 'awaiting_task',
       deliveredAt,
       enrolledAt: previousProgress?.enrolledAt || deliveredAt
     };
@@ -1008,6 +1045,52 @@ class LessonManager {
 
     const currentLessonId = currentLesson.id ||
       this.lessonsConfig[student.grade]?.lessons?.[student.currentLessonIndex]?.id;
+    if (currentLessonId && Array.isArray(currentLesson.answerKey)) {
+      const exerciseScores = student.exerciseScores &&
+        typeof student.exerciseScores === 'object' &&
+        !Array.isArray(student.exerciseScores)
+        ? student.exerciseScores
+        : {};
+      const taskVersion = lessonExerciseVersion(currentLesson);
+      const previousScore = exerciseScores[currentLessonId];
+      if (previousScore?.taskVersion === taskVersion &&
+          previousScore?.scoringPolicy === EXERCISE_SCORING_POLICY) {
+        const attemptedQuestionNumbers = new Set(
+          Array.isArray(previousScore.attemptedQuestionNumbers)
+            ? previousScore.attemptedQuestionNumbers
+            : []
+        );
+        const correctQuestionNumbers = new Set(
+          Array.isArray(previousScore.correctQuestionNumbers)
+            ? previousScore.correctQuestionNumbers
+            : []
+        );
+        const uncertainQuestionNumbers = new Set(evalResult.uncertainQuestionNumbers || []);
+        const newlyAnsweredQuestionNumbers = (evalResult.answeredQuestionNumbers || [])
+          .filter(questionNumber =>
+            Number.isInteger(questionNumber) &&
+            questionNumber >= 1 &&
+            questionNumber <= currentLesson.answerKey.length &&
+            !uncertainQuestionNumbers.has(questionNumber) &&
+            !attemptedQuestionNumbers.has(questionNumber));
+        const correctAnswers = new Set(evalResult.correctQuestionNumbers || []);
+        for (const questionNumber of newlyAnsweredQuestionNumbers) {
+          attemptedQuestionNumbers.add(questionNumber);
+          if (correctAnswers.has(questionNumber)) {
+            correctQuestionNumbers.add(questionNumber);
+          }
+        }
+        exerciseScores[currentLessonId] = {
+          taskVersion,
+          scoringPolicy: EXERCISE_SCORING_POLICY,
+          totalQuestions: currentLesson.answerKey.length,
+          attemptedQuestionNumbers: [...attemptedQuestionNumbers].sort((left, right) => left - right),
+          correctQuestionNumbers: [...correctQuestionNumbers].sort((left, right) => left - right)
+        };
+        student.exerciseScores = exerciseScores;
+        this.saveProgress();
+      }
+    }
     const nextLesson = evalResult.allCorrect
       ? this.getNextSequentialLesson(student.grade, currentLessonId)
       : null;
@@ -1019,6 +1102,12 @@ class LessonManager {
     try { historyManager.addMessage(jid, 'agent', feedback); } catch (e) {}
 
     if (evalResult.allCorrect) {
+      if (currentLessonId) {
+        student.completedLessonIds = [...new Set([
+          ...(Array.isArray(student.completedLessonIds) ? student.completedLessonIds : []),
+          currentLessonId
+        ])];
+      }
       // Student PASSED this lesson! Advance to next lesson
       if (nextLesson.status === 'ready') {
         const nextIndex = nextLesson.lessonIndex;

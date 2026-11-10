@@ -137,6 +137,7 @@ const BLOCKED_NUMBERS_FILE = BLOCKED_CONTACTS_FILE;
 const CONTACT_GENDER_OVERRIDES_FILE = CONTACT_GENDER_FILE;
 const PROGRESS_FILE = path.join(ROOT_DIR, 'data', 'student_progress.json');
 const TELEGRAM_PROGRESS_FILE = path.join(ROOT_DIR, 'data', 'telegram_progress.json');
+const TELEGRAM_DASHBOARD_CHAT_REPLIES_FILE = path.join(ROOT_DIR, 'data', 'telegram_dashboard_chat_replies.json');
 const LESSONS_FILE = path.join(ROOT_DIR, 'lessons.json');
 const FOLLOWUP_STATE_FILE = path.join(ROOT_DIR, 'data', 'followup_state.json');
 const BROADCAST_REQUESTS_FILE = path.join(ROOT_DIR, 'data', 'broadcast_requests.json');
@@ -303,6 +304,145 @@ function readJsonFileOr(filePath, fallback) {
   return fs.existsSync(filePath) ? readJsonFile(filePath) : fallback;
 }
 
+function getTelegramLessonCompletionTotals(progress, now) {
+  const recentCutoff = now - 7 * 24 * 60 * 60 * 1000;
+  return Object.values(progress || {}).reduce((totals, student) => {
+    const completionCounts = student?.lessonCompletionCounts;
+    const countedCompletions = completionCounts &&
+      typeof completionCounts === 'object' &&
+      !Array.isArray(completionCounts)
+      ? Object.values(completionCounts).reduce((sum, count) =>
+          sum + (Number.isSafeInteger(count) && count > 0 ? count : 0), 0)
+      : 0;
+    const savedTotal = Number.isSafeInteger(student?.lessonsCompleted) &&
+      student.lessonsCompleted > 0
+      ? student.lessonsCompleted
+      : 0;
+    totals.total += Math.max(countedCompletions, savedTotal);
+    if (Array.isArray(student?.lessonCompletionTimestamps)) {
+      totals.last7Days += student.lessonCompletionTimestamps.filter(timestamp => {
+        const completedAt = Date.parse(timestamp);
+        return Number.isFinite(completedAt) &&
+          completedAt >= recentCutoff &&
+          completedAt <= now;
+      }).length;
+    }
+    return totals;
+  }, { total: 0, last7Days: 0 });
+}
+
+function getTelegramClassStatistics(progress, lessons, groupGrades, now, timeZone) {
+  const classes = new Map();
+  for (const [chatId, grade] of groupGrades) {
+    const classStats = classes.get(grade) || { grade, groupIds: new Set(), students: new Map() };
+    classStats.groupIds.add(chatId);
+    classes.set(grade, classStats);
+  }
+  for (const [studentKey, student] of Object.entries(progress || {})) {
+    if (!student || typeof student !== 'object') continue;
+    const grade = groupGrades.get(String(student.telegramChatId)) ||
+      student.grade ||
+      config.defaultStudentGrade;
+    const classStats = classes.get(grade) || { grade, groupIds: new Set(), students: new Map() };
+    if (student.telegramChatId) classStats.groupIds.add(String(student.telegramChatId));
+    const userId = String(student.telegramUserId || studentKey.split(':').at(-1));
+    const previous = classStats.students.get(userId);
+    const activityAt = Date.parse(
+      student.lastTelegramGroupActivityAt || student.lastActivityAt || student.groupJoinedAt || ''
+    );
+    const previousActivityAt = Date.parse(
+      previous?.lastTelegramGroupActivityAt ||
+      previous?.lastActivityAt ||
+      previous?.groupJoinedAt ||
+      ''
+    );
+    if (!previous || (Number.isFinite(activityAt) &&
+        (!Number.isFinite(previousActivityAt) || activityAt > previousActivityAt))) {
+      classStats.students.set(userId, student);
+    }
+    classes.set(grade, classStats);
+  }
+
+  const today = calendarDateKey(now, timeZone);
+  const weekCutoff = now - 7 * 24 * 60 * 60 * 1000;
+  const dates = getRecentCalendarDates(now, 30, timeZone);
+  return [...classes.values()]
+    .map(({ grade, groupIds, students }) => {
+      const studentRecords = [...students.values()];
+      const joinsByDate = new Map();
+      const activeByDate = new Map();
+      let joinedToday = 0;
+      let joinedLast7Days = 0;
+      let activeLearnersLast7Days = 0;
+      for (const student of studentRecords) {
+        const joinedAt = Date.parse(student.groupJoinedAt || '');
+        if (Number.isFinite(joinedAt) && joinedAt <= now) {
+          const date = calendarDateKey(joinedAt, timeZone);
+          joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
+          if (date === today) joinedToday += 1;
+          if (joinedAt >= weekCutoff) joinedLast7Days += 1;
+        }
+        const activeDates = new Set(telegramActivityTimestamps(student)
+          .filter(timestamp => timestamp <= now)
+          .map(timestamp => calendarDateKey(timestamp, timeZone)));
+        for (const date of activeDates) {
+          activeByDate.set(date, (activeByDate.get(date) || 0) + 1);
+        }
+        if (telegramActivityTimestamps(student).some(timestamp =>
+          timestamp >= weekCutoff && timestamp <= now)) {
+          activeLearnersLast7Days += 1;
+        }
+      }
+      const completionTotals = getTelegramLessonCompletionTotals(
+        Object.fromEntries(studentRecords.map((student, index) => [String(index), student])),
+        now
+      );
+      return {
+        grade,
+        name: lessons[grade]?.name || grade,
+        groupIds: [...groupIds].sort(),
+        students: studentRecords.length,
+        joinedToday,
+        joinedLast7Days,
+        lessonsCompleted: completionTotals.total,
+        lessonCompletionsLast7Days: completionTotals.last7Days,
+        activeLearnersLast7Days,
+        awaitingTask: studentRecords.filter(student => student.status === 'awaiting_task').length,
+        awaitingReattempt: studentRecords.filter(student => student.status === 'awaiting_reattempt').length,
+        completed: studentRecords.filter(student => student.status === 'completed').length,
+        dailyStats: dates.map(date => ({
+          date,
+          joins: joinsByDate.get(date) || 0,
+          activeLearners: activeByDate.get(date) || 0
+        }))
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function getTelegramUniqueStudentRecords(progress) {
+  const students = new Map();
+  for (const [studentKey, student] of Object.entries(progress || {})) {
+    if (!student || typeof student !== 'object') continue;
+    const userId = String(student.telegramUserId || studentKey.split(':').at(-1));
+    const previous = students.get(userId);
+    const activityAt = Date.parse(
+      student.lastTelegramGroupActivityAt || student.lastActivityAt || student.groupJoinedAt || ''
+    );
+    const previousActivityAt = Date.parse(
+      previous?.lastTelegramGroupActivityAt ||
+      previous?.lastActivityAt ||
+      previous?.groupJoinedAt ||
+      ''
+    );
+    if (!previous || (Number.isFinite(activityAt) &&
+        (!Number.isFinite(previousActivityAt) || activityAt > previousActivityAt))) {
+      students.set(userId, student);
+    }
+  }
+  return [...students.entries()].map(([userId, student]) => ({ userId, student }));
+}
+
 function addLessonCompletionStats(gradeCurriculum, studentsProgress) {
   const countsByLesson = new Map();
   const inProgressByLesson = new Map();
@@ -455,8 +595,9 @@ function getReadyTelegramLessons(gradeKey, lessons) {
   return gradeLessons.flatMap((lesson, lessonIndex) => {
     if (typeof lesson?.id !== 'string' ||
         typeof lesson.videoFile !== 'string' ||
-        typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
-        !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0) return [];
+        (lesson.hasExercise !== false &&
+          (typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
+          !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0))) return [];
     const videoPath = path.resolve(ROOT_DIR, lesson.videoFile);
     const relativePath = path.relative(ROOT_DIR, videoPath);
     if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) return [];
@@ -616,6 +757,110 @@ function lessonForStudent(student, lessons) {
   return lessons[student.grade]?.lessons?.[student.currentLessonIndex] || null;
 }
 
+function getStudentLessonCompletion(student, platform) {
+  const receivedLessonIds = new Set(
+    (Array.isArray(student.lessonHistory) ? student.lessonHistory : [])
+      .filter(lessonId => typeof lessonId === 'string' && lessonId.trim())
+  );
+  if (typeof student.currentLessonId === 'string' && student.currentLessonId.trim()) {
+    receivedLessonIds.add(student.currentLessonId);
+  }
+  const completedLessonIds = new Set(
+    (Array.isArray(student.completedLessonIds) ? student.completedLessonIds : [])
+      .filter(lessonId => typeof lessonId === 'string' && lessonId.trim())
+  );
+  if (student.lessonCompletionCounts &&
+      typeof student.lessonCompletionCounts === 'object' &&
+      !Array.isArray(student.lessonCompletionCounts)) {
+    for (const [lessonId, count] of Object.entries(student.lessonCompletionCounts)) {
+      if (Number.isSafeInteger(count) && count > 0) completedLessonIds.add(lessonId);
+    }
+  }
+  for (const lessonId of completedLessonIds) receivedLessonIds.add(lessonId);
+
+  const lessonIndexCount = Number.isSafeInteger(student.currentLessonIndex) &&
+    student.currentLessonIndex >= 0
+    ? student.currentLessonIndex + 1
+    : 0;
+  const lessonsReceived = Math.max(receivedLessonIds.size, lessonIndexCount);
+  let lessonsPassed = completedLessonIds.size;
+  if (lessonsPassed === 0 && platform === 'Telegram') {
+    lessonsPassed = Number.isSafeInteger(student.lessonsCompleted) &&
+      student.lessonsCompleted > 0
+      ? student.lessonsCompleted
+      : 0;
+  } else if (lessonsPassed === 0 && platform === 'WhatsApp' && lessonIndexCount > 0) {
+    lessonsPassed = student.status === 'completed'
+      ? lessonIndexCount
+      : lessonIndexCount - 1;
+  }
+  lessonsPassed = Math.min(lessonsPassed, lessonsReceived);
+
+  return {
+    lessonsPassed,
+    lessonsReceived,
+    lessonCompletionPercent: lessonsReceived > 0
+      ? Math.round(lessonsPassed / lessonsReceived * 100)
+      : null
+  };
+}
+
+function getStudentExerciseScore(student, lessons, platform) {
+  const gradeLessons = lessons?.[student.grade]?.lessons || [];
+  const receivedLessonIds = new Set(
+    (Array.isArray(student.lessonHistory) ? student.lessonHistory : [])
+      .filter(lessonId => typeof lessonId === 'string' && lessonId.trim())
+  );
+  if (typeof student.currentLessonId === 'string' && student.currentLessonId.trim()) {
+    receivedLessonIds.add(student.currentLessonId);
+  }
+  if (Number.isSafeInteger(student.currentLessonIndex) &&
+      student.currentLessonIndex >= 0) {
+    for (const lesson of gradeLessons.slice(0, student.currentLessonIndex + 1)) {
+      if (typeof lesson?.id === 'string') receivedLessonIds.add(lesson.id);
+    }
+  }
+  const exerciseScores = student.exerciseScores &&
+    typeof student.exerciseScores === 'object' &&
+    !Array.isArray(student.exerciseScores)
+    ? student.exerciseScores
+    : {};
+  for (const lessonId of Object.keys(exerciseScores)) receivedLessonIds.add(lessonId);
+
+  let correctQuestions = 0;
+  let totalQuestions = 0;
+  for (const lessonId of receivedLessonIds) {
+    const lesson = gradeLessons.find(item => item?.id === lessonId);
+    if (!Array.isArray(lesson?.answerKey) || lesson.answerKey.length === 0) continue;
+
+    const expectedTaskVersion = platform === 'Telegram'
+      ? createHash('sha256')
+        .update(JSON.stringify([lesson.taskMessage, lesson.answerKey]))
+        .digest('hex')
+      : JSON.stringify([lesson.taskMessage, lesson.answerKey]);
+    let score = exerciseScores[lessonId];
+    if (score?.taskVersion !== expectedTaskVersion) score = null;
+    if (score?.scoringPolicy !== 'first_attempt' ||
+        !Array.isArray(score.correctQuestionNumbers)) continue;
+
+    const correctForLesson = new Set(
+      score.correctQuestionNumbers.filter(questionNumber =>
+        Number.isSafeInteger(questionNumber) &&
+        questionNumber >= 1 && questionNumber <= lesson.answerKey.length)
+    );
+    totalQuestions += lesson.answerKey.length;
+    correctQuestions += correctForLesson.size;
+  }
+
+  return {
+    scoreCorrectQuestions: correctQuestions,
+    scoreTotalQuestions: totalQuestions,
+    exerciseScorePercent: totalQuestions > 0
+      ? Math.round(correctQuestions / totalQuestions * 100)
+      : null
+  };
+}
+
 export function getNextLessonToSkip(student, lessons) {
   if (!student || !student.grade ||
       !['awaiting_task', 'awaiting_reattempt', 'awaiting_content', 'completed'].includes(student.status || 'awaiting_content') ||
@@ -704,6 +949,8 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
     const activity = activityByPhone.get(phoneJid);
     const lesson = lessonForStudent(student, data.lessons);
     const nextLesson = getNextLessonToSkip(student, data.lessons);
+    const lessonCompletion = getStudentLessonCompletion(student, 'WhatsApp');
+    const exerciseScore = getStudentExerciseScore(student, data.lessons, 'WhatsApp');
     return {
       jid,
       platform: 'WhatsApp',
@@ -727,7 +974,9 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       incomingMessagesLast7Days: activity?.incomingMessagesLast7Days || 0,
       incomingMessagesLast30Days: activity?.incomingMessagesLast30Days || 0,
       activeDaysLast30Days: activity?.activeDatesLast30Days.size || 0,
-      lessonsCompleted: student.lessonsCompleted || 0
+      lessonsCompleted: student.lessonsCompleted || 0,
+      ...lessonCompletion,
+      ...exerciseScore
     };
   });
   const telegramProgress = Object.entries(data.telegramProgress || {});
@@ -745,6 +994,29 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
     const joinedAt = Date.parse(student.groupJoinedAt || '');
     const lesson = lessonForStudent(student, data.lessons);
     const nextLesson = getNextLessonToSkip(student, data.lessons);
+    const lessonCompletion = getStudentLessonCompletion(student, 'Telegram');
+    const exerciseScore = getStudentExerciseScore(student, data.lessons, 'Telegram');
+    const submission = student.lastTaskSubmission;
+    const submissionTrack = submission?.track || student.activeTelegramTrack || 'grammar';
+    const submissionProgress = submissionTrack === 'grammar'
+      ? student
+      : student.telegramLessonTracks?.[submissionTrack];
+    const submissionMatchesActiveTask = submission?.grade === student.grade &&
+      submission?.lessonId === (submissionTrack === 'grammar'
+        ? student.currentLessonId
+        : submissionProgress?.activeLessonId);
+    const submissionEvaluated = (submissionMatchesActiveTask &&
+      (submissionProgress?.status === 'awaiting_reattempt' ||
+      [submissionProgress?.correctQuestionNumbers,
+        submissionProgress?.resolvedQuestionNumbers,
+        submissionProgress?.retryQuestionNumbers].some(numbers =>
+        Array.isArray(numbers) && numbers.length > 0))) ||
+      (Number.isSafeInteger(student.lessonCompletionCounts?.[submission?.lessonId]) &&
+        student.lessonCompletionCounts[submission.lessonId] > 0) ||
+      (Array.isArray(student.telegramLessonTracks?.[submissionTrack]?.completedLessonIds) &&
+        student.telegramLessonTracks[submissionTrack].completedLessonIds.includes(submission?.lessonId));
+    const submissionChecked = Number.isFinite(Date.parse(submission?.checkedAt || '')) ||
+      Boolean(submissionEvaluated);
     return {
       jid: key,
       platform: 'Telegram',
@@ -767,7 +1039,37 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       incomingMessagesLast30Days: recent30.length,
       activeDaysLast30Days: activeDatesLast30Days.size,
       lessonsCompleted: student.lessonsCompleted || 0,
+      ...lessonCompletion,
+      ...exerciseScore,
       lastTaskSubmissionAt: student.lastTaskSubmission?.submittedAt || null,
+      lastTaskSubmission: typeof student.lastTaskSubmission?.text === 'string' &&
+          typeof student.lastTaskSubmission?.submittedAt === 'string'
+        ? {
+            lessonId: student.lastTaskSubmission.lessonId || '',
+            lessonTitle: data.lessons[student.lastTaskSubmission.grade]?.lessons
+              ?.find(item => item?.id === student.lastTaskSubmission.lessonId)?.title ||
+              student.lastTaskSubmission.lessonId ||
+              'Lesson',
+            text: student.lastTaskSubmission.text.slice(0, 4096),
+            submittedAt: student.lastTaskSubmission.submittedAt,
+            checkedAt: Number.isFinite(Date.parse(submission.checkedAt || ''))
+              ? submission.checkedAt
+              : null,
+            checked: submissionChecked
+          }
+        : null,
+      lastStudentMessage: typeof student.lastStudentMessage?.text === 'string' &&
+          typeof student.lastStudentMessage?.receivedAt === 'string'
+        ? {
+            text: student.lastStudentMessage.text.slice(0, 4096),
+            receivedAt: student.lastStudentMessage.receivedAt,
+            source: student.lastStudentMessage.source === 'private' ? 'private' : 'group',
+            checked: student.lastTaskSubmission?.text === student.lastStudentMessage.text &&
+              submissionChecked
+          }
+        : null,
+      canReplyPrivately: typeof student.telegramPrivateChatId === 'string' &&
+        Boolean(student.telegramPrivateChatId.trim()),
       canRegradeTask: Boolean(
         student.lastTaskSubmission?.lessonId === student.currentLessonId &&
         student.lastTaskSubmission?.grade === student.grade &&
@@ -1902,7 +2204,7 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
         return;
       }
       const jobState = state.jobs[job.id];
-      if (jobState && !['queued', 'running'].includes(jobState.status)) {
+      if (jobState && !['queued', 'running', 'waiting'].includes(jobState.status)) {
         sendJson(res, 409, { error: 'This Telegram broadcast can no longer be cancelled.' });
         return;
       }
@@ -1914,6 +2216,18 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
           jobs: {
             ...state.jobs,
             [job.id]: { ...jobState, status: 'cancellation_requested' }
+          }
+        });
+      } else if (jobState) {
+        writeJsonFile(broadcastFiles.state, {
+          ...state,
+          jobs: {
+            ...state.jobs,
+            [job.id]: {
+              ...jobState,
+              status: 'cancelled',
+              completedAt: new Date().toISOString()
+            }
           }
         });
       }
@@ -2031,6 +2345,23 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
       createdAt: new Date().toISOString(),
       cancelled: false
     };
+    const queuedAt = new Date().toISOString();
+    writeJsonFile(broadcastFiles.state, {
+      ...state,
+      jobs: {
+        ...state.jobs,
+        [id]: {
+          status: 'queued',
+          total: recipients.length,
+          sent: 0,
+          skipped: 0,
+          uncertain: 0,
+          nextIndex: 0,
+          recipientResults: [],
+          createdAt: queuedAt
+        }
+      }
+    });
     requests.push(job);
     fs.mkdirSync(path.dirname(broadcastFiles.requests), { recursive: true });
     writeJsonFile(broadcastFiles.requests, requests);
@@ -2094,11 +2425,16 @@ export function createAdminDashboardServer({
   telegramUpdateQueueFile = TELEGRAM_UPDATE_QUEUE_FILE,
   telegramAgentControlFile = TELEGRAM_AGENT_CONTROL_FILE,
   telegramProgressFile = TELEGRAM_PROGRESS_FILE,
+  telegramDashboardChatRepliesFile = TELEGRAM_DASHBOARD_CHAT_REPLIES_FILE,
   telegramStudentGenderFile = TELEGRAM_STUDENT_GENDER_FILE,
   paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
   telegramGroupId = process.env.TELEGRAM_GROUP_ID,
+  telegramClassGroups = process.env.TELEGRAM_CLASS_GROUPS
+    ? JSON.parse(process.env.TELEGRAM_CLASS_GROUPS)
+    : {},
   telegramMemberCountProvider = null,
   telegramPaymentNotifier = null,
+  telegramMessageNotifier = null,
   telegramLeaderboardNotifier = null,
   telegramUserBroadcastFiles = {
     requests: TELEGRAM_USER_BROADCAST_REQUESTS_FILE,
@@ -2115,6 +2451,18 @@ export function createAdminDashboardServer({
   const paymentLabels = createContactPaymentLabelsStore(paymentLabelsFile);
   const studentPaymentLedger = createStudentPaymentLedger(paymentLedgerFile);
   const scheduledLessons = createScheduledLessonStore({ filePath: scheduledLessonsFile });
+  if (!telegramClassGroups || typeof telegramClassGroups !== 'object' ||
+      Array.isArray(telegramClassGroups)) {
+    throw new Error('TELEGRAM_CLASS_GROUPS must be a JSON object mapping group IDs to grade keys.');
+  }
+  const telegramGroupGrades = new Map();
+  if (telegramGroupId) telegramGroupGrades.set(String(telegramGroupId), config.defaultStudentGrade);
+  for (const [chatId, grade] of Object.entries(telegramClassGroups)) {
+    if (!/^-?\d+$/.test(chatId) || typeof grade !== 'string' || !grade.trim()) {
+      throw new Error('Each Telegram class group must have a numeric chat ID and a grade key.');
+    }
+    telegramGroupGrades.set(chatId, grade.trim());
+  }
   const lessonSkipQueues = {
     WhatsApp: new LessonSkipQueue(whatsappLessonSkipRequestsFile),
     Telegram: new LessonSkipQueue(telegramLessonSkipRequestsFile)
@@ -2639,33 +2987,114 @@ export function createAdminDashboardServer({
           return;
         }
 
-        const today = calendarDateKey(now, timeZone);
-        const weekCutoff = now - 7 * 24 * 60 * 60 * 1000;
-        const joinedStudents = progress.students.filter(student => student.joinedAt);
-        const lessonCounts = Object.values(readJsonFile(lessonsFile))
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+        const uniqueTelegramRecords = getTelegramUniqueStudentRecords(telegramProgress);
+        const uniqueStudentKeys = new Set(uniqueTelegramRecords.map(({ student }) =>
+          `telegram:${student.telegramChatId}:${student.telegramUserId}`));
+        const uniqueStudents = progress.students.filter(student => uniqueStudentKeys.has(student.jid));
+        const lessons = readJsonFile(lessonsFile);
+        const lessonCounts = Object.values(lessons)
           .reduce((count, grade) => count + (Array.isArray(grade.lessons) ? grade.lessons.length : 0), 0);
-        const telegramGenderStatistics = progress.students.reduce((counts, student) => {
+        const telegramGenderStatistics = uniqueStudents.reduce((counts, student) => {
           const gender = ['female', 'male'].includes(student.gender?.value)
             ? student.gender.value
             : 'unknown';
           counts[gender] += 1;
           return counts;
         }, { female: 0, male: 0, unknown: 0 });
+        const telegramClasses = getTelegramClassStatistics(
+          telegramProgress,
+          lessons,
+          telegramGroupGrades,
+          now,
+          timeZone
+        );
+        const sumClassStatistics = key => telegramClasses.reduce((total, classStats) =>
+          total + classStats[key], 0);
         sendJson(res, 200, {
-          telegramStudents: progress.students.length,
+          telegramStudents: uniqueStudents.length,
           telegramGenderStatistics,
-          telegramJoinedToday: joinedStudents.filter(student =>
-            calendarDateKey(Date.parse(student.joinedAt), timeZone) === today).length,
-          telegramJoinedLast7Days: joinedStudents.filter(student =>
-            Date.parse(student.joinedAt) >= weekCutoff).length,
-          awaitingTask: progress.insights.statusCounts.awaiting_task,
-          awaitingReattempt: progress.insights.statusCounts.awaiting_reattempt,
-          completed: progress.insights.statusCounts.completed,
-          configuredLessons: lessonCounts
+          telegramLessonsCompleted: sumClassStatistics('lessonsCompleted'),
+          telegramLessonCompletionsLast7Days: sumClassStatistics('lessonCompletionsLast7Days'),
+          telegramJoinedToday: sumClassStatistics('joinedToday'),
+          telegramJoinedLast7Days: sumClassStatistics('joinedLast7Days'),
+          awaitingTask: sumClassStatistics('awaitingTask'),
+          awaitingReattempt: sumClassStatistics('awaitingReattempt'),
+          completed: sumClassStatistics('completed'),
+          configuredLessons: lessonCounts,
+          telegramClasses
         });
       } catch (error) {
         console.error('[Admin Dashboard] Could not load Telegram dashboard data:', error.message);
         sendJson(res, 500, { error: 'Could not load Telegram dashboard data.' });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' &&
+        requestUrl.pathname === '/api/admin/telegram-student-chat') {
+      const studentKey = requestUrl.searchParams.get('studentKey') || '';
+      if (!/^telegram:-?\d+:\d+$/.test(studentKey)) {
+        sendJson(res, 400, { error: 'A valid Telegram student is required.' });
+        return;
+      }
+      try {
+        const progress = readJsonFileOr(telegramProgressFile, {});
+        const student = progress[studentKey];
+        if (!student ||
+            studentKey !== `telegram:${student.telegramChatId}:${student.telegramUserId}`) {
+          sendJson(res, 404, { error: 'Telegram student was not found.' });
+          return;
+        }
+        const agentMessages = Array.isArray(student.telegramChatHistory)
+          ? student.telegramChatHistory
+          : [];
+        const dashboardReplies = readJsonFileOr(telegramDashboardChatRepliesFile, {})[studentKey] || [];
+        const latestStudentMessage = student.lastStudentMessage;
+        const hasLatestStudentMessage = typeof latestStudentMessage?.text === 'string' &&
+          Number.isFinite(Date.parse(latestStudentMessage.receivedAt || '')) &&
+          !agentMessages.some(message =>
+            message?.role === 'student' &&
+            message.text === latestStudentMessage.text &&
+            Math.abs(Date.parse(message.timestamp || '') -
+              Date.parse(latestStudentMessage.receivedAt)) <= 60_000);
+        const messages = [
+          ...agentMessages,
+          ...dashboardReplies,
+          ...(hasLatestStudentMessage ? [{
+            role: 'student',
+            text: latestStudentMessage.text,
+            timestamp: latestStudentMessage.receivedAt
+          }] : [])
+        ]
+          .filter(message =>
+            ['student', 'bot'].includes(message?.role) &&
+            typeof message.text === 'string' &&
+            Number.isFinite(Date.parse(message.timestamp || '')))
+          .map(message => ({
+            role: message.role,
+            text: message.text.slice(0, 4096),
+            timestamp: message.timestamp
+          }))
+          .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
+          .slice(-200);
+        sendJson(res, 200, {
+          student: {
+            jid: studentKey,
+            name: student.name || (student.telegramUsername ? `@${student.telegramUsername}` : 'Telegram student'),
+            lastStudentActivityAt: Number.isFinite(Date.parse(
+              student.lastActivityAt || student.lastStudentMessage?.receivedAt || ''
+            ))
+              ? Date.parse(student.lastActivityAt || student.lastStudentMessage?.receivedAt || '')
+              : null,
+            canReplyPrivately: typeof student.telegramPrivateChatId === 'string' &&
+              Boolean(student.telegramPrivateChatId.trim())
+          },
+          messages
+        });
+      } catch (error) {
+        console.error(`[Admin Dashboard] Could not load Telegram chat for ${studentKey}:`, error.message);
+        sendJson(res, 500, { error: 'Could not load the Telegram student chat.' });
       }
       return;
     }
@@ -2772,7 +3201,8 @@ export function createAdminDashboardServer({
 
       try {
         const now = Date.now();
-        const progress = getTelegramProgressSnapshot(timeZone, now);
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+        const uniqueTelegramRecords = getTelegramUniqueStudentRecords(telegramProgress);
         const telegramAccountState = readJsonFileOr(telegramUserBroadcastFiles.state, {});
         const onlineCountUpdatedAt = Date.parse(
           telegramAccountState.onlineGroupMembersUpdatedAt || ''
@@ -2784,13 +3214,20 @@ export function createAdminDashboardServer({
           now >= onlineCountUpdatedAt &&
           now - onlineCountUpdatedAt <= TELEGRAM_PRESENCE_MAX_AGE_MS;
         getTelegramGroupMemberCount().then(memberCount => {
-          const activeByDate = new Map(
-            progress.insights.engagementTrend.map(day => [day.date, day.telegramActiveStudents])
-          );
+          const activeByDate = new Map();
+          for (const { student } of uniqueTelegramRecords) {
+            const activeDates = new Set(telegramActivityTimestamps(student)
+              .filter(timestamp => timestamp <= now)
+              .map(timestamp => calendarDateKey(timestamp, timeZone)));
+            for (const date of activeDates) {
+              activeByDate.set(date, (activeByDate.get(date) || 0) + 1);
+            }
+          }
           const joinsByDate = new Map();
-          for (const student of progress.students) {
-            if (!student.joinedAt) continue;
-            const date = calendarDateKey(Date.parse(student.joinedAt), timeZone);
+          for (const student of Object.values(telegramProgress)) {
+            const joinedAt = Date.parse(student?.groupJoinedAt || '');
+            if (!Number.isFinite(joinedAt) || joinedAt > now) continue;
+            const date = calendarDateKey(joinedAt, timeZone);
             joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
           }
           const dailyStats = getRecentCalendarDates(now, 30, timeZone).map(date => ({
@@ -2816,7 +3253,7 @@ export function createAdminDashboardServer({
             onlineGroupMembersStatus: onlineCountIsFresh
               ? 'available'
               : Number.isFinite(onlineCountUpdatedAt) ? 'stale' : 'unavailable',
-            trackedLearners: progress.total,
+            trackedLearners: uniqueTelegramRecords.length,
             joinsToday: joinsByDate.get(today) || 0,
             joinsLast7Days: dailyStats.slice(-7).reduce((total, day) => total + day.joins, 0),
             dailyStats
@@ -3413,7 +3850,7 @@ export function createAdminDashboardServer({
         }
         const jobs = recentRequests.map(request => {
           const jobState = state.jobs[request.id] || {
-            status: request.cancelled ? 'cancelled' : 'queued',
+            status: request.cancelled ? 'cancelled' : 'needs_review',
             total: request.recipients.length,
             sent: 0,
             skipped: 0,
@@ -3421,8 +3858,10 @@ export function createAdminDashboardServer({
           };
           const job = {
             id: request.id,
-            status: request.cancelled && jobState.status === 'running'
-              ? 'cancellation_requested'
+            status: request.cancelled
+              ? ['running', 'cancellation_requested'].includes(jobState.status)
+                ? 'cancellation_requested'
+                : 'cancelled'
               : jobState.status,
             total: jobState.total,
             sent: jobState.sent,
@@ -3430,6 +3869,7 @@ export function createAdminDashboardServer({
             uncertain: jobState.uncertain,
             createdAt: request.createdAt,
             completedAt: jobState.completedAt || null,
+            retryAt: jobState.retryAt || null,
             error: jobState.error || null
           };
           if (request.id === detailedJobId) {
@@ -4480,6 +4920,81 @@ export function createAdminDashboardServer({
         const invalidInput = /Payment amount|Currency must|Payment status|Student identifier|enrollment date|review date/.test(error.message);
         sendJson(res, invalidInput ? 400 : 500, {
           error: invalidInput ? error.message : 'Could not update student payment status.'
+        });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/telegram-student-reply') {
+      readRequestBody(req).then(async body => {
+        if (!body || typeof body.studentKey !== 'string' ||
+            !/^telegram:-?\d+:\d+$/.test(body.studentKey) ||
+            typeof body.message !== 'string' ||
+            !body.message.trim() ||
+            body.message.trim().length > 4096) {
+          sendJson(res, 400, { error: 'A Telegram student and a message of 1–4096 characters are required.' });
+          return;
+        }
+        const progress = readJsonFileOr(telegramProgressFile, {});
+        const student = progress[body.studentKey];
+        if (!student ||
+            body.studentKey !== `telegram:${student.telegramChatId}:${student.telegramUserId}`) {
+          sendJson(res, 404, { error: 'Telegram student was not found.' });
+          return;
+        }
+        const privateChatId = student.telegramPrivateChatId;
+        if (typeof privateChatId !== 'string' || !privateChatId.trim()) {
+          sendJson(res, 409, {
+            error: 'The student has not started a private chat with the bot yet.'
+          });
+          return;
+        }
+        try {
+          if (telegramMessageNotifier) {
+            await telegramMessageNotifier(privateChatId, body.message.trim());
+          } else {
+            const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+            if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not configured.');
+            const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: privateChatId,
+                text: body.message.trim()
+              }),
+              signal: AbortSignal.timeout(10_000)
+            });
+            const result = await response.json();
+            if (!response.ok || result?.ok !== true) {
+              throw new Error(result?.description || 'Telegram rejected the message.');
+            }
+          }
+          const replies = readJsonFileOr(telegramDashboardChatRepliesFile, {});
+          const studentReplies = Array.isArray(replies[body.studentKey])
+            ? replies[body.studentKey]
+            : [];
+          studentReplies.push({
+            role: 'bot',
+            text: body.message.trim(),
+            timestamp: new Date().toISOString()
+          });
+          replies[body.studentKey] = studentReplies.slice(-200);
+          writeJsonFile(telegramDashboardChatRepliesFile, replies);
+          sendJson(res, 200, { sent: true });
+        } catch (error) {
+          console.error(
+            `[Admin Dashboard] Could not send a private reply to ${body.studentKey}:`,
+            error.message
+          );
+          sendJson(res, 502, { error: 'Could not deliver the private Telegram reply.' });
+        }
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not send Telegram student reply:', error.message);
+        const invalidInput = error.message === 'Request body is too large.' ||
+          error.message === 'Request body must contain valid JSON.';
+        sendJson(res, invalidInput ? 400 : 500, {
+          error: invalidInput ? error.message : 'Could not process the Telegram student reply.'
         });
       });
       return;

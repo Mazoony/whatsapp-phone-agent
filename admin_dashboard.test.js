@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -100,11 +101,41 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
       grade: 'grade_3_secondary',
       telegramChatId: '-1001',
       telegramUserId: 10,
+      telegramPrivateChatId: '10',
       currentLessonIndex: 0,
       currentLessonId: 'lesson_1',
       status: 'awaiting_task',
+      lessonsCompleted: 3,
+      lessonCompletionCounts: {
+        lesson_1: 2,
+        video_only_lesson: 1
+      },
+      lessonCompletionTimestamps: [
+        new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+        new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+        new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      ],
       groupJoinedAt: new Date().toISOString(),
-      deliveredAt: new Date().toISOString()
+      deliveredAt: new Date().toISOString(),
+      lastTaskSubmission: {
+        grade: 'grade_3_secondary',
+        lessonId: 'lesson_1',
+        text: 'My answer to the exercise',
+        submittedAt: '2026-11-07T10:30:00.000Z',
+        checkedAt: '2026-11-07T10:31:00.000Z'
+      },
+      lastStudentMessage: {
+        text: 'عاوز اسجل يا استاذ الرسوم كم',
+        receivedAt: '2026-11-09T15:00:00.000Z',
+        source: 'group',
+        messageId: 72
+      },
+      telegramChatHistory: [{
+        role: 'student',
+        text: '/lesson',
+        timestamp: '2026-11-09T15:01:00.000Z'
+      }]
     }
   }));
   fs.writeFileSync(lessonsFile, JSON.stringify({
@@ -121,17 +152,22 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
     groupRoster: [{ userId: '10', presence: 'online' }]
   }));
   let memberCountCalls = 0;
+  const sentReplies = [];
   const server = createAdminDashboardServer({
     readData: () => {
       throw new Error('Telegram-only endpoints must not read WhatsApp dashboard data.');
     },
     telegramProgressFile: progressFile,
+    telegramDashboardChatRepliesFile: path.join(directory, 'telegram_dashboard_chat_replies.json'),
     lessonsFile,
     telegramUserBroadcastFiles: {
       requests: path.join(directory, 'telegram_user_broadcasts.json'),
       state: telegramAccountStateFile
     },
     telegramGroupId: '-1001',
+    telegramMessageNotifier: async (chatId, message) => {
+      sentReplies.push({ chatId, message });
+    },
     telegramMemberCountProvider: async groupId => {
       assert.equal(groupId, '-1001');
       memberCountCalls += 1;
@@ -156,6 +192,8 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   const overview = await overviewResponse.json();
   const progress = await progressResponse.json();
   assert.equal(overview.telegramStudents, 1);
+  assert.equal(overview.telegramLessonsCompleted, 3);
+  assert.equal(overview.telegramLessonCompletionsLast7Days, 2);
   assert.deepEqual(overview.telegramGenderStatistics, {
     female: 1,
     male: 0,
@@ -166,6 +204,53 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   assert.equal(progress.students[0].platform, 'Telegram');
   assert.equal(progress.students[0].telegramPresence, 'online');
   assert.equal(progress.students[0].telegramPresenceUpdatedAt, presenceSyncedAt);
+  assert.deepEqual(progress.students[0].lastTaskSubmission, {
+    lessonId: 'lesson_1',
+    lessonTitle: 'Lesson One',
+    text: 'My answer to the exercise',
+    submittedAt: '2026-11-07T10:30:00.000Z',
+    checkedAt: '2026-11-07T10:31:00.000Z',
+    checked: true
+  });
+  assert.deepEqual(progress.students[0].lastStudentMessage, {
+    text: 'عاوز اسجل يا استاذ الرسوم كم',
+    receivedAt: '2026-11-09T15:00:00.000Z',
+    source: 'group',
+    checked: false
+  });
+  assert.equal(progress.students[0].canReplyPrivately, true);
+
+  const replyResponse = await fetch(`${origin}/telegram-student-reply`, {
+    method: 'POST',
+    headers: {
+      Origin: `http://127.0.0.1:${server.address().port}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      studentKey: 'telegram:-1001:10',
+      message: 'الرسوم الشهرية 17 ألف جنيه سوداني.'
+    })
+  });
+  assert.equal(replyResponse.status, 200);
+  assert.deepEqual(await replyResponse.json(), { sent: true });
+  assert.deepEqual(sentReplies, [{
+    chatId: '10',
+    message: 'الرسوم الشهرية 17 ألف جنيه سوداني.'
+  }]);
+  const chatResponse = await fetch(
+    `${origin}/telegram-student-chat?studentKey=${encodeURIComponent('telegram:-1001:10')}`
+  );
+  assert.equal(chatResponse.status, 200);
+  const chat = await chatResponse.json();
+  assert.equal(chat.student.name, 'مريم');
+  assert.equal(chat.student.lastStudentActivityAt,
+    Date.parse('2026-11-09T15:00:00.000Z'));
+  assert.ok(chat.messages.some(message =>
+    message.role === 'student' && message.text === '/lesson'));
+  assert.ok(chat.messages.some(message =>
+    message.role === 'student' && message.text === 'عاوز اسجل يا استاذ الرسوم كم'));
+  assert.ok(chat.messages.some(message =>
+    message.role === 'bot' && message.text === 'الرسوم الشهرية 17 ألف جنيه سوداني.'));
 
   const statsResponse = await fetch(`${origin}/telegram-stats?timeZone=UTC`);
   assert.equal(statsResponse.status, 200);
@@ -200,6 +285,122 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
 
   const invalidTimeZoneResponse = await fetch(`${origin}/telegram-overview?timeZone=Not%2FAZone`);
   assert.equal(invalidTimeZoneResponse.status, 400);
+});
+
+test('Telegram overview reports class-specific statistics and deduplicates all-class totals', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-class-statistics-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const now = Date.now();
+  const recent = offset => new Date(now - offset).toISOString();
+  const progressFile = path.join(directory, 'telegram_progress.json');
+  const lessonsFile = path.join(directory, 'lessons.json');
+  const stateFile = path.join(directory, 'telegram_user_broadcast_state.json');
+  const primaryGroupId = '-1001';
+  const secondYearGroupId = '-1002';
+  fs.writeFileSync(progressFile, JSON.stringify({
+    [`telegram:${primaryGroupId}:55`]: {
+      name: 'Student in both classes',
+      grade: 'grade_3_secondary',
+      telegramChatId: primaryGroupId,
+      telegramUserId: 55,
+      status: 'awaiting_task',
+      groupJoinedAt: recent(2 * 24 * 60 * 60 * 1000),
+      lastActivityAt: recent(2 * 60 * 60 * 1000),
+      activityTimestamps: [recent(2 * 60 * 60 * 1000)],
+      lessonsCompleted: 1,
+      lessonCompletionCounts: { lesson_1: 1 },
+      lessonCompletionTimestamps: [recent(2 * 24 * 60 * 60 * 1000)]
+    },
+    [`telegram:${secondYearGroupId}:55`]: {
+      name: 'Student in both classes',
+      grade: 'grade_2_secondary',
+      telegramChatId: secondYearGroupId,
+      telegramUserId: 55,
+      status: 'awaiting_reattempt',
+      groupJoinedAt: recent(24 * 60 * 60 * 1000),
+      lastTelegramGroupActivityAt: recent(30 * 60 * 1000),
+      activityTimestamps: [recent(30 * 60 * 1000)],
+      lessonsCompleted: 2,
+      lessonCompletionCounts: { lesson_1: 2 },
+      lessonCompletionTimestamps: [recent(24 * 60 * 60 * 1000), recent(12 * 60 * 60 * 1000)]
+    },
+    [`telegram:${primaryGroupId}:56`]: {
+      name: 'Third-year student',
+      grade: 'grade_3_secondary',
+      telegramChatId: primaryGroupId,
+      telegramUserId: 56,
+      status: 'completed',
+      groupJoinedAt: recent(60 * 60 * 1000),
+      lastActivityAt: recent(45 * 60 * 1000),
+      activityTimestamps: [recent(45 * 60 * 1000)],
+      lessonsCompleted: 1,
+      lessonCompletionCounts: { lesson_1: 1 },
+      lessonCompletionTimestamps: [recent(45 * 60 * 1000)]
+    }
+  }));
+  fs.writeFileSync(lessonsFile, JSON.stringify({
+    grade_3_secondary: { name: 'Third Secondary', lessons: [{ id: 'lesson_1' }] },
+    grade_2_secondary: { name: 'Second Secondary', lessons: [{ id: 'lesson_1' }] }
+  }));
+  fs.writeFileSync(stateFile, JSON.stringify({ jobs: {} }));
+  const server = createAdminDashboardServer({
+    readData: () => {
+      throw new Error('Telegram-only endpoint must not read WhatsApp dashboard data.');
+    },
+    telegramProgressFile: progressFile,
+    lessonsFile,
+    telegramGroupId: primaryGroupId,
+    telegramClassGroups: { [secondYearGroupId]: 'grade_2_secondary' },
+    telegramUserBroadcastFiles: {
+      requests: path.join(directory, 'telegram_user_broadcasts.json'),
+      state: stateFile
+    },
+    telegramMemberCountProvider: async () => 0
+  });
+  t.after(async () => {
+    if (server.listening) await new Promise(resolve => server.close(resolve));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+  const response = await fetch(
+    `http://127.0.0.1:${server.address().port}/api/admin/telegram-overview?timeZone=UTC`
+  );
+  assert.equal(response.status, 200);
+  const overview = await response.json();
+  assert.equal(overview.telegramStudents, 2);
+  assert.equal(overview.telegramLessonsCompleted, 4);
+  assert.equal(overview.awaitingTask, 1);
+  assert.equal(overview.awaitingReattempt, 1);
+  assert.equal(overview.completed, 1);
+  assert.deepEqual(overview.telegramClasses.map(classStats => ({
+    grade: classStats.grade,
+    students: classStats.students,
+    lessonsCompleted: classStats.lessonsCompleted,
+    awaitingTask: classStats.awaitingTask,
+    awaitingReattempt: classStats.awaitingReattempt,
+    completed: classStats.completed,
+    groupIds: classStats.groupIds
+  })), [
+    {
+      grade: 'grade_2_secondary',
+      students: 1,
+      lessonsCompleted: 2,
+      awaitingTask: 0,
+      awaitingReattempt: 1,
+      completed: 0,
+      groupIds: [secondYearGroupId]
+    },
+    {
+      grade: 'grade_3_secondary',
+      students: 2,
+      lessonsCompleted: 2,
+      awaitingTask: 1,
+      awaitingReattempt: 0,
+      completed: 1,
+      groupIds: [primaryGroupId]
+    }
+  ]);
+  assert.ok(overview.telegramClasses.every(classStats => classStats.dailyStats.length === 30));
 });
 
 test('dashboard queues task rechecks only for an available active Telegram submission', async t => {
@@ -498,11 +699,182 @@ test('student progress identifies a configured next lesson for WhatsApp and Tele
   }, lessons), null);
 });
 
+test('student progress reports cumulative lessons passed out of lessons received', () => {
+  const taskMessage = 'Complete the exercise.';
+  const answerKey = ['1: first answer', '2: second answer'];
+  const whatsappTaskVersion = JSON.stringify([taskMessage, answerKey]);
+  const telegramTaskVersion = createHash('sha256')
+    .update(JSON.stringify([taskMessage, answerKey]))
+    .digest('hex');
+  const lessons = [1, 2, 3].map(number => ({
+    id: `lesson_${number}`,
+    title: `Lesson ${number}`,
+    taskMessage,
+    answerKey
+  }));
+  const scoreRecords = taskVersion => ({
+    lesson_1: {
+      taskVersion,
+      scoringPolicy: 'first_attempt',
+      totalQuestions: 2,
+      attemptedQuestionNumbers: [1],
+      correctQuestionNumbers: [1]
+    },
+    lesson_2: {
+      taskVersion,
+      scoringPolicy: 'first_attempt',
+      totalQuestions: 2,
+      attemptedQuestionNumbers: [1, 2],
+      correctQuestionNumbers: [1, 2]
+    },
+    lesson_3: {
+      taskVersion,
+      scoringPolicy: 'first_attempt',
+      totalQuestions: 2,
+      attemptedQuestionNumbers: [],
+      correctQuestionNumbers: []
+    }
+  });
+  const progress = listDashboardStudentProgress({
+    ...sampleData,
+    lessons: {
+      grade_3_secondary: {
+        name: 'Third Secondary',
+        lessons
+      }
+    },
+    progress: {
+      '1001@s.whatsapp.net': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 2,
+        currentLessonId: 'lesson_3',
+        lessonHistory: ['lesson_1', 'lesson_2', 'lesson_3'],
+        completedLessonIds: ['lesson_1', 'lesson_2'],
+        exerciseScores: scoreRecords(whatsappTaskVersion),
+        status: 'awaiting_task'
+      }
+    },
+    telegramProgress: {
+      'telegram:-100123:44': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 2,
+        currentLessonId: 'lesson_3',
+        lessonHistory: ['lesson_1', 'lesson_2', 'lesson_3'],
+        lessonCompletionCounts: { lesson_1: 2, lesson_2: 1 },
+        lessonsCompleted: 3,
+        exerciseScores: scoreRecords(telegramTaskVersion),
+        status: 'awaiting_task'
+      }
+    }
+  });
+
+  for (const student of progress.students) {
+    assert.equal(student.lessonsPassed, 2, student.platform);
+    assert.equal(student.lessonsReceived, 3, student.platform);
+    assert.equal(student.lessonCompletionPercent, 67, student.platform);
+    assert.equal(student.scoreCorrectQuestions, 3, student.platform);
+    assert.equal(student.scoreTotalQuestions, 6, student.platform);
+    assert.equal(student.exerciseScorePercent, 50, student.platform);
+  }
+});
+
+test('student progress excludes scores without first-attempt history', () => {
+  const taskMessage = 'Complete the exercise.';
+  const answerKey = ['1: first answer'];
+  const taskVersion = createHash('sha256')
+    .update(JSON.stringify([taskMessage, answerKey]))
+    .digest('hex');
+  const student = listDashboardStudentProgress({
+    ...sampleData,
+    lessons: {
+      grade_3_secondary: {
+        name: 'Third Secondary',
+        lessons: [{
+          id: 'lesson_1',
+          title: 'Lesson 1',
+          taskMessage,
+          answerKey
+        }]
+      }
+    },
+    telegramProgress: {
+      'telegram:-100123:44': {
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        taskVersion,
+        correctQuestionNumbers: [1],
+        lessonHistory: ['lesson_1'],
+        lessonTaskProgress: {
+          lesson_1: {
+            taskVersion,
+            correctQuestionNumbers: [1]
+          }
+        },
+        exerciseScores: {
+          lesson_1: { taskVersion, totalQuestions: 1, correctQuestionNumbers: [1] }
+        }
+      }
+    }
+  }).students.find(item => item.platform === 'Telegram');
+
+  assert.equal(student.scoreCorrectQuestions, 0);
+  assert.equal(student.scoreTotalQuestions, 0);
+  assert.equal(student.exerciseScorePercent, null);
+});
+
+test('Telegram latest-answer progress reports whether grading has completed', () => {
+  const progress = listDashboardStudentProgress({
+    ...sampleData,
+    lessons: {
+      grade_3_secondary: {
+        name: 'Third Secondary',
+        lessons: [{ id: 'lesson_1', title: 'Lesson One' }]
+      }
+    },
+    telegramProgress: {
+      'telegram:-100123:44': {
+        name: 'Telegram learner',
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_task',
+        lastTaskSubmission: {
+          grade: 'grade_3_secondary',
+          lessonId: 'lesson_1',
+          text: 'Student answer',
+          submittedAt: '2026-11-07T10:30:00.000Z'
+        }
+      },
+      'telegram:-100123:45': {
+        name: 'Another learner',
+        grade: 'grade_3_secondary',
+        currentLessonIndex: 0,
+        currentLessonId: 'lesson_1',
+        status: 'awaiting_reattempt',
+        lastTaskSubmission: {
+          grade: 'grade_3_secondary',
+          lessonId: 'lesson_1',
+          text: 'Student answer checked by prior bot version',
+          submittedAt: '2026-11-07T10:30:00.000Z'
+        }
+      }
+    }
+  });
+
+  const student = progress.students.find(item => item.platform === 'Telegram');
+  assert.equal(student.lastTaskSubmission.checked, false);
+  assert.equal(student.lastTaskSubmission.checkedAt, null);
+  const previouslyChecked = progress.students.find(item => item.name === 'Another learner');
+  assert.equal(previouslyChecked.lastTaskSubmission.checked, true);
+});
+
 test('dashboard queues validated lesson skips for both platforms and exposes queue state', async t => {
   const directory = fs.mkdtempSync(path.join(process.cwd(), '.dashboard-skip-api-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const firstVideoFile = path.join(directory, 'lesson_1.mp4');
   const videoFile = path.join(directory, 'lesson_2.mp4');
+  const videoOnlyFile = path.join(directory, 'lesson_3.mp4');
   const lessonsFile = path.join(directory, 'lessons.json');
   const whatsappQueueFile = path.join(directory, 'whatsapp-skip.json');
   const telegramQueueFile = path.join(directory, 'telegram-skip.json');
@@ -511,6 +883,7 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   const agentStatusFile = path.join(directory, 'agent_status.json');
   fs.writeFileSync(firstVideoFile, 'video 1');
   fs.writeFileSync(videoFile, 'video');
+  fs.writeFileSync(videoOnlyFile, 'video only');
   fs.writeFileSync(agentStatusFile, JSON.stringify({
     connectionState: 'connected',
     updatedAt: new Date().toISOString()
@@ -534,6 +907,12 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
             videoFile,
             taskMessage: 'Answer this question.',
             answerKey: ['Correct answer']
+          },
+          {
+            id: 'lesson_3',
+            title: 'Video-only lesson',
+            videoFile: videoOnlyFile,
+            hasExercise: false
           }
         ]
       }
@@ -608,7 +987,11 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   assert.equal(telegramProgressResponse.status, 200);
   const telegramStudents = await telegramProgressResponse.json();
   const telegramStudent = telegramStudents.students[0];
-  assert.deepEqual(telegramStudent.availableLessons.map(lesson => lesson.id), ['lesson_1', 'lesson_2']);
+  assert.deepEqual(telegramStudent.availableLessons.map(lesson => lesson.id), [
+    'lesson_1',
+    'lesson_2',
+    'lesson_3'
+  ]);
   const sendLessonResponse = await fetch(`${origin}/api/admin/progress/send-lesson`, {
     method: 'POST',
     headers: { Origin: origin, 'Content-Type': 'application/json' },
@@ -3356,6 +3739,17 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       const nextRecipients = await (await fetch(`${url}?includeStudents=true&offset=1`)).json();
       assert.deepEqual(nextRecipients.optedInStudents.map(student => student.name), ['Returning lesson learner']);
 
+      fs.writeFileSync(requestsFile, JSON.stringify([{
+        id: 'legacy-broadcast',
+        text: 'Old announcement',
+        recipients: [{ userId: '11' }],
+        createdAt: '2026-11-01T00:00:00.000Z',
+        cancelled: false
+      }]));
+      const legacyJob = (await (await fetch(url)).json()).jobs[0];
+      assert.equal(legacyJob.status, 'needs_review');
+      fs.writeFileSync(requestsFile, JSON.stringify([]));
+
       const denied = await fetch(url, {
         method: 'POST',
         headers: { Origin: 'http://example.com', 'Content-Type': 'application/json' },
@@ -3377,6 +3771,8 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
         { userId: '11' },
         { userId: '15' }
       ]);
+      const queuedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+      assert.equal(queuedState.jobs[queued.id].status, 'queued');
 
       const cancelled = await fetch(url, {
         method: 'POST',

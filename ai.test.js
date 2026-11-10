@@ -657,6 +657,53 @@ test('task grading accepts minor numbered spelling mistakes and returns the corr
   }
 });
 
+test('task grading accepts completed questions copied with their matching verb hints', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => {
+    throw new Error('Matching completed questions should not require AI grading.');
+  };
+
+  try {
+    const questions = [
+      'What does Ahmed eat for breakfast every morning?',
+      'Where does Sara study English after school?',
+      'When does your father start work every day?',
+      'Does Ali play football on Fridays?',
+      'Why does the teacher explain the lesson again?',
+      'What time does your sister get up every morning?',
+      'How does Hassan go to school every day?',
+      'Does the bus stop near your house every morning?',
+      'Where does Mary do her homework?',
+      'How often does your brother clean his room?'
+    ];
+    const verbs = [
+      'eat', 'study', 'start', 'play', 'explain',
+      'get', 'go', 'stop', 'do', 'clean'
+    ];
+    const answerKey = questions.map((question, index) => `${index + 1}: ${question}`);
+    const submission = questions.map((question, index) =>
+      `${index + 1}. ${question.replace(/\bdoes\b/gi, 'Does')} (${verbs[index]})`
+    ).join('\n');
+
+    const result = await evaluateStudentTask({
+      taskMessage: 'Complete each question using the present simple.',
+      answerKey
+    }, submission);
+
+    assert.equal(result.isTaskSubmission, true);
+    assert.equal(result.allCorrect, true);
+    assert.deepEqual(result.answeredQuestionNumbers, answerKey.map((_, index) => index + 1));
+    assert.deepEqual(result.correctQuestionNumbers, answerKey.map((_, index) => index + 1));
+    assert.deepEqual(result.uncertainQuestionNumbers, []);
+    assert.deepEqual(result.incorrectAnswers, []);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('task grading accepts obvious spelling typos before sending remaining answers to AI', async () => {
   const previousKeys = [...config.geminiApiKeys];
   const previousFetch = globalThis.fetch;

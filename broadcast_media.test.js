@@ -14,7 +14,7 @@ import {
 import {
   sendBroadcastContent,
   sendLessonBroadcastVideo
-} from './broadcast_manager.js';
+} from './apps/whatsapp-agent/broadcast_manager.js';
 
 const testAuthManager = {
   status: () => ({ setupRequired: false, authenticated: true }),

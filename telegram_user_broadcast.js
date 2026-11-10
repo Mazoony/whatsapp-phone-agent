@@ -77,6 +77,7 @@ export class TelegramUserBroadcastWorker {
     stateFile = TELEGRAM_USER_BROADCAST_STATE_FILE,
     groupId = process.env.TELEGRAM_GROUP_ID,
     sendIntervalMs = SEND_INTERVAL_MS,
+    now = Date.now,
     logger = console
   }) {
     if (!client || typeof client.getDialogs !== 'function' ||
@@ -93,6 +94,7 @@ export class TelegramUserBroadcastWorker {
     this.stateFile = stateFile;
     this.groupId = String(groupId);
     this.sendIntervalMs = sendIntervalMs;
+    this.now = now;
     this.logger = logger;
     this.processing = false;
     this.lastGroupRosterSyncAttemptAt = 0;
@@ -222,9 +224,18 @@ export class TelegramUserBroadcastWorker {
       const state = this.getState();
       const job = requests.find(request => {
         const status = state.jobs[request.id]?.status;
-        return !request.cancelled && (!status || ['queued', 'running'].includes(status));
+        return !request.cancelled &&
+          ['queued', 'running', 'waiting', 'cancellation_requested'].includes(status);
       });
       if (!job) return false;
+      const savedJobState = state.jobs[job.id];
+      if (savedJobState.status === 'waiting') {
+        const retryAt = Date.parse(savedJobState.retryAt || '');
+        if (!Number.isFinite(retryAt)) {
+          throw new Error(`Invalid Telegram retry time for broadcast ${job.id}.`);
+        }
+        if (retryAt > this.now()) return false;
+      }
       if (!Array.isArray(job.recipients) || !job.recipients.length ||
           typeof job.text !== 'string' || !job.text.trim()) {
         this.saveJobState(state, job.id, {
@@ -241,7 +252,7 @@ export class TelegramUserBroadcastWorker {
         return true;
       }
 
-      const current = state.jobs[job.id] || {
+      const current = {
         status: 'queued',
         total: job.recipients.length,
         sent: 0,
@@ -249,8 +260,13 @@ export class TelegramUserBroadcastWorker {
         uncertain: 0,
         nextIndex: 0,
         recipientResults: [],
-        createdAt: job.createdAt
+        createdAt: job.createdAt,
+        ...savedJobState
       };
+      if (current.status === 'waiting') {
+        delete current.retryAt;
+        delete current.error;
+      }
       if (!Number.isInteger(current.nextIndex) ||
           current.nextIndex < 0 ||
           current.nextIndex > job.recipients.length) {
@@ -385,6 +401,28 @@ export class TelegramUserBroadcastWorker {
             await new Promise(resolve => setTimeout(resolve, this.sendIntervalMs));
           }
         } catch (error) {
+          const floodWaitSeconds = Number(error?.seconds);
+          if (Number.isSafeInteger(floodWaitSeconds) && floodWaitSeconds > 0) {
+            const retryAt = new Date(this.now() + floodWaitSeconds * 1000).toISOString();
+            const stateBeforeSave = this.getState();
+            this.saveJobState(stateBeforeSave, job.id, {
+              ...stateBeforeSave.jobs[job.id],
+              status: 'waiting',
+              total: job.recipients.length,
+              sent,
+              skipped,
+              uncertain,
+              nextIndex,
+              recipientResults: [...recipientResults],
+              retryAt,
+              error: `Telegram requested a ${floodWaitSeconds}-second wait before retrying.`,
+              createdAt: job.createdAt
+            });
+            this.logger.warn?.(
+              `[Telegram broadcast] Telegram requested a ${floodWaitSeconds}-second wait; job ${job.id} will resume at ${retryAt}.`
+            );
+            return true;
+          }
           uncertain += 1;
           recordRecipientResult({
             index: nextIndex,

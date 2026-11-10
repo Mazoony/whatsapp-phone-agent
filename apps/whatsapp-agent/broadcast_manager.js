@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from './config.js';
-import { historyManager } from './history.js';
-import { sendHumanizedMessage } from './humanization.js';
+import { config } from '../../config.js';
+import { historyManager } from '../../history.js';
+import { sendHumanizedMessage } from '../../humanization.js';
 import { followUpManager } from './followup_manager.js';
-import { getEligibleBroadcastContacts } from './broadcast_utils.js';
-import { getPhoneJid } from './phonebook.js';
-import { BROADCAST_MEDIA_DIRECTORY, readBroadcastMedia } from './broadcast_media.js';
-import { LESSON_MEDIA_DIR } from './curriculum_manager.js';
+import { getEligibleBroadcastContacts } from '../../broadcast_utils.js';
+import { getPhoneJid } from '../../phonebook.js';
+import { BROADCAST_MEDIA_DIRECTORY, readBroadcastMedia } from '../../broadcast_media.js';
+import { LESSON_MEDIA_DIR } from '../../curriculum_manager.js';
 
 const DATA_DIR = path.resolve('data');
 const REQUESTS_FILE = path.join(DATA_DIR, 'broadcast_requests.json');

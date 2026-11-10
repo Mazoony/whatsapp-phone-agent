@@ -10,6 +10,22 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
 }
 
+function writeQueuedJobState(filePath, jobId, total) {
+  writeJson(filePath, {
+    jobs: {
+      [jobId]: {
+        status: 'queued',
+        total,
+        sent: 0,
+        skipped: 0,
+        uncertain: 0,
+        nextIndex: 0,
+        recipientResults: []
+      }
+    }
+  });
+}
+
 test('Telegram user broadcasts wait ten seconds between messages by default', () => {
   const worker = new TelegramUserBroadcastWorker({
     client: {
@@ -22,6 +38,105 @@ test('Telegram user broadcasts wait ten seconds between messages by default', ()
   });
 
   assert.equal(worker.sendIntervalMs, 10_000);
+});
+
+test('Telegram user broadcasts resume after the server-requested flood wait', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-user-broadcast-flood-wait-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const progressFile = path.join(directory, 'progress.json');
+  const requestsFile = path.join(directory, 'requests.json');
+  const stateFile = path.join(directory, 'state.json');
+  writeJson(progressFile, {
+    'telegram:-100123:11': {
+      telegramChatId: '-100123',
+      telegramUserId: 11,
+      telegramPrivateChatId: '11',
+      telegramAnnouncementsOptIn: true
+    }
+  });
+  writeJson(requestsFile, [{
+    id: 'flood-wait-job',
+    text: 'Announcement',
+    recipients: [{ userId: '11' }],
+    createdAt: new Date().toISOString(),
+    cancelled: false
+  }]);
+  writeQueuedJobState(stateFile, 'flood-wait-job', 1);
+
+  let now = 1_000_000;
+  let sendAttempts = 0;
+  const worker = new TelegramUserBroadcastWorker({
+    client: {
+      getDialogs: async () => [{ entity: { id: 123 } }],
+      async *iterParticipants() {
+        yield { id: 11 };
+      },
+      async sendMessage() {
+        sendAttempts += 1;
+        if (sendAttempts === 1) {
+          const error = new Error('Please wait 3 seconds before repeating the action.');
+          error.seconds = 3;
+          throw error;
+        }
+      }
+    },
+    progressFile,
+    requestsFile,
+    stateFile,
+    groupId: '-100123',
+    sendIntervalMs: 0,
+    now: () => now,
+    logger: { info() {}, warn() {}, error() {} }
+  });
+
+  await worker.processNextJob();
+  let state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.equal(state.jobs['flood-wait-job'].status, 'waiting');
+  assert.equal(state.jobs['flood-wait-job'].retryAt, new Date(now + 3_000).toISOString());
+  assert.equal(state.jobs['flood-wait-job'].nextIndex, 0);
+  assert.equal(state.jobs['flood-wait-job'].uncertain, 0);
+  assert.equal(await worker.processNextJob(), false);
+  assert.equal(sendAttempts, 1);
+
+  now += 3_000;
+  await worker.processNextJob();
+  state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.equal(state.jobs['flood-wait-job'].status, 'completed');
+  assert.equal(state.jobs['flood-wait-job'].sent, 1);
+  assert.equal(state.jobs['flood-wait-job'].uncertain, 0);
+  assert.equal(sendAttempts, 2);
+});
+
+test('Telegram user broadcasts do not automatically send untracked legacy requests', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-user-broadcast-legacy-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const requestsFile = path.join(directory, 'requests.json');
+  writeJson(requestsFile, [{
+    id: 'legacy-job',
+    text: 'Old announcement',
+    recipients: [{ userId: '11' }],
+    createdAt: '2026-11-01T00:00:00.000Z',
+    cancelled: false
+  }]);
+  let sendAttempts = 0;
+  const worker = new TelegramUserBroadcastWorker({
+    client: {
+      getDialogs: async () => [{ entity: { id: 123 } }],
+      async *iterParticipants() {
+        yield { id: 11 };
+      },
+      async sendMessage() {
+        sendAttempts += 1;
+      }
+    },
+    requestsFile,
+    stateFile: path.join(directory, 'state.json'),
+    groupId: '-100123',
+    logger: { info() {}, error() {} }
+  });
+
+  assert.equal(await worker.processNextJob(), false);
+  assert.equal(sendAttempts, 0);
 });
 
 test('Telegram user broadcasts send only to group participants who remain opted in', async t => {
@@ -68,6 +183,7 @@ test('Telegram user broadcasts send only to group participants who remain opted 
     createdAt: new Date().toISOString(),
     cancelled: false
   }]);
+  writeQueuedJobState(stateFile, 'job-1', 4);
 
   const sent = [];
   const client = {
@@ -150,6 +266,7 @@ test('Telegram user broadcasts replace every personalized name with the current 
     createdAt: new Date().toISOString(),
     cancelled: false
   }]);
+  writeQueuedJobState(stateFile, 'personalized-job', 1);
 
   const sent = [];
   const worker = new TelegramUserBroadcastWorker({
@@ -204,6 +321,7 @@ test('Telegram discount offers can reach all current group members without priva
     createdAt: new Date().toISOString(),
     cancelled: false
   }]);
+  writeQueuedJobState(stateFile, 'group-member-offer', 2);
 
   const sent = [];
   const members = [
@@ -294,6 +412,7 @@ test('Telegram user broadcasts stop after a send error and mark delivery uncerta
     createdAt: new Date().toISOString(),
     cancelled: false
   }]);
+  writeQueuedJobState(stateFile, 'job-error', 1);
 
   const worker = new TelegramUserBroadcastWorker({
     client: {

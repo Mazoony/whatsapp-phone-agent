@@ -69,10 +69,11 @@
       },
       {
         "id": "lesson_3",
-        "title": "الحصة 3 Present Simple - Singular - the verb ends in -y",
+        "title": "الحصة 2 Present Simple - Singular - the verb ends in -y",
         "videoFile": "media/lessons/grade_3_secondary/lesson_3.mp4",
         "caption": "🎬 فيديو الحصة 3 Present Simple - Singular - the verb ends in -y | مستر مازن (eShool)",
         "introMessage": "يا هلا بيك! دي الحصة: الحصة 3 Present Simple - Singular - the verb ends in -y. برسل ليك الفيديو والتمرين هسي 👇",
+        "hasExercise": true,
         "taskMessage": "1. Ahmed __________ English every evening. (study)\n2. My mother __________ delicious meals for our family. (enjoy)\n3. The baby __________ whenever he is hungry. (cry)\n4. She __________ her homework before dinner. (finish?)\n5. My father __________ to work every morning. (drive)\n6. The teacher __________ the students with their assignments. (help)\n7. He __________ his room every Saturday. (tidy)\n8. The little boy __________ his toys with his friends. (share)\n9. A good student __________ hard before an exam. (study)\n10. My brother __________ his bicycle to school every day. (carry)",
         "answerKey": [
           "studies — Ahmed is singular; change consonant + y to -ies.",
@@ -109,9 +110,9 @@
       },
       {
         "id": "lesson_2",
-        "title": "الحصة الثانية: قاعدة أدوات الربط والشرط المتقدم (Conditionals & Connectors)",
+        "title": "الحصة 2 Present Simple - Singular - the verb ends in -y",
         "videoFile": "media/lessons/grade_3_secondary/lesson_2.mp4",
-        "caption": "🎬 فيديو الحصة الثانية - الصف الثالث ثانوي | مستر مازن (eShool)",
+        "caption": "الحصة 2 Present Simple - Singular - the verb ends in -y",
         "introMessage": "ما شاء الله تبارك الله عليك! 🔥 بما إنك أتقنت الحصة الأولى وحليت تمرينها بنجاح، دي الحصة الثانية ليك لمتابعة التميز في الشهادة الثانوية هسي 👇",
         "taskMessage": "1. Ahmed __________ to school by bus every morning. (go)\n\n2. My mother __________ the dishes after dinner every day. (wash)\n\n3. The teacher __________ the lesson clearly every time. (teach)\n\n4. Sara __________ TV after finishing her homework. (watch)\n\n5. My father __________ his car every weekend. (fix)\n\n6. The bus __________ near our house every morning. (pass)\n\n7. Hassan __________ his homework before he plays football. (do)\n\n8. The goalkeeper __________ the ball carefully during every match. (catch)\n\n9. A good student __________ carefully to the teacher every lesson. (listen)\n\n10. The school bus __________ at the gate every afternoon. (reach)",
         "answerKey": [
@@ -257,6 +258,26 @@
           "cleaned — الفعل العادي بنضيف ليهو ed عشان نخليهو في الماضي.",
           "saw — الفعل see شاذ، وتغييرهو في الماضي لازم نحفظو.",
           "told — الفعل tell شاذ، وتغييرهو في الماضي لازم نحفظو."
+        ]
+      },
+      {
+        "id": "lesson_11",
+        "title": "الحصة الحادية عشرة: Second Conditional (If 2)",
+        "videoFile": "media/lessons/grade_3_secondary/video_2026-10-11_23-12-05.mp4",
+        "caption": "🎬 الحصة الحادية عشرة: Second Conditional (If 2) | مستر مازن (eShool)",
+        "introMessage": "في الحصة دي حنتعلم الشرط الثاني للحالات الخيالية أو غير الحقيقية في الحاضر: If + past simple, would + base verb. ركّز على إكمال الجزء الناقص بس.",
+        "taskMessage": "📝 *تمرين الحصة الحادية عشرة: Second Conditional (If 2)*\n\nComplete only the missing clause. Use: If + past simple, would + base verb.\n\n1. If I had a million dollars, __________. (travel around the world)\n2. If she were the president, __________. (change the law)\n3. If we lived near the sea, __________. (swim every day)\n4. If Ahmed knew the answer, __________. (tell the teacher)\n5. If they had more time, __________. (visit the museum)\n6. If __________, I would buy a new laptop. (have enough money)\n7. If __________, she would speak English fluently. (practise every day)\n8. If __________, we would help them. (have enough time)\n9. If __________, he would travel to London. (have a visa)\n10. If __________, they would win the match. (train harder)\n\n✍️ Send only the missing clause for each sentence, numbered from 1 to 10.",
+        "answerKey": [
+          "1: I would travel around the world.",
+          "2: She would change the law.",
+          "3: We would swim every day.",
+          "4: Ahmed would tell the teacher.",
+          "5: They would visit the museum.",
+          "6: I had enough money",
+          "7: she practised every day",
+          "8: we had enough time",
+          "9: he had a visa",
+          "10: they trained harder"
         ]
       }
     ],

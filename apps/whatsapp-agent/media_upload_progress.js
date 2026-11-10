@@ -1,4 +1,4 @@
-import { writeAgentMediaActivity } from './agent_media_activity.js';
+import { writeAgentMediaActivity } from '../../agent_media_activity.js';
 
 const MEDIA_LABELS = {
   image: 'Image',

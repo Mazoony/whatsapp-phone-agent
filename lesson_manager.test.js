@@ -32,6 +32,15 @@ test('a correct submission immediately delivers the next numbered lesson', async
     grade: 'grade_3_secondary',
     currentLessonIndex: 0,
     currentLessonId: lesson.id,
+    exerciseScores: {
+      [lesson.id]: {
+        taskVersion: JSON.stringify([lesson.taskMessage, lesson.answerKey]),
+        scoringPolicy: 'first_attempt',
+        totalQuestions: lesson.answerKey.length,
+        attemptedQuestionNumbers: [],
+        correctQuestionNumbers: []
+      }
+    },
     status: 'awaiting_task',
     deliveredAt: new Date().toISOString()
   };
@@ -70,6 +79,16 @@ test('a correct submission immediately delivers the next numbered lesson', async
 
     assert.equal(lessonManager.progress[jid].currentLessonId, 'lesson_2');
     assert.equal(lessonManager.progress[jid].status, 'awaiting_task');
+    assert.deepEqual(lessonManager.progress[jid].completedLessonIds, ['lesson_1']);
+    assert.deepEqual(lessonManager.progress[jid].lessonHistory, ['lesson_2']);
+    assert.deepEqual(
+      lessonManager.progress[jid].exerciseScores.lesson_1.correctQuestionNumbers,
+      allQuestionNumbers
+    );
+    assert.equal(
+      lessonManager.progress[jid].exerciseScores.lesson_2.totalQuestions,
+      lessonManager.lessonsConfig.grade_3_secondary.lessons[1].answerKey.length
+    );
     assert.deepEqual(
       sentMessages.map(message => message.text || (message.video ? 'video' : '')),
       [
@@ -77,6 +96,88 @@ test('a correct submission immediately delivers the next numbered lesson', async
         'video',
         nextLessonTask
       ]
+    );
+  } finally {
+    if (originalProgress) lessonManager.progress[jid] = originalProgress;
+    else delete lessonManager.progress[jid];
+    lessonManager.saveProgress = originalSaveProgress;
+    historyManager.addMessage = originalAddMessage;
+    config.typingWordsPerMinute = originalTypingWordsPerMinute;
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('a WhatsApp retry cannot change the first-attempt exercise score', async () => {
+  const jid = 'first-attempt-score-retry-test@s.whatsapp.net';
+  const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  const allQuestionNumbers = lesson.answerKey.map((_, index) => index + 1);
+  const originalProgress = lessonManager.progress[jid];
+  const originalSaveProgress = lessonManager.saveProgress;
+  const originalAddMessage = historyManager.addMessage;
+  const originalTypingWordsPerMinute = config.typingWordsPerMinute;
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  let evaluationCount = 0;
+  lessonManager.progress[jid] = {
+    grade: 'grade_3_secondary',
+    currentLessonIndex: 0,
+    currentLessonId: lesson.id,
+    exerciseScores: {
+      [lesson.id]: {
+        taskVersion: JSON.stringify([lesson.taskMessage, lesson.answerKey]),
+        scoringPolicy: 'first_attempt',
+        totalQuestions: lesson.answerKey.length,
+        attemptedQuestionNumbers: [],
+        correctQuestionNumbers: []
+      }
+    },
+    status: 'awaiting_task',
+    deliveredAt: new Date().toISOString()
+  };
+  lessonManager.saveProgress = () => {};
+  historyManager.addMessage = () => {};
+  config.typingWordsPerMinute = 1_000_000;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => {
+    evaluationCount += 1;
+    const result = evaluationCount === 1
+      ? {
+          isTaskSubmission: true,
+          allCorrect: false,
+          answeredQuestionNumbers: [1],
+          correctQuestionNumbers: [],
+          uncertainQuestionNumbers: [],
+          incorrectAnswers: [{ questionNumber: 1, studentAnswer: 'wrong', explanation: 'Try again.' }],
+          feedback: 'Try again.'
+        }
+      : {
+          isTaskSubmission: true,
+          allCorrect: true,
+          answeredQuestionNumbers: allQuestionNumbers,
+          correctQuestionNumbers: allQuestionNumbers,
+          uncertainQuestionNumbers: [],
+          incorrectAnswers: [],
+          feedback: 'Correct.'
+        };
+    return { ok: true, json: async () => ({ message: { content: JSON.stringify(result) } }) };
+  };
+
+  try {
+    const sock = {
+      sendMessage: async () => {},
+      sendPresenceUpdate: async () => {}
+    };
+    await lessonManager.handleTaskSubmission(sock, jid, 'Wrong answer.', 'Student');
+    await lessonManager.handleTaskSubmission(sock, jid, 'Correct answers.', 'Student');
+
+    assert.deepEqual(
+      lessonManager.progress[jid].exerciseScores.lesson_1.attemptedQuestionNumbers,
+      allQuestionNumbers
+    );
+    assert.deepEqual(
+      lessonManager.progress[jid].exerciseScores.lesson_1.correctQuestionNumbers,
+      allQuestionNumbers.filter(number => number !== 1)
     );
   } finally {
     if (originalProgress) lessonManager.progress[jid] = originalProgress;
@@ -186,7 +287,37 @@ test('orders available third-secondary videos numerically and waits at the first
   }
 });
 
-test('offers a welcome sample only for grades with a real first lesson video and exercise', () => {
+test('video-only lessons are ready for sequential delivery', () => {
+  const grade = lessonManager.lessonsConfig.grade_3_secondary;
+  const originalLessons = grade.lessons;
+  try {
+    grade.lessons = [
+      {
+        id: 'lesson_1',
+        videoFile: 'media/lessons/grade_3_secondary/lesson_1.mp4',
+        hasExercise: false
+      },
+      {
+        id: 'lesson_2',
+        videoFile: 'media/lessons/grade_3_secondary/lesson_2.mp4',
+        hasExercise: false
+      }
+    ];
+    assert.deepEqual(lessonManager.getNextSequentialLesson('grade_3_secondary', 'lesson_1'), {
+      status: 'ready',
+      lessonIndex: 1
+    });
+    assert.deepEqual(lessonManager.getPreviousSequentialLesson('grade_3_secondary', 'lesson_2'), {
+      status: 'ready',
+      lessonIndex: 0
+    });
+    assert.equal(lessonManager.getWelcomeSampleLesson('grade_3_secondary'), grade.lessons[0]);
+  } finally {
+    grade.lessons = originalLessons;
+  }
+});
+
+test('offers a welcome sample only for grades with a ready first lesson video', () => {
   const gradeConfig = lessonManager.lessonsConfig.grade_3_secondary;
   const originalLesson = gradeConfig.lessons[0];
 
@@ -633,6 +764,50 @@ test('delivers only the lesson video and task without simulated typing delays', 
     else delete lessonManager.progress[jid];
     if (originalHistory) historyManager.history[jid] = originalHistory;
     else delete historyManager.history[jid];
+    historyManager.scheduleSave = originalScheduleSave;
+    lessonManager.saveProgress = originalSaveProgress;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('marks a WhatsApp video-only lesson complete after its video is delivered', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'video-only-delivery-'));
+  const videoPath = path.join(directory, 'lesson.mp4');
+  fs.writeFileSync(videoPath, Buffer.from('video-fixture'));
+  const jid = 'video-only-delivery-test@s.whatsapp.net';
+  const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  const originalLesson = { ...lesson };
+  const originalProgress = lessonManager.progress[jid];
+  const originalScheduleSave = historyManager.scheduleSave;
+  const originalSaveProgress = lessonManager.saveProgress;
+  const sentMessages = [];
+
+  Object.assign(lesson, {
+    videoFile: videoPath,
+    hasExercise: false,
+    taskMessage: '',
+    answerKey: []
+  });
+  historyManager.scheduleSave = () => {};
+  lessonManager.saveProgress = () => {};
+
+  try {
+    assert.equal(await lessonManager.deliverLesson({
+      sendMessage: async (_jid, content) => sentMessages.push(content)
+    }, jid, 'grade_3_secondary', 0, null, {
+      bypassDailyLimit: true,
+      includeIntro: false
+    }), true);
+    assert.deepEqual(sentMessages.map(message => message.text || 'video'), ['video']);
+    assert.equal(lessonManager.progress[jid].status, 'completed');
+    assert.equal(lessonManager.progress[jid].currentLessonId, lesson.id);
+    const nextLesson = lessonManager.getNextLessonToDeliver(jid, 'grade_3_secondary');
+    assert.equal(nextLesson.status, 'ready');
+    assert.ok(lessonManager.lessonsConfig.grade_3_secondary.lessons[nextLesson.lessonIndex]);
+  } finally {
+    Object.assign(lesson, originalLesson);
+    if (originalProgress) lessonManager.progress[jid] = originalProgress;
+    else delete lessonManager.progress[jid];
     historyManager.scheduleSave = originalScheduleSave;
     lessonManager.saveProgress = originalSaveProgress;
     fs.rmSync(directory, { recursive: true, force: true });

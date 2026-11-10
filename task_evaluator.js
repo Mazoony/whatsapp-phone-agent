@@ -158,7 +158,7 @@ QUESTIONS: ${lesson.taskMessage}
 PENDING ANSWERS: ${JSON.stringify(pendingAnswers)}
 STUDENT: "${gradingSubmission}"
 
-Only grade answers in the student's latest message; previously accepted answers are not part of this message. If the message is unrelated to this exercise, return isTaskSubmission=false and empty arrays. Otherwise, identify which pending question numbers the student actually answered. Do not require students to number their answers: infer the question from answer content, task wording, context, and order. When there is only one pending question, match a clear answer to it even if it is unnumbered. For multiple unnumbered answers, match by meaning and order when they clearly fit the remaining questions. If the mapping is genuinely ambiguous, do not guess; leave the ambiguous answer unmatched and do not mark it wrong. Never treat a missing answer as wrong or answered.
+Only grade answers in the student's latest message; previously accepted answers are not part of this message. Students may copy each exercise question before writing its answer. Treat copied question text and verb hints in parentheses as context, not as the student's answer; when an answer follows the copied question, grade that answer. If the student completed the question itself, grade the completed question as their answer. If the message is unrelated to this exercise, return isTaskSubmission=false and empty arrays. Otherwise, identify which pending question numbers the student actually answered. Do not require students to number their answers: infer the question from answer content, task wording, context, and order. When there is only one pending question, match a clear answer to it even if it is unnumbered. For multiple unnumbered answers, match by meaning and order when they clearly fit the remaining questions. If the mapping is genuinely ambiguous, do not guess; leave the ambiguous answer unmatched and do not mark it wrong. Never treat a missing answer as wrong or answered.
 
 Judge meaning and the grammar being tested, not exact wording. Treat listed acceptedAnswers as correct. Accept correct paraphrases, synonyms, valid equivalent forms, contractions, concise answers, and minor typos that do not change meaning. A one-word answer can be complete. Reject answers that change meaning or use the wrong form when that form is tested. If you are not confident an answer is wrong, classify its question number as uncertain instead of incorrect. An uncertain answer must appear in answeredQuestionNumbers and uncertainQuestionNumbers, but not in correctQuestionNumbers or incorrectAnswers. Never turn uncertainty into a wrong answer. answeredQuestionNumbers contains only questions answered in this message. correctQuestionNumbers and uncertainQuestionNumbers are subsets of answeredQuestionNumbers and must not overlap. incorrectAnswers must contain one entry for each answered but incorrect question; studentAnswer must be copied verbatim from the student's latest message as a concise contiguous excerpt, excluding any question-number prefix. explanation must be a concise, accurate explanation in simple Sudanese Arabic of the grammar rule, using any provided ruleExplanation as guidance; do not reveal the expected answer inside explanation because the app supplies it separately. allCorrect is true only when this message answers every question in PENDING ANSWERS and every one is correct, with no uncertain answers.
 
@@ -357,6 +357,17 @@ function parseNumberedAnswer(line) {
     : null;
 }
 
+function removeMatchingVerbHint(submittedAnswer, expectedAnswer) {
+  const hintMatch = /\s*\(([^()]*)\)\s*$/.exec(submittedAnswer);
+  if (!hintMatch) return submittedAnswer;
+
+  const hint = normalizeAnswer(hintMatch[1]);
+  const expectedWords = new Set(normalizeAnswer(expectedAnswer).split(' '));
+  return hint && expectedWords.has(hint)
+    ? submittedAnswer.slice(0, hintMatch.index).trim()
+    : submittedAnswer;
+}
+
 function findNumberedAnswers(submission, pending, parsedAnswers) {
   const pendingSet = new Set(pending);
   const candidates = new Map();
@@ -366,7 +377,11 @@ function findNumberedAnswers(submission, pending, parsedAnswers) {
     const questionNumber = parsed?.questionNumber ??
       (pending.length === 1 && lines.length === 1 ? pending[0] : null);
     if (!questionNumber || !pendingSet.has(questionNumber)) continue;
-    const submittedAnswer = parsed?.answer ?? line.trim();
+    const rawAnswer = parsed?.answer ?? line.trim();
+    const submittedAnswer = removeMatchingVerbHint(
+      rawAnswer,
+      parsedAnswers.get(questionNumber).expectedAnswer
+    );
     const answerOptions = [
       parsedAnswers.get(questionNumber).expectedAnswer,
       ...parsedAnswers.get(questionNumber).acceptedAnswers

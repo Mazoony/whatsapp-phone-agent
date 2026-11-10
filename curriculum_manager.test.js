@@ -199,6 +199,61 @@ test('curriculum overview and grade details operate correctly on temporary test 
   }
 });
 
+test('video-only lessons save without exercise data while exercise lessons remain validated', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-only-curriculum-'));
+  const filePath = path.join(tmpDir, 'lessons.json');
+  fs.writeFileSync(filePath, JSON.stringify({
+    grade_3_secondary: { name: 'Third Secondary', lessons: [] }
+  }), 'utf8');
+
+  try {
+    const saved = saveLesson({
+      gradeKey: 'grade_3_secondary',
+      lesson: {
+        id: 'lesson_1',
+        title: 'Video-only lesson',
+        videoFile: 'media/lessons/grade_3_secondary/lesson_1.mp4',
+        hasExercise: false
+      },
+      filePath
+    });
+    assert.equal(saved.lesson.hasExercise, false);
+    assert.equal(saved.lesson.taskMessage, '');
+    assert.deepEqual(saved.lesson.answerKey, []);
+    assert.equal(JSON.parse(fs.readFileSync(filePath, 'utf8'))
+      .grade_3_secondary.lessons[0].hasExercise, false);
+    assert.equal(getGradeCurriculum('grade_3_secondary', null, {
+      filePath,
+      appDir: tmpDir,
+      mediaDir: path.join(tmpDir, 'media', 'lessons')
+    }).lessons[0].hasExercise, false);
+
+    assert.throws(() => saveLesson({
+      gradeKey: 'grade_3_secondary',
+      lesson: {
+        id: 'lesson_2',
+        title: 'Incomplete exercise lesson',
+        videoFile: 'media/lessons/grade_3_secondary/lesson_2.mp4',
+        taskMessage: ' '
+      },
+      filePath
+    }), /Task exercise message/);
+    assert.throws(() => saveLesson({
+      gradeKey: 'grade_3_secondary',
+      isStandalone: true,
+      lesson: {
+        id: 'lesson_2',
+        title: 'Standalone video-only lesson',
+        videoFile: 'media/lessons/grade_3_secondary/lesson_2.mp4',
+        hasExercise: false
+      },
+      filePath
+    }), /sequential lessons only/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('Treasure Island lessons are managed in a separate Grade 3 Secondary collection', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'treasure-island-curriculum-'));
   const filePath = path.join(tmpDir, 'lessons.json');
