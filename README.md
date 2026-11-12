@@ -27,6 +27,17 @@ TELEGRAM_CLASS_GROUPS={"-1001234567890":"grade_2_secondary"}
 
 For sending Telegram announcements from a personal account, configure `TELEGRAM_CLIENT_API_ID` and `TELEGRAM_CLIENT_API_HASH`, then start the separate sender described below.
 
+### Google Sheets Overview history (optional)
+
+The admin dashboard can mirror the local daily Overview Excel history to a Google spreadsheet with the same three tabs. To enable it:
+
+1. Enable the Google Sheets API and Google Drive API in a Google Cloud project.
+2. Create a service account and store its JSON key in the deployment's `GOOGLE_SERVICE_ACCOUNT_JSON` secret. Do not commit the key.
+3. Optionally set `GOOGLE_SHEETS_SHARE_WITH` to your Google account email. The generated spreadsheet is shared with that account as a viewer.
+4. Start the admin dashboard. It creates a spreadsheet, syncs the three tabs once a day, and shows the link and status in Overview.
+
+The spreadsheet ID is saved in `data/overview_google_sheet.json`. If the deployment does not preserve `data/` between restarts, copy the spreadsheet ID from the Google Sheets URL into `GOOGLE_SHEETS_SPREADSHEET_ID` so the app keeps syncing the same spreadsheet.
+
 ## Run
 
 Run commands from the repository root:

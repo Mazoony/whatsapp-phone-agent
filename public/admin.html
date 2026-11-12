@@ -521,10 +521,16 @@
     .student-chat-list-item { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 10px; width: 100%; min-height: 64px; padding: 9px 12px; border: 0; border-bottom: 1px solid #f0f3f5; background: white; color: #263746; text-align: left; cursor: pointer; }
     .student-chat-list-item:hover { background: #f3f7fa; }
     .student-chat-list-item.active { background: #e7f1f8; }
+    .student-chat-list-item.unread { background: #f2f8fc; }
+    .student-chat-list-item.unread strong { color: #1d5b7d; font-weight: 800; }
     .student-chat-list-avatar { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 50%; background: #d7e8f3; color: #35617e; font-size: 14px; font-weight: 750; }
     .student-chat-list-copy { display: grid; gap: 4px; min-width: 0; }
     .student-chat-list-copy strong, .student-chat-list-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .student-chat-list-copy strong { font-size: 11px; }
+    .student-chat-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+    .student-chat-list-heading strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+    .student-chat-list-time { flex: 0 0 auto; color: #80909b; font-size: 9px; font-weight: 500; }
+    .student-chat-list-item.active .student-chat-list-time { color: #35617e; }
+    .student-chat-unread-badge { flex: 0 0 auto; border-radius: 9px; padding: 2px 6px; background: #16865b; color: #fff; font-size: 8px; font-weight: 750; }
     .student-chat-list-copy small { color: #80909b; font-size: 9px; }
     .student-chat-presence { display: inline-flex; align-items: center; gap: 5px; color: #dcecf4; font-size: 10px; }
     .student-chat-presence i { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #aab8c0; }
@@ -893,7 +899,7 @@
       .gender-stat { padding: 12px; }
     }
     @media (max-width: 420px) { .metrics { gap: 8px; } .metric { padding: 12px; } .metric-value { font-size: 22px; } .gender-statistics { grid-template-columns: 1fr; } aside { justify-content: flex-start; } .brand { display: none; } nav { flex: 0 0 auto; width: max-content; } .nav-item { flex: 0 0 auto; font-size: 10px; } .nav-icon { font-size: 14px; } }
-    body.telegram-only #section-overview > :nth-child(n + 5),
+    body.telegram-only #section-overview > :nth-child(n + 7),
     body.telegram-only #section-chats,
     body.telegram-only #section-es-contacts,
     body.telegram-only #section-scheduled-lessons,
@@ -988,6 +994,22 @@
           <div class="telegram-class-grid" id="telegram-class-grid" aria-live="polite">
             <div class="telegram-class-card">Loading class statistics…</div>
           </div>
+        </article>
+        <article class="panel workbook-panel">
+          <div>
+            <h3>Daily Overview Excel history</h3>
+            <p>Automatically adds one snapshot each day, including class totals and Telegram activity history.</p>
+            <small id="overview-workbook-status" role="status" aria-live="polite">Preparing the first daily snapshot…</small>
+          </div>
+          <a class="primary-button workbook-download" id="overview-workbook-download" href="/api/admin/overview-workbook.xlsx" download="overview-statistics.xlsx" aria-disabled="true">Download Excel</a>
+        </article>
+        <article class="panel workbook-panel">
+          <div>
+            <h3>Google Sheets history</h3>
+            <p>Syncs the same dated tabs from the local Excel workbook once each day.</p>
+            <small id="overview-google-sheet-status" role="status" aria-live="polite">Checking Google Sheets setup…</small>
+          </div>
+          <a class="primary-button workbook-download" id="overview-google-sheet-link" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true">Open Google Sheet</a>
         </article>
         <article class="panel telegram-stats-panel" aria-labelledby="telegram-stats-title">
           <div>
@@ -4655,13 +4677,20 @@
           const name = getChatStudentName(student);
           const preview = student.lastStudentMessage?.text ||
             (student.canReplyPrivately ? 'Private chat started' : 'No private messages yet');
+          const lastMessageTime = Date.parse(student.lastStudentMessage?.receivedAt || '');
+          const timeLabel = Number.isFinite(lastMessageTime)
+            ? new Intl.DateTimeFormat(undefined, {
+                hour: 'numeric',
+                minute: '2-digit'
+              }).format(new Date(lastMessageTime))
+            : '';
           const online = isTelegramStudentRecentlyActive(student);
-          return `<button class="student-chat-list-item ${student.jid === selectedTelegramStudentKey ? 'active' : ''}"
+          return `<button class="student-chat-list-item ${student.jid === selectedTelegramStudentKey ? 'active' : ''} ${student.unread ? 'unread' : ''}"
               type="button" role="option" aria-selected="${student.jid === selectedTelegramStudentKey}"
               data-telegram-chat-student="${escapeHtml(student.jid)}">
             <span class="student-chat-list-avatar" aria-hidden="true">T</span>
             <span class="student-chat-list-copy">
-              <strong>${escapeHtml(name)}</strong>
+              <span class="student-chat-list-heading"><strong>${escapeHtml(name)}</strong>${student.unread ? '<span class="student-chat-unread-badge">Unread</span>' : ''}${timeLabel ? `<time class="student-chat-list-time" datetime="${escapeHtml(student.lastStudentMessage.receivedAt)}" title="${escapeHtml(formatDate(student.lastStudentMessage.receivedAt))}">${escapeHtml(timeLabel)}</time>` : ''}</span>
               <span class="student-chat-list-presence ${online ? 'online' : ''}" title="${TELEGRAM_PRESENCE_TOOLTIP}"><i aria-hidden="true"></i>${online ? 'Online' : 'Offline'}</span>
               <small>${escapeHtml(preview)}</small>
             </span>
@@ -4753,6 +4782,22 @@
         }
         lastTelegramStudentChatKey = studentKey;
         lastTelegramStudentChatSnapshot = snapshot;
+      }
+      const lastIncomingMessage = messages
+        .filter(message => message.role === 'student' && Number.isFinite(Date.parse(message.timestamp)))
+        .at(-1);
+      if (lastIncomingMessage &&
+          $('#telegram-student-chat-panel').classList.contains('has-selection') &&
+          selectedStudent?.unread) {
+        await api('/api/admin/telegram-student-chat-read', {
+          method: 'POST',
+          body: JSON.stringify({
+            studentKey,
+            readThrough: lastIncomingMessage.timestamp
+          })
+        });
+        selectedStudent.unread = false;
+        renderTelegramStudentChatList();
       }
       form.elements.message.disabled = !student.canReplyPrivately;
       form.querySelector('button[type="submit"]').disabled = !student.canReplyPrivately;
@@ -5109,6 +5154,41 @@
         statusText.textContent = 'Refreshing the Excel workbook from the latest dashboard data…';
       } else {
         statusText.textContent = `Workbook update failed: ${status.error || 'Unknown error'}`;
+      }
+    }
+
+    async function loadOverviewWorkbookStatus() {
+      const status = await api('/api/admin/overview-workbook');
+      const download = $('#overview-workbook-download');
+      const statusText = $('#overview-workbook-status');
+      download.setAttribute('aria-disabled', String(status.state !== 'ready'));
+      if (status.state === 'ready') {
+        statusText.textContent =
+          `${status.snapshots.toLocaleString()} daily snapshots · ${status.classes.toLocaleString()} class snapshots · last update ${formatDate(status.updatedAt)}.`;
+      } else if (status.state === 'updating') {
+        statusText.textContent = 'Updating the daily Overview workbook…';
+      } else {
+        statusText.textContent =
+          `Workbook update failed: ${status.error || 'Unknown error'}`;
+      }
+    }
+
+    async function loadOverviewGoogleSheetStatus() {
+      const status = await api('/api/admin/overview-google-sheet');
+      const link = $('#overview-google-sheet-link');
+      const statusText = $('#overview-google-sheet-status');
+      link.setAttribute('aria-disabled', String(status.state !== 'ready'));
+      if (status.state === 'ready') {
+        link.href = status.spreadsheetUrl;
+        statusText.textContent =
+          `${status.snapshots.toLocaleString()} daily snapshots · last sync ${formatDate(status.updatedAt)}.`;
+      } else if (status.state === 'syncing') {
+        statusText.textContent = 'Syncing the latest Excel history to Google Sheets…';
+      } else if (status.state === 'not_configured') {
+        statusText.textContent =
+          'Google Sheets is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON in the app environment.';
+      } else {
+        statusText.textContent = `Google Sheets sync failed: ${status.error || 'Unknown error'}`;
       }
     }
 
@@ -6626,6 +6706,8 @@
       try {
         await Promise.all([
           loadOverview(),
+          loadOverviewWorkbookStatus(),
+          loadOverviewGoogleSheetStatus(),
           loadTelegramAgentStatus(),
           loadTelegramAgentLogs(),
           loadTelegramUpdateQueue(),

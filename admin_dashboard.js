@@ -100,6 +100,14 @@ import {
   STUDENT_WORKBOOK_FILE,
   STUDENT_WORKBOOK_SOURCE_FILES
 } from './student_workbook.js';
+import {
+  createOverviewWorkbookManager,
+  OVERVIEW_WORKBOOK_FILE
+} from './overview_workbook.js';
+import {
+  createGoogleSheetsOverviewManager,
+  OVERVIEW_GOOGLE_SHEET_STATE_FILE
+} from './google_sheets_overview.js';
 import { createScheduledLessonStore, SCHEDULED_LESSONS_FILE } from './scheduled_lessons.js';
 import {
   LessonSkipQueue,
@@ -2425,6 +2433,8 @@ export function createAdminDashboardServer({
   telegramUpdateQueueFile = TELEGRAM_UPDATE_QUEUE_FILE,
   telegramAgentControlFile = TELEGRAM_AGENT_CONTROL_FILE,
   telegramProgressFile = TELEGRAM_PROGRESS_FILE,
+  overviewWorkbookFile = null,
+  overviewGoogleSheetStateFile = OVERVIEW_GOOGLE_SHEET_STATE_FILE,
   telegramDashboardChatRepliesFile = TELEGRAM_DASHBOARD_CHAT_REPLIES_FILE,
   telegramStudentGenderFile = TELEGRAM_STUDENT_GENDER_FILE,
   paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
@@ -2633,6 +2643,7 @@ export function createAdminDashboardServer({
     };
     const genderOverrides = telegramStudentGenders.list();
     const progress = listDashboardStudentProgress(data, now, timeZone);
+    const telegramChatReadState = chatReadState.read();
     const telegramMediaActivities = includeMediaProgress
       ? readAgentMediaActivities(telegramAgentMediaActivityFile)
       : [];
@@ -2668,8 +2679,18 @@ export function createAdminDashboardServer({
             .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0]
           : null;
         const telegramStudent = data.telegramProgress[student.jid];
+        const latestStudentMessageAt = Math.max(
+          Date.parse(telegramStudent?.lastStudentMessage?.receivedAt || '') || 0,
+          ...(Array.isArray(telegramStudent?.telegramChatHistory)
+            ? telegramStudent.telegramChatHistory
+              .filter(message => message?.role === 'student')
+              .map(message => Date.parse(message.timestamp || '') || 0)
+            : [0])
+        );
         return {
           ...student,
+          unread: latestStudentMessageAt > 0 &&
+            latestStudentMessageAt > Number(telegramChatReadState[student.jid] || 0),
           gender: getTelegramStudentGender(telegramStudent, genderOverrides[student.jid]),
           genderOverride: genderOverrides[student.jid] || 'auto',
           telegramPresence: presenceIsFresh
@@ -2822,6 +2843,112 @@ export function createAdminDashboardServer({
     pendingChanges.add(fileName);
     if (!changeTimer) changeTimer = setTimeout(publishChanges, 100);
   };
+  const overviewWorkbook = overviewWorkbookFile
+    ? createOverviewWorkbookManager({
+        filePath: overviewWorkbookFile,
+        onUpdated: () => scheduleChange(path.basename(overviewWorkbookFile)),
+        readSnapshot: async () => {
+          const now = Date.now();
+          const timeZone = 'Africa/Khartoum';
+          const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+          const lessons = readJsonFile(lessonsFile);
+          const uniqueTelegramRecords = getTelegramUniqueStudentRecords(telegramProgress);
+          const telegramClasses = getTelegramClassStatistics(
+            telegramProgress,
+            lessons,
+            telegramGroupGrades,
+            now,
+            timeZone
+          );
+          const sumClassStatistics = key => telegramClasses.reduce((total, classStats) =>
+            total + classStats[key], 0);
+          const genderOverrides = telegramStudentGenders.list();
+          const telegramGenderStatistics = uniqueTelegramRecords.reduce((counts, record) => {
+            const studentKey =
+              `telegram:${record.student.telegramChatId}:${record.student.telegramUserId || record.userId}`;
+            const gender = getTelegramStudentGender(
+              record.student,
+              genderOverrides[studentKey]
+            ).value;
+            counts[['female', 'male'].includes(gender) ? gender : 'unknown'] += 1;
+            return counts;
+          }, { female: 0, male: 0, unknown: 0 });
+          const groupStats = await getTelegramGroupMemberCount();
+          const telegramAccountState = readJsonFileOr(telegramUserBroadcastFiles.state, {});
+          const onlineCountUpdatedAt = Date.parse(
+            telegramAccountState.onlineGroupMembersUpdatedAt || ''
+          );
+          const onlineCountIsFresh = Number.isSafeInteger(
+            telegramAccountState.onlineGroupMembersCount
+          ) && telegramAccountState.onlineGroupMembersCount >= 0 &&
+            Number.isFinite(onlineCountUpdatedAt) &&
+            now >= onlineCountUpdatedAt &&
+            now - onlineCountUpdatedAt <= TELEGRAM_PRESENCE_MAX_AGE_MS;
+          const dailyStats = getRecentCalendarDates(now, 30, timeZone).map(date => ({
+            date,
+            joins: 0,
+            activeLearners: 0
+          }));
+          const dailyByDate = new Map(dailyStats.map(day => [day.date, day]));
+          const joinsByDate = new Map();
+          for (const student of Object.values(telegramProgress)) {
+            const joinedAt = Date.parse(student?.groupJoinedAt || '');
+            if (!Number.isFinite(joinedAt) || joinedAt > now) continue;
+            const date = calendarDateKey(joinedAt, timeZone);
+            joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
+          }
+          for (const day of dailyStats) day.joins = joinsByDate.get(day.date) || 0;
+          for (const { student } of uniqueTelegramRecords) {
+            const activeDates = new Set(telegramActivityTimestamps(student)
+              .filter(timestamp => timestamp <= now)
+              .map(timestamp => calendarDateKey(timestamp, timeZone)));
+            for (const date of activeDates) {
+              const day = dailyByDate.get(date);
+              if (day) day.activeLearners += 1;
+            }
+          }
+          const today = calendarDateKey(now, timeZone);
+          const recentSevenDays = dailyStats.slice(-7);
+          const lessonCounts = Object.values(lessons)
+            .reduce((count, grade) =>
+              count + (Array.isArray(grade.lessons) ? grade.lessons.length : 0), 0);
+          return {
+            snapshotDate: today,
+            snapshotAt: new Date(now).toISOString(),
+            overview: {
+              telegramStudents: uniqueTelegramRecords.length,
+              female: telegramGenderStatistics.female,
+              male: telegramGenderStatistics.male,
+              unknown: telegramGenderStatistics.unknown,
+              lessonsCompleted: sumClassStatistics('lessonsCompleted'),
+              lessonCompletionsLast7Days: sumClassStatistics('lessonCompletionsLast7Days'),
+              joinedToday: joinsByDate.get(today) || 0,
+              joinedLast7Days: recentSevenDays.reduce((total, day) => total + day.joins, 0),
+              awaitingTask: sumClassStatistics('awaitingTask'),
+              awaitingReattempt: sumClassStatistics('awaitingReattempt'),
+              completed: sumClassStatistics('completed'),
+              configuredLessons: lessonCounts,
+              totalGroupMembers: groupStats.count,
+              onlineGroupMembers: onlineCountIsFresh
+                ? telegramAccountState.onlineGroupMembersCount
+                : null,
+              onlineGroupMembersStatus: onlineCountIsFresh
+                ? 'available'
+                : Number.isFinite(onlineCountUpdatedAt) ? 'stale' : 'unavailable'
+            },
+            classes: telegramClasses,
+            dailyStats
+          };
+        }
+      })
+    : null;
+  const googleSheetsOverview = overviewWorkbookFile
+    ? createGoogleSheetsOverviewManager({
+        workbookFilePath: overviewWorkbookFile,
+        stateFilePath: overviewGoogleSheetStateFile,
+        onUpdated: () => scheduleChange('overview-google-sheet')
+      })
+    : null;
   const studentWorkbook = studentWorkbookFile
     ? createStudentWorkbookManager({
       readData,
@@ -3096,6 +3223,51 @@ export function createAdminDashboardServer({
         console.error(`[Admin Dashboard] Could not load Telegram chat for ${studentKey}:`, error.message);
         sendJson(res, 500, { error: 'Could not load the Telegram student chat.' });
       }
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/telegram-student-chat-read') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Student chat read updates must come from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        const studentKey = body.studentKey;
+        const readThrough = Date.parse(body.readThrough || '');
+        if (typeof studentKey !== 'string' || !/^telegram:-?\d+:\d+$/.test(studentKey) ||
+            !Number.isFinite(readThrough)) {
+          sendJson(res, 400, { error: 'A valid Telegram student and read timestamp are required.' });
+          return;
+        }
+        const progress = readJsonFileOr(telegramProgressFile, {});
+        const student = progress[studentKey];
+        if (!student ||
+            studentKey !== `telegram:${student.telegramChatId}:${student.telegramUserId}`) {
+          sendJson(res, 404, { error: 'Telegram student was not found.' });
+          return;
+        }
+        const latestStudentMessageAt = Math.max(
+          Date.parse(student.lastStudentMessage?.receivedAt || '') || 0,
+          ...(Array.isArray(student.telegramChatHistory)
+            ? student.telegramChatHistory
+              .filter(message => message?.role === 'student')
+              .map(message => Date.parse(message.timestamp || '') || 0)
+            : [0])
+        );
+        if (readThrough > latestStudentMessageAt) {
+          sendJson(res, 400, { error: 'The read timestamp is newer than the latest saved student message.' });
+          return;
+        }
+        const readState = chatReadState.read();
+        readState[studentKey] = Math.max(Number(readState[studentKey] || 0), readThrough);
+        chatReadState.write(readState);
+        scheduleChange(path.basename(chatReadStateFile));
+        sendJson(res, 200, { studentKey, readAt: readState[studentKey] });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not mark Telegram student chat as read:', error.message);
+        sendJson(res, 500, { error: 'Could not mark the Telegram student chat as read.' });
+      });
       return;
     }
 
@@ -4850,6 +5022,60 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/overview-workbook') {
+      if (!overviewWorkbook) {
+        sendJson(res, 503, { error: 'Daily Overview workbook generation is not enabled.' });
+        return;
+      }
+      overviewWorkbook.getStatus().then(status => sendJson(res, 200, status)).catch(error => {
+        console.error('[Admin Dashboard] Could not get Overview workbook status:', error.message);
+        sendJson(res, 500, { error: 'Could not get Overview workbook status.' });
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/overview-workbook.xlsx') {
+      if (!overviewWorkbook) {
+        sendJson(res, 503, { error: 'Daily Overview workbook generation is not enabled.' });
+        return;
+      }
+      overviewWorkbook.getStatus().then(status => {
+        if (status.state !== 'ready') {
+          sendJson(res, 503, { error: status.error || 'Overview workbook is not ready yet.' });
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': 'attachment; filename="overview-statistics.xlsx"',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff'
+        });
+        const workbookStream = fs.createReadStream(overviewWorkbookFile);
+        workbookStream.on('error', error => {
+          console.error('[Admin Dashboard] Could not stream Overview workbook:', error.message);
+          if (!res.headersSent) sendJson(res, 500, { error: 'Could not read the Overview workbook.' });
+          else res.destroy(error);
+        });
+        workbookStream.pipe(res);
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not prepare Overview workbook download:', error.message);
+        if (!res.headersSent) sendJson(res, 500, { error: 'Could not prepare the Overview workbook.' });
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/admin/overview-google-sheet') {
+      if (!googleSheetsOverview) {
+        sendJson(res, 503, { error: 'Google Sheets sync is not enabled.' });
+        return;
+      }
+      googleSheetsOverview.getStatus().then(status => sendJson(res, 200, status)).catch(error => {
+        console.error('[Admin Dashboard] Could not get Google Sheets status:', error.message);
+        sendJson(res, 500, { error: 'Could not get Google Sheets status.' });
+      });
+      return;
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/api/admin/payment-ledger') {
       if (!isSameOriginLoopbackRequest(req)) {
         sendJson(res, 403, { error: 'Payment records can only be changed from this local dashboard.' });
@@ -5652,6 +5878,8 @@ export function createAdminDashboardServer({
     clearInterval(keepAlive);
     if (changeTimer) clearTimeout(changeTimer);
     if (workbookRefreshTimer) clearTimeout(workbookRefreshTimer);
+    overviewWorkbook?.stop();
+    googleSheetsOverview?.stop();
     for (const watcher of watchers) watcher.close();
     for (const response of eventClients) response.end();
     eventClients.clear();
@@ -5659,6 +5887,14 @@ export function createAdminDashboardServer({
   if (studentWorkbook) {
     server.on('listening', () => {
       studentWorkbook.refresh();
+    });
+  }
+  if (overviewWorkbook) {
+    server.on('listening', () => {
+      overviewWorkbook.start()
+        .then(() => googleSheetsOverview?.start())
+        .catch(error =>
+          console.error('[Admin Dashboard] Could not start daily Overview workbook updates:', error.message));
     });
   }
   return server;
@@ -5671,7 +5907,9 @@ if (isMainModule) {
     throw new Error('ADMIN_PORT must be a valid TCP port.');
   }
 
-  const server = createAdminDashboardServer();
+  const server = createAdminDashboardServer({
+    overviewWorkbookFile: OVERVIEW_WORKBOOK_FILE
+  });
   server.listen(port, '127.0.0.1', () => {
     console.log(`[Admin Dashboard] Running locally at http://127.0.0.1:${port}`);
   });

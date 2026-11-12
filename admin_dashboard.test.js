@@ -94,6 +94,7 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const progressFile = path.join(directory, 'telegram_progress.json');
   const lessonsFile = path.join(directory, 'lessons.json');
+  const chatReadStateFile = path.join(directory, 'chat_read_state.json');
   const telegramAccountStateFile = path.join(directory, 'telegram_user_broadcast_state.json');
   fs.writeFileSync(progressFile, JSON.stringify({
     'telegram:-1001:10': {
@@ -158,6 +159,7 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
       throw new Error('Telegram-only endpoints must not read WhatsApp dashboard data.');
     },
     telegramProgressFile: progressFile,
+    chatReadStateFile,
     telegramDashboardChatRepliesFile: path.join(directory, 'telegram_dashboard_chat_replies.json'),
     lessonsFile,
     telegramUserBroadcastFiles: {
@@ -203,6 +205,7 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   assert.equal(progress.students.length, 1);
   assert.equal(progress.students[0].platform, 'Telegram');
   assert.equal(progress.students[0].telegramPresence, 'online');
+  assert.equal(progress.students[0].unread, true);
   assert.equal(progress.students[0].telegramPresenceUpdatedAt, presenceSyncedAt);
   assert.deepEqual(progress.students[0].lastTaskSubmission, {
     lessonId: 'lesson_1',
@@ -251,6 +254,29 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
     message.role === 'student' && message.text === 'عاوز اسجل يا استاذ الرسوم كم'));
   assert.ok(chat.messages.some(message =>
     message.role === 'bot' && message.text === 'الرسوم الشهرية 17 ألف جنيه سوداني.'));
+  const readResponse = await fetch(`${origin}/telegram-student-chat-read`, {
+    method: 'POST',
+    headers: {
+      Origin: `http://127.0.0.1:${server.address().port}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      studentKey: 'telegram:-1001:10',
+      readThrough: '2026-11-09T15:01:00.000Z'
+    })
+  });
+  assert.equal(readResponse.status, 200);
+  const readProgressResponse = await fetch(`${origin}/telegram-progress?timeZone=UTC`);
+  assert.equal(readProgressResponse.status, 200);
+  assert.equal((await readProgressResponse.json()).students[0].unread, false);
+
+  const updatedTelegramProgress = JSON.parse(fs.readFileSync(progressFile, 'utf8'));
+  updatedTelegramProgress['telegram:-1001:10'].lastStudentMessage.receivedAt =
+    '2026-11-10T15:00:00.000Z';
+  fs.writeFileSync(progressFile, JSON.stringify(updatedTelegramProgress));
+  const newMessageProgressResponse = await fetch(`${origin}/telegram-progress?timeZone=UTC`);
+  assert.equal(newMessageProgressResponse.status, 200);
+  assert.equal((await newMessageProgressResponse.json()).students[0].unread, true);
 
   const statsResponse = await fetch(`${origin}/telegram-stats?timeZone=UTC`);
   assert.equal(statsResponse.status, 200);
