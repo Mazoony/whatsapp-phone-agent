@@ -161,16 +161,16 @@
         "introMessage": "في الحصة السادسة حنراجع تكوين الأسئلة في المضارع البسيط باستخدام does. ركّز على ترتيب الكلمات واستخدام الفعل الأساسي بعد does.",
         "taskMessage": "📝 *تمرين الحصة السادسة (Task 6):*\n\n1. What ______ Ahmed ______ for breakfast every morning? (eat)\n\n2. Where ______ Sara ______ English after school? (study)\n\n3. When ______ your father ______ work every day? (start)\n\n4. ______ Ali ______ football on Fridays? (play)\n\n5. Why ______ the teacher ______ the lesson again? (explain)\n\n6. What time ______ your sister ______ up every morning? (get)\n\n7. How ______ Hassan ______ to school every day? (go)\n\n8. ______ the bus ______ near your house every morning? (stop)\n\n9. Where ______ Mary ______ her homework? (do)\n\n10. How often ______ your brother ______ his room? (clean)",
         "answerKey": [
-          "1: What does Ahmed eat for breakfast every morning?",
-          "2: Where does Sara study English after school?",
-          "3: When does your father start work every day?",
-          "4: Does Ali play football on Fridays?",
-          "5: Why does the teacher explain the lesson again?",
-          "6: What time does your sister get up every morning?",
-          "7: How does Hassan go to school every day?",
-          "8: Does the bus stop near your house every morning?",
-          "9: Where does Mary do her homework?",
-          "10: How often does your brother clean his room?"
+          "1: What does Ahmed eat for breakfast every morning? — also accepted: does / eat",
+          "2: Where does Sara study English after school? — also accepted: does / study",
+          "3: When does your father start work every day? — also accepted: does / start",
+          "4: Does Ali play football on Fridays? — also accepted: does / play",
+          "5: Why does the teacher explain the lesson again? — also accepted: does / explain",
+          "6: What time does your sister get up every morning? — also accepted: does / get",
+          "7: How does Hassan go to school every day? — also accepted: does / go",
+          "8: Does the bus stop near your house every morning? — also accepted: does / stop",
+          "9: Where does Mary do her homework? — also accepted: does / do",
+          "10: How often does your brother clean his room? — also accepted: does / clean"
         ]
       },
       {
@@ -193,51 +193,6 @@
           "10: run",
           "11: waiting",
           "12: play"
-        ]
-      },
-      {
-        "id": "lesson_8",
-        "title": "Treasure Island - About the Author",
-        "videoFile": "media/lessons/grade_3_secondary/Treasure_Island_-_About_the_Book_-_Lesson_1.mp4",
-        "caption": "🎬 فيديو الحصة | مستر مازن (eShool)",
-        "introMessage": "يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇",
-        "taskMessage": "1. Who wrote theTreasure Island?\n2. Who retold the story Treasure Island?\n3. Who is the author of Treasure Island?\n4. When was Stevenson born?\n5. Where was the author of treasure Island born?\n6. What was the weather like in Scotland?\n7. Why did Stevenson move to South Pacific?\n8. Mention 2 stories written by Stevenson?\n9. Where did Stevenson die?\n10. How old was Stevenson when he died?",
-        "answerKey": [
-          "Robert Louis Stevenson",
-          "Stephen Colbourn",
-          "Robert Louis Stevenson",
-          "1850",
-          "Edinburgh / Scotland",
-          "Cold",
-          "It was warm there",
-          "Kidnapped / The Black Arrow",
-          "Samoa",
-          "44"
-        ]
-      },
-      {
-        "id": "lesson_9",
-        "title": "Treasure Island_Lesson_2 About_The_Book",
-        "videoFile": "media/lessons/grade_3_secondary/Treasure_Island_-_About_the_Book_-_Lesson_3_compressed.mp4",
-        "caption": "🎬 فيديو الحصة | مستر مازن (eShool)",
-        "introMessage": "يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇",
-        "taskMessage": "1. When did the story Treasure Island take place?\n2. What is Treasure Island about?\n3. What did pirates do when they take a treasure?\n4. When was Robert Louis Stevenson born?\n5. Whose the treasur of the story?\n6. What did pirates do to the sailors?\n7. What happens to pirates if they are caught?\n8. What did the ships carry?\n9. Where did ships come from?\n10. Where did the ships go to?\n11. Name two real pirates\n*True or False*\n1. Treasure Island is a real place in the UK (...........)\n2. Pirates killed people but didn't kill each others  (........)\n3. Long John Silver is not a real person (.........)\n4. People didn't like to talk about pirates?",
-        "answerKey": [
-          "In the middle of the eighteenth century",
-          "Pirates who stole ships",
-          "Bury it in an island",
-          "1850",
-          "Captain Flint",
-          "Kill each others",
-          "Hanged",
-          "Gold, silver and goods",
-          "South America",
-          "Spain",
-          "Henry Morgan / Blackbeard / Mary Read",
-          "F",
-          "F",
-          "T",
-          "F"
         ]
       },
       {
@@ -281,11 +236,72 @@
         ]
       }
     ],
-    "standaloneLessons": [],
+    "standaloneLessons": [
+      {
+        "id": "lesson_12",
+        "title": "Lesson 12: Chapter 1: Trees",
+        "videoFile": "media/lessons/grade_3_secondary/lesson_13.mp4",
+        "caption": "🎬 Lesson 12: Taking Care of Trees | مستر مازن (eShool)",
+        "introMessage": "في الحصة دي حنتكلم عن أهمية الأشجار للبيئة والغذاء. شاهد الفيديو وبعدها جاوب على السؤال.",
+        "hasExercise": true,
+        "taskMessage": "Why do we need to take care of trees?",
+        "answerKey": [
+          "Trees can help us have a healthy and productive environment. — Accept this environmental benefit or a sensible explanation of another benefit of trees. also accepted: Trees can make us able to feed the people of the world.; Trees can help feed people around the world."
+        ]
+      }
+    ],
     "collections": {
       "treasure_island": {
         "title": "Treasure Island",
-        "lessons": []
+        "lessons": [
+          {
+            "id": "lesson_8",
+            "title": "Treasure Island - About the Author",
+            "videoFile": "media/lessons/grade_3_secondary/treasure_island/Treasure_Island_-_About_the_Book_-_Lesson_1.mp4",
+            "caption": "🎬 فيديو الحصة | مستر مازن (eShool)",
+            "introMessage": "يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇",
+            "hasExercise": true,
+            "taskMessage": "1. Who wrote theTreasure Island?\n2. Who retold the story Treasure Island?\n3. Who is the author of Treasure Island?\n4. When was Stevenson born?\n5. Where was the author of treasure Island born?\n6. What was the weather like in Scotland?\n7. Why did Stevenson move to South Pacific?\n8. Mention 2 stories written by Stevenson?\n9. Where did Stevenson die?\n10. How old was Stevenson when he died?",
+            "answerKey": [
+              "Robert Louis Stevenson",
+              "Stephen Colbourn",
+              "Robert Louis Stevenson",
+              "1850",
+              "Edinburgh / Scotland",
+              "Cold",
+              "It was warm there",
+              "Kidnapped / The Black Arrow",
+              "Samoa",
+              "44"
+            ]
+          },
+          {
+            "id": "lesson_9",
+            "title": "Treasure Island_Lesson_2 About_The_Book",
+            "videoFile": "media/lessons/grade_3_secondary/treasure_island/Treasure_Island_-_About_the_Book_-_Lesson_3_compressed.mp4",
+            "caption": "🎬 فيديو الحصة | مستر مازن (eShool)",
+            "introMessage": "يا هلا بيك! الحصة برسل ليك الفيديو والتمرين هسي 👇",
+            "hasExercise": true,
+            "taskMessage": "1. When did the story Treasure Island take place?\n2. What is Treasure Island about?\n3. What did pirates do when they take a treasure?\n4. When was Robert Louis Stevenson born?\n5. Whose the treasur of the story?\n6. What did pirates do to the sailors?\n7. What happens to pirates if they are caught?\n8. What did the ships carry?\n9. Where did ships come from?\n10. Where did the ships go to?\n11. Name two real pirates\n*True or False*\n1. Treasure Island is a real place in the UK (...........)\n2. Pirates killed people but didn't kill each others  (........)\n3. Long John Silver is not a real person (.........)\n4. People didn't like to talk about pirates?",
+            "answerKey": [
+              "In the middle of the eighteenth century",
+              "Pirates who stole ships",
+              "Bury it in an island",
+              "1850",
+              "Captain Flint",
+              "Kill each others",
+              "Hanged",
+              "Gold, silver and goods",
+              "South America",
+              "Spain",
+              "Henry Morgan / Blackbeard / Mary Read",
+              "F",
+              "F",
+              "T",
+              "F"
+            ]
+          }
+        ]
       }
     }
   },

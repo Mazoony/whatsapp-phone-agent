@@ -328,11 +328,13 @@ test('Telegram discount offers can reach all current group members without priva
     {
       id: 11,
       firstName: 'No Private Bot Chat',
+      participant: { date: Math.floor(Date.parse('2026-10-10T12:00:00.000Z') / 1000) },
       status: new Api.UserStatusOnline({ expires: Math.floor(Date.now() / 1000) + 60 })
     },
     {
       id: 12,
       firstName: 'Opted-out member',
+      participant: { date: Math.floor(Date.parse('2026-10-11T12:00:00.000Z') / 1000) },
       status: new Api.UserStatusOffline({ wasOnline: Math.floor(Date.now() / 1000) - 60 })
     },
     { id: 99, firstName: 'Sender account' },
@@ -382,6 +384,14 @@ test('Telegram discount offers can reach all current group members without priva
   const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   assert.deepEqual(state.groupRoster.map(member => member.userId), ['14', '11', '12']);
   assert.equal(state.groupRoster.find(member => member.userId === '11').name, 'No Private Bot Chat');
+  assert.equal(
+    state.groupRoster.find(member => member.userId === '11').joinedAt,
+    '2026-10-10T12:00:00.000Z'
+  );
+  assert.equal(
+    state.groupRoster.find(member => member.userId === '14').joinedAt,
+    null
+  );
   assert.equal(state.groupRoster.find(member => member.userId === '11').presence, 'online');
   assert.equal(state.groupRoster.find(member => member.userId === '12').presence, 'offline');
   assert.equal(state.groupRoster.find(member => member.userId === '14').presence, 'unknown');

@@ -115,13 +115,22 @@ export async function evaluateStudentTask(
     questionNumber,
     parseAnswerKey(lesson.answerKey[questionNumber - 1])
   ]));
-  const { correctQuestionNumbers: exactMatches, correctedAnswers } =
-    findNumberedAnswers(studentSubmission, pending, parsedAnswers);
+  const verbHints = getQuestionVerbHints(lesson.taskMessage);
+  const {
+    correctQuestionNumbers: exactMatches,
+    correctedAnswers,
+    matchedLineIndexes
+  } =
+    findNumberedAnswers(
+      studentSubmission,
+      pending,
+      parsedAnswers,
+      verbHints,
+      lesson.answerKey.length
+    );
   const remainingPending = pending.filter(number => !exactMatches.has(number));
   const remainingSubmission = studentSubmission.split(/\r?\n/)
-    .filter((_, index, lines) => !exactMatches.has(
-      parseNumberedAnswer(lines[index])?.questionNumber
-    ))
+    .filter((_, index) => !matchedLineIndexes.has(index))
     .join('\n')
     .trim();
 
@@ -175,8 +184,8 @@ Return only this JSON shape. Do not generate feedback; the app sends it:
 
   let lastError = null;
 
-  for (const [keyIndex, apiKey] of config.geminiApiKeys.entries()) {
-    for (const modelName of MODELS) {
+  for (const modelName of MODELS) {
+    for (const [keyIndex, apiKey] of config.geminiApiKeys.entries()) {
       try {
         const model = getGenAI(apiKey).getGenerativeModel({
           model: modelName,
@@ -357,6 +366,19 @@ function parseNumberedAnswer(line) {
     : null;
 }
 
+function getQuestionVerbHints(taskMessage) {
+  const hints = new Map();
+  for (const line of taskMessage.split(/\r?\n/)) {
+    const question = parseNumberedAnswer(line);
+    const hintMatch = question && /\(([^()]*)\)\s*$/.exec(question.answer);
+    if (!hintMatch) continue;
+    hints.set(question.questionNumber, new Set(
+      hintMatch[1].split(/\s*\/\s*/).map(normalizeAnswer).filter(Boolean)
+    ));
+  }
+  return hints;
+}
+
 function removeMatchingVerbHint(submittedAnswer, expectedAnswer) {
   const hintMatch = /\s*\(([^()]*)\)\s*$/.exec(submittedAnswer);
   if (!hintMatch) return submittedAnswer;
@@ -368,39 +390,77 @@ function removeMatchingVerbHint(submittedAnswer, expectedAnswer) {
     : submittedAnswer;
 }
 
-function findNumberedAnswers(submission, pending, parsedAnswers) {
+function findNumberedAnswers(submission, pending, parsedAnswers, verbHints, answerCount) {
   const pendingSet = new Set(pending);
   const candidates = new Map();
+  const ignoredLineIndexes = new Set();
   const lines = submission.split(/\r?\n/);
-  for (const line of lines) {
-    const parsed = parseNumberedAnswer(line);
-    const questionNumber = parsed?.questionNumber ??
-      (pending.length === 1 && lines.length === 1 ? pending[0] : null);
-    if (!questionNumber || !pendingSet.has(questionNumber)) continue;
-    const rawAnswer = parsed?.answer ?? line.trim();
-    const submittedAnswer = removeMatchingVerbHint(
-      rawAnswer,
-      parsedAnswers.get(questionNumber).expectedAnswer
-    );
+  let hasNumberedAnswer = false;
+  const addCandidate = (questionNumber, submittedAnswer, lineIndex) => {
     const answerOptions = [
       parsedAnswers.get(questionNumber).expectedAnswer,
       ...parsedAnswers.get(questionNumber).acceptedAnswers
     ];
     const exactAnswer = answerOptions.find(answer =>
       normalizeAnswer(answer) === normalizeAnswer(submittedAnswer));
-    const correctedAnswer = exactAnswer ? null : answerOptions.find(answer =>
-      isMinorSpellingTypo(submittedAnswer, answer));
-    if (!exactAnswer && !correctedAnswer) continue;
-    const existing = candidates.get(questionNumber) || { count: 0, correctedAnswer: null };
+    const isUninflectedVerbHint = verbHints.get(questionNumber)
+      ?.has(normalizeAnswer(submittedAnswer));
+    const correctedAnswer = exactAnswer || isUninflectedVerbHint
+      ? null
+      : answerOptions.find(answer => isMinorSpellingTypo(submittedAnswer, answer));
+    if (!exactAnswer && !correctedAnswer) return;
+    const existing = candidates.get(questionNumber) || {
+      count: 0,
+      correctedAnswer: null,
+      lineIndexes: []
+    };
     existing.count += 1;
+    existing.lineIndexes.push(lineIndex);
     if (correctedAnswer) existing.correctedAnswer = answerOptions[0];
     candidates.set(questionNumber, existing);
+  };
+
+  for (const [lineIndex, line] of lines.entries()) {
+    const parsed = parseNumberedAnswer(line);
+    if (parsed) hasNumberedAnswer = true;
+    const questionNumber = parsed?.questionNumber;
+    if (!questionNumber || !pendingSet.has(questionNumber)) continue;
+    const rawAnswer = parsed?.answer ?? line.trim();
+    const submittedAnswer = removeMatchingVerbHint(
+      rawAnswer,
+      parsedAnswers.get(questionNumber).expectedAnswer
+    );
+    addCandidate(questionNumber, submittedAnswer, lineIndex);
+  }
+
+  const unnumberedAnswers = lines
+    .map((line, lineIndex) => ({ line: line.trim(), lineIndex }))
+    .filter(answer => answer.line);
+  if (!hasNumberedAnswer &&
+      [pending.length, answerCount].includes(unnumberedAnswers.length)) {
+    const isFullList = unnumberedAnswers.length === answerCount;
+    unnumberedAnswers.forEach(({ line, lineIndex }, index) => {
+      const questionNumber = isFullList ? index + 1 : pending[index];
+      if (!pendingSet.has(questionNumber)) {
+        ignoredLineIndexes.add(lineIndex);
+        return;
+      }
+      const submittedAnswer = removeMatchingVerbHint(
+        line,
+        parsedAnswers.get(questionNumber).expectedAnswer
+      );
+      addCandidate(questionNumber, submittedAnswer, lineIndex);
+    });
   }
   const matched = [...candidates].filter(([, match]) => match.count === 1);
   return {
     correctQuestionNumbers: new Set(matched.map(([number]) => number)),
     correctedAnswers: matched.flatMap(([questionNumber, match]) =>
-      match.correctedAnswer ? [{ questionNumber, correctSpelling: match.correctedAnswer }] : [])
+      match.correctedAnswer ? [{ questionNumber, correctSpelling: match.correctedAnswer }] : []),
+    matchedLineIndexes: new Set([
+      ...ignoredLineIndexes,
+      ...matched.flatMap(([, match]) => match.lineIndexes)
+    ])
   };
 }
 

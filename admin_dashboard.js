@@ -102,6 +102,7 @@ import {
 } from './student_workbook.js';
 import {
   createOverviewWorkbookManager,
+  readTelegramGroupMemberHistory,
   OVERVIEW_WORKBOOK_FILE
 } from './overview_workbook.js';
 import {
@@ -273,14 +274,24 @@ function getLessonLeaderboard(progress, now, period = 'weekly', timeZone = 'Afri
 }
 
 function getRecentCalendarDates(now, days, timeZone) {
-  const today = calendarDateKey(now, timeZone);
-  const [year, month, day] = today.split('-').map(Number);
-  const todayUtc = Date.UTC(year, month - 1, day);
+  return getCalendarDatesEndingAt(calendarDateKey(now, timeZone), days);
+}
+
+function getCalendarDatesEndingAt(endDate, days) {
+  const [year, month, day] = endDate.split('-').map(Number);
+  const endDateUtc = Date.UTC(year, month - 1, day);
   return Array.from({ length: days }, (_, index) =>
-    new Date(todayUtc - (days - 1 - index) * 24 * 60 * 60 * 1000)
+    new Date(endDateUtc - (days - 1 - index) * 24 * 60 * 60 * 1000)
       .toISOString()
       .slice(0, 10)
   );
+}
+
+function isValidCalendarDateKey(date) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const timestamp = Date.parse(`${date}T00:00:00.000Z`);
+  return Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === date;
 }
 
 function readBinaryRequestBody(req, maxBytes) {
@@ -2185,12 +2196,40 @@ function getTelegramGroupAudienceVersion(groupRoster, privateChatUserIds) {
     .map(member => [
       String(member.userId),
       String(member.name || ''),
+      String(member.joinedAt || ''),
       privateChatUserIds.has(String(member.userId))
     ])
     .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
   return createHash('sha256')
     .update(JSON.stringify(audienceState))
     .digest('hex');
+}
+
+function getTelegramJoinDateFilters({ joinedAfter = '', joinedBefore = '', timeZone = 'UTC' }) {
+  if ((joinedAfter && !isValidCalendarDateKey(joinedAfter)) ||
+      (joinedBefore && !isValidCalendarDateKey(joinedBefore))) {
+    return { error: 'Join dates must be valid calendar dates in YYYY-MM-DD format.' };
+  }
+  if (joinedAfter && joinedBefore && joinedAfter > joinedBefore) {
+    return { error: 'The start date must be on or before the end date.' };
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+  } catch {
+    return { error: 'A valid time zone is required for join-date filtering.' };
+  }
+  return { joinedAfter, joinedBefore, timeZone };
+}
+
+function filterTelegramGroupRosterByJoinDate(groupRoster, { joinedAfter, joinedBefore, timeZone }) {
+  if (!joinedAfter && !joinedBefore) return groupRoster;
+  return groupRoster.filter(member => {
+    const joinedAt = Date.parse(member.joinedAt || '');
+    if (!Number.isFinite(joinedAt)) return false;
+    const joinedDate = calendarDateKey(joinedAt, timeZone);
+    return (!joinedAfter || joinedDate >= joinedAfter) &&
+      (!joinedBefore || joinedDate <= joinedBefore);
+  });
 }
 
 async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcastFiles, groupId) {
@@ -2257,6 +2296,15 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
     const groupRoster = Array.isArray(state.groupRoster) ? state.groupRoster : [];
     const privateChatUserIds = getTelegramPrivateChatUserIds(progress, groupId);
     const audienceVersion = getTelegramGroupAudienceVersion(groupRoster, privateChatUserIds);
+    const joinDateFilters = getTelegramJoinDateFilters({
+      joinedAfter: body.joinedAfter || '',
+      joinedBefore: body.joinedBefore || '',
+      timeZone: body.timeZone || 'UTC'
+    });
+    if (joinDateFilters.error) {
+      sendJson(res, 400, { error: joinDateFilters.error });
+      return;
+    }
     const audienceFilter = body.audienceFilter || 'all';
     if (!['all', 'not-messaged-privately', 'online-only'].includes(audienceFilter)) {
       sendJson(res, 400, { error: 'Choose a supported group member filter.' });
@@ -2285,12 +2333,13 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
       return;
     }
     const eligibleRecipients = groupMemberAudience
-      ? groupRoster.map(member => ({
+      ? filterTelegramGroupRosterByJoinDate(groupRoster, joinDateFilters).map(member => ({
         userId: String(member.userId),
         name: typeof member.name === 'string' && member.name.trim()
           ? member.name.trim()
           : `Telegram user ${member.userId}`,
-        hasPrivateChat: privateChatUserIds.has(String(member.userId))
+        hasPrivateChat: privateChatUserIds.has(String(member.userId)),
+        ...(typeof member.joinedAt === 'string' ? { joinedAt: member.joinedAt } : {})
       })).filter(member =>
         (audienceFilter !== 'not-messaged-privately' || !member.hasPrivateChat) &&
         (audienceFilter !== 'online-only' || member.presence === 'online'))
@@ -2346,6 +2395,13 @@ async function handleTelegramUserBroadcastPost(req, res, progressFile, broadcast
       ...(body.personalized === true ? { personalized: true } : {}),
       ...(groupMemberAudience ? { audience: 'group-members' } : {}),
       ...(groupMemberAudience ? { audienceFilter } : {}),
+      ...(groupMemberAudience && joinDateFilters.joinedAfter
+        ? { joinedAfter: joinDateFilters.joinedAfter }
+        : {}),
+      ...(groupMemberAudience && joinDateFilters.joinedBefore
+        ? { joinedBefore: joinDateFilters.joinedBefore }
+        : {}),
+      ...(groupMemberAudience ? { timeZone: joinDateFilters.timeZone } : {}),
       ...(body.personalized === true && excludedUserIds.length
         ? { excludedUserIds }
         : {}),
@@ -2434,6 +2490,7 @@ export function createAdminDashboardServer({
   telegramAgentControlFile = TELEGRAM_AGENT_CONTROL_FILE,
   telegramProgressFile = TELEGRAM_PROGRESS_FILE,
   overviewWorkbookFile = null,
+  telegramGroupMemberHistoryFile = overviewWorkbookFile,
   overviewGoogleSheetStateFile = OVERVIEW_GOOGLE_SHEET_STATE_FILE,
   telegramDashboardChatRepliesFile = TELEGRAM_DASHBOARD_CHAT_REPLIES_FILE,
   telegramStudentGenderFile = TELEGRAM_STUDENT_GENDER_FILE,
@@ -2651,6 +2708,7 @@ export function createAdminDashboardServer({
     const latestSendRequests = new Map();
     const latestRegradeRequests = new Map();
     const latestReminderRequests = new Map();
+    const latestScoreMessageRequests = new Map();
     for (const request of lessonSkipQueues.Telegram.read()) {
       if (request.requestType === 'send_lesson') {
         latestSendRequests.set(request.studentKey, request);
@@ -2658,6 +2716,8 @@ export function createAdminDashboardServer({
         latestRegradeRequests.set(request.studentKey, request);
       } else if (request.requestType === 'manual_reminder') {
         latestReminderRequests.set(request.studentKey, request);
+      } else if (request.requestType === 'score_message') {
+        latestScoreMessageRequests.set(request.studentKey, request);
       } else {
         latestSkipRequests.set(request.studentKey, request);
       }
@@ -2669,6 +2729,7 @@ export function createAdminDashboardServer({
         const sendRequest = latestSendRequests.get(student.jid);
         const regradeRequest = latestRegradeRequests.get(student.jid);
         const reminderRequest = latestReminderRequests.get(student.jid);
+        const scoreMessageRequest = latestScoreMessageRequests.get(student.jid);
         const sendActivity = sendRequest
           ? telegramMediaActivities
             .filter(activity =>
@@ -2711,6 +2772,14 @@ export function createAdminDashboardServer({
                 status: reminderRequest.status,
                   error: reminderRequest.error,
                   updatedAt: reminderRequest.updatedAt
+              }
+            : null,
+          scoreMessageRequest: scoreMessageRequest?.scorePercent === student.exerciseScorePercent
+            ? {
+                scorePercent: scoreMessageRequest.scorePercent,
+                status: scoreMessageRequest.status,
+                error: scoreMessageRequest.error,
+                updatedAt: scoreMessageRequest.updatedAt
               }
             : null,
           skipRequest: request?.currentLessonId === student.currentLessonId
@@ -3371,8 +3440,15 @@ export function createAdminDashboardServer({
         return;
       }
 
+      const now = Date.now();
+      const today = calendarDateKey(now, timeZone);
+      const requestedEndDate = requestUrl.searchParams.get('endDate') || today;
+      if (!isValidCalendarDateKey(requestedEndDate) || requestedEndDate > today) {
+        sendJson(res, 400, { error: 'A valid past or current end date is required.' });
+        return;
+      }
+
       try {
-        const now = Date.now();
         const telegramProgress = readJsonFileOr(telegramProgressFile, {});
         const uniqueTelegramRecords = getTelegramUniqueStudentRecords(telegramProgress);
         const telegramAccountState = readJsonFileOr(telegramUserBroadcastFiles.state, {});
@@ -3385,7 +3461,10 @@ export function createAdminDashboardServer({
           Number.isFinite(onlineCountUpdatedAt) &&
           now >= onlineCountUpdatedAt &&
           now - onlineCountUpdatedAt <= TELEGRAM_PRESENCE_MAX_AGE_MS;
-        getTelegramGroupMemberCount().then(memberCount => {
+        getTelegramGroupMemberCount().then(async memberCount => {
+          const groupMemberHistory = telegramGroupMemberHistoryFile
+            ? await readTelegramGroupMemberHistory(telegramGroupMemberHistoryFile)
+            : [];
           const activeByDate = new Map();
           for (const { student } of uniqueTelegramRecords) {
             const activeDates = new Set(telegramActivityTimestamps(student)
@@ -3402,12 +3481,13 @@ export function createAdminDashboardServer({
             const date = calendarDateKey(joinedAt, timeZone);
             joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
           }
-          const dailyStats = getRecentCalendarDates(now, 30, timeZone).map(date => ({
+          const dailyStats = getCalendarDatesEndingAt(requestedEndDate, 30).map(date => ({
             date,
             joins: joinsByDate.get(date) || 0,
             activeLearners: activeByDate.get(date) || 0
           }));
-          const today = calendarDateKey(now, timeZone);
+          const joinsLast7Days = getRecentCalendarDates(now, 7, timeZone)
+            .reduce((total, date) => total + (joinsByDate.get(date) || 0), 0);
           sendJson(res, 200, {
             totalGroupMembers: memberCount.count,
             memberCountUpdatedAt: memberCount.updatedAt,
@@ -3427,7 +3507,10 @@ export function createAdminDashboardServer({
               : Number.isFinite(onlineCountUpdatedAt) ? 'stale' : 'unavailable',
             trackedLearners: uniqueTelegramRecords.length,
             joinsToday: joinsByDate.get(today) || 0,
-            joinsLast7Days: dailyStats.slice(-7).reduce((total, day) => total + day.joins, 0),
+            joinsLast7Days,
+            periodStart: dailyStats[0].date,
+            periodEnd: requestedEndDate,
+            groupMemberHistory,
             dailyStats
           });
         }).catch(error => {
@@ -4003,7 +4086,16 @@ export function createAdminDashboardServer({
           sendJson(res, 400, { error: 'Choose a supported group member filter.' });
           return;
         }
-        const filteredGroupRoster = groupRoster
+        const joinDateFilters = getTelegramJoinDateFilters({
+          joinedAfter: requestUrl.searchParams.get('joinedAfter') || '',
+          joinedBefore: requestUrl.searchParams.get('joinedBefore') || '',
+          timeZone: requestUrl.searchParams.get('timeZone') || 'UTC'
+        });
+        if (joinDateFilters.error) {
+          sendJson(res, 400, { error: joinDateFilters.error });
+          return;
+        }
+        const audienceFilteredGroupRoster = groupRoster
           .map(member => ({
             ...member,
             hasPrivateChat: privateChatUserIds.has(String(member.userId))
@@ -4011,6 +4103,14 @@ export function createAdminDashboardServer({
           .filter(member =>
             (audienceFilter !== 'not-messaged-privately' || !member.hasPrivateChat) &&
             (audienceFilter !== 'online-only' || member.presence === 'online'));
+        const filteredGroupRoster = filterTelegramGroupRosterByJoinDate(
+          audienceFilteredGroupRoster,
+          joinDateFilters
+        );
+        const unknownGroupJoinDateCount =
+          audienceFilteredGroupRoster.length -
+          audienceFilteredGroupRoster.filter(member =>
+            Number.isFinite(Date.parse(member.joinedAt || ''))).length;
         const heartbeat = Date.parse(state.worker?.lastHeartbeatAt || '');
         const workerConnected = state.worker?.connected === true &&
           Number.isFinite(heartbeat) && Date.now() - heartbeat < 30_000;
@@ -4142,6 +4242,9 @@ export function createAdminDashboardServer({
             groupRosterUpdatedAt: state.groupRosterUpdatedAt || null,
             groupAudienceVersion: audienceVersion,
             groupAudienceFilter: audienceFilter,
+            joinedAfter: joinDateFilters.joinedAfter || null,
+            joinedBefore: joinDateFilters.joinedBefore || null,
+            unknownGroupJoinDateCount,
             ...(requestUrl.searchParams.get('includeStudents') === 'true' ? {
               groupMembers: filteredGroupRoster
                 .slice(recipientOffset, recipientOffset + 30)
@@ -4151,7 +4254,8 @@ export function createAdminDashboardServer({
                     ? member.name
                     : `Telegram user ${member.userId}`,
                   username: typeof member.username === 'string' ? member.username : null,
-                  hasPrivateChat: member.hasPrivateChat
+                  hasPrivateChat: member.hasPrivateChat,
+                  joinedAt: typeof member.joinedAt === 'string' ? member.joinedAt : null
                 })),
               groupMemberOffset: recipientOffset
             } : {})
@@ -5146,6 +5250,205 @@ export function createAdminDashboardServer({
         const invalidInput = /Payment amount|Currency must|Payment status|Student identifier|enrollment date|review date/.test(error.message);
         sendJson(res, invalidInput ? 400 : 500, {
           error: invalidInput ? error.message : 'Could not update student payment status.'
+        });
+      });
+      return;
+    }
+
+    if (req.method === 'GET' &&
+        requestUrl.pathname === '/api/admin/telegram-score-messages') {
+      const requestIds = requestUrl.searchParams.get('requestIds')?.split(',') || [];
+      if (requestIds.length === 0 ||
+          requestIds.length > 500 ||
+          requestIds.some(id =>
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) ||
+          new Set(requestIds).size !== requestIds.length) {
+        sendJson(res, 400, { error: 'Provide 1–500 unique score-message request IDs.' });
+        return;
+      }
+
+      try {
+        const requestsById = new Map(
+          lessonSkipQueues.Telegram.read()
+            .filter(request => request.requestType === 'score_message')
+            .map(request => [request.id, request])
+        );
+        const requests = requestIds.map(id => requestsById.get(id));
+        if (requests.some(request => !request)) {
+          sendJson(res, 404, {
+            error: 'One or more score-message delivery records are no longer available.'
+          });
+          return;
+        }
+        sendJson(res, 200, {
+          requests: requests.map(request => ({
+            id: request.id,
+            status: request.status,
+            error: request.error
+          }))
+        });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not read Telegram score-message progress:', error.message);
+        sendJson(res, 500, { error: 'Could not read Telegram score-message progress.' });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/telegram-score-messages') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Score messages must be requested from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(body => {
+        const validRange = Number.isSafeInteger(body?.rangeMin) &&
+          Number.isSafeInteger(body?.rangeMax) &&
+          ((body.rangeMin === 0 && body.rangeMax === 10) ||
+            (body.rangeMin >= 11 && body.rangeMax - body.rangeMin === 9 &&
+              (body.rangeMin - 1) % 10 === 0 && body.rangeMax <= 100));
+        if (!validRange ||
+            typeof body.messageTemplates?.masculine !== 'string' ||
+            !body.messageTemplates.masculine.trim() ||
+            body.messageTemplates.masculine.trim().length > 4096 ||
+            !body.messageTemplates.masculine.includes('{{name}}') ||
+            !body.messageTemplates.masculine.includes('{{percent}}') ||
+            typeof body.messageTemplates?.feminine !== 'string' ||
+            !body.messageTemplates.feminine.trim() ||
+            body.messageTemplates.feminine.trim().length > 4096 ||
+            !body.messageTemplates.feminine.includes('{{name}}') ||
+            !body.messageTemplates.feminine.includes('{{percent}}') ||
+            !Array.isArray(body.expectedStudents) ||
+            body.expectedStudents.length === 0 ||
+            body.expectedStudents.length > 500 ||
+            body.expectedStudents.some(student =>
+              !student ||
+              typeof student.studentKey !== 'string' ||
+              !/^telegram:-?\d+:\d+$/.test(student.studentKey) ||
+              typeof student.name !== 'string' ||
+              !Number.isSafeInteger(student.percent) ||
+              student.percent < 0 ||
+              student.percent > 100 ||
+              student.percent < body.rangeMin ||
+              student.percent > body.rangeMax ||
+              !Number.isSafeInteger(student.correct) ||
+              student.correct < 0 ||
+              !Number.isSafeInteger(student.total) ||
+              student.total < 1 ||
+              student.correct > student.total ||
+              student.percent !== Math.round(student.correct / student.total * 100) ||
+              !['male', 'female', 'unknown'].includes(student.gender)) ||
+            new Set(body.expectedStudents.map(student => student.studentKey)).size !==
+              body.expectedStudents.length) {
+          sendJson(res, 400, {
+            error: 'Choose a valid 10-point score range, include {{name}} and {{percent}} in both templates, and select 1–500 Telegram students with valid scores and gender.'
+          });
+          return;
+        }
+
+        const snapshotStudents = getTelegramProgressSnapshot('UTC').students;
+        const rangeStudents = snapshotStudents.filter(student =>
+          student.platform === 'Telegram' &&
+          Number.isFinite(student.exerciseScorePercent) &&
+          student.exerciseScorePercent >= body.rangeMin &&
+          student.exerciseScorePercent <= body.rangeMax);
+        const eligibleStudents = rangeStudents.filter(student =>
+          student.canReplyPrivately === true);
+        const expectedStudents = body.expectedStudents
+          .map(student => ({
+            studentKey: student.studentKey,
+            name: student.name,
+            percent: student.percent,
+            correct: student.correct,
+            total: student.total,
+            gender: student.gender
+          }))
+          .sort((left, right) => left.studentKey.localeCompare(right.studentKey));
+        const currentStudents = eligibleStudents
+          .map(student => ({
+            studentKey: student.jid,
+            name: student.name,
+            percent: student.exerciseScorePercent,
+            correct: student.scoreCorrectQuestions,
+            total: student.scoreTotalQuestions,
+            gender: ['male', 'female'].includes(student.gender?.value)
+              ? student.gender.value
+              : 'unknown'
+          }))
+          .sort((left, right) => left.studentKey.localeCompare(right.studentKey));
+        if (JSON.stringify(expectedStudents) !== JSON.stringify(currentStudents)) {
+          sendJson(res, 409, {
+            error: 'The students or scores changed since the preview. Refresh the distribution and review the recipients again.'
+          });
+          return;
+        }
+
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
+        const invalidStudent = eligibleStudents.find(student => {
+          const state = telegramProgress[student.jid];
+          return !state ||
+            student.jid !== `telegram:${state.telegramChatId}:${state.telegramUserId}` ||
+            typeof state.telegramPrivateChatId !== 'string' ||
+            !state.telegramPrivateChatId.trim();
+        });
+        if (invalidStudent) {
+          sendJson(res, 409, {
+            error: 'One or more students no longer have an available private chat. Refresh the distribution and try again.'
+          });
+          return;
+        }
+
+        const scoreRange = `${body.rangeMin}–${body.rangeMax}%`;
+        const requests = eligibleStudents.map(student => {
+          const state = telegramProgress[student.jid];
+          const gender = student.gender?.value === 'female' ? 'feminine' : 'masculine';
+          const messageTemplate = body.messageTemplates[gender].trim();
+          const message = messageTemplate
+            .replaceAll('{{name}}', student.name || 'Student')
+            .replaceAll('{{percent}}', String(student.exerciseScorePercent))
+            .replaceAll('{{correct}}', String(student.scoreCorrectQuestions))
+            .replaceAll('{{total}}', String(student.scoreTotalQuestions))
+            .replaceAll('{{range}}', scoreRange);
+          if (message.length > 4096) {
+            throw new Error('A personalized score message exceeds 4,096 characters.');
+          }
+          const currentLessonId = typeof state.currentLessonId === 'string'
+            ? state.currentLessonId
+            : '';
+          return {
+            requestType: 'score_message',
+            platform: 'Telegram',
+            studentKey: student.jid,
+            chatId: String(state.telegramChatId),
+            userId: String(state.telegramUserId),
+            gradeKey: typeof state.grade === 'string' ? state.grade : '',
+            currentLessonId,
+            nextLessonId: currentLessonId,
+            nextLessonTitle: `Exercise score ${student.exerciseScorePercent}%`,
+            scorePercent: student.exerciseScorePercent,
+            message
+          };
+        });
+        const queued = lessonSkipQueues.Telegram.enqueueMany(requests);
+        if (queued.conflict) {
+          sendJson(res, 409, {
+            error: 'One or more selected students already have a pending Telegram action. Refresh progress and try again.'
+          });
+          return;
+        }
+        scheduleChange(path.basename(telegramLessonSkipRequestsFile));
+        sendJson(res, 202, {
+          queuedCount: queued.requests.length,
+          requestIds: queued.requests.map(request => request.id)
+        });
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not queue Telegram score messages:', error.message);
+        const invalidInput = error.message === 'Request body is too large.' ||
+          error.message === 'Request body must contain valid JSON.' ||
+          error.message === 'A personalized score message exceeds 4,096 characters.';
+        sendJson(res, invalidInput ? 400 : 500, {
+          error: invalidInput
+            ? error.message
+            : 'Could not queue the Telegram score messages.'
         });
       });
       return;

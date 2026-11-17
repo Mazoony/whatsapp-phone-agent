@@ -57,6 +57,30 @@ test('lesson skip queue rejects malformed queue state and incomplete requests', 
   assert.throws(() => queue.read(), /Invalid lesson skip request queue/);
 });
 
+test('lesson skip queue enqueues a batch atomically and rejects active conflicts', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-skip-batch-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const queue = new LessonSkipQueue(path.join(directory, 'requests.json'));
+  const requests = [
+    { studentKey: 'telegram:-100123:44', currentLessonId: 'lesson_1', nextLessonId: '' },
+    { studentKey: 'telegram:-100123:45', currentLessonId: 'lesson_2', nextLessonId: '' }
+  ];
+
+  const queued = queue.enqueueMany(requests);
+  assert.equal(queued.conflict, false);
+  assert.equal(queued.requests.length, 2);
+  assert.ok(queued.requests.every(request => request.status === 'queued'));
+
+  const conflict = queue.enqueueMany([
+    { studentKey: 'telegram:-100123:46', currentLessonId: '', nextLessonId: '' },
+    { ...requests[0], message: 'A second active request' }
+  ]);
+  assert.equal(conflict.conflict, true);
+  assert.equal(conflict.studentKey, requests[0].studentKey);
+  assert.equal(queue.read().length, 2);
+  assert.throws(() => queue.enqueueMany([requests[0], requests[0]]), /once in a batch/);
+});
+
 test('WhatsApp lesson skips deliver the requested next lesson and reject stale progress', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'whatsapp-lesson-skip-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

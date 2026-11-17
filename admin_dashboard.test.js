@@ -10,6 +10,7 @@ import { consumeAgentMediaRetryRequests } from './agent_media_retry.js';
 import { appendAgentLog } from './agent_runtime.js';
 import { writeAgentQr, writeAgentStatus } from './agent_status.js';
 import { setTelegramUpdateQueuePaused } from './telegram_update_queue.js';
+import { writeOverviewWorkbook } from './overview_workbook.js';
 import {
   createDashboardDataCache,
   createAdminDashboardServer as createAuthenticatedDashboardServer,
@@ -152,6 +153,19 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
     onlineGroupMembersUpdatedAt: presenceSyncedAt,
     groupRoster: [{ userId: '10', presence: 'online' }]
   }));
+  const groupMemberHistoryFile = path.join(directory, 'overview_statistics.xlsx');
+  for (const [snapshotDate, totalGroupMembers] of [
+    ['2026-11-11', 240],
+    ['2026-11-12', 245]
+  ]) {
+    await writeOverviewWorkbook({
+      snapshotDate,
+      snapshotAt: `${snapshotDate}T12:00:00.000Z`,
+      overview: { totalGroupMembers },
+      classes: [],
+      dailyStats: []
+    }, groupMemberHistoryFile);
+  }
   let memberCountCalls = 0;
   const sentReplies = [];
   const server = createAdminDashboardServer({
@@ -159,6 +173,7 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
       throw new Error('Telegram-only endpoints must not read WhatsApp dashboard data.');
     },
     telegramProgressFile: progressFile,
+    telegramGroupMemberHistoryFile: groupMemberHistoryFile,
     chatReadStateFile,
     telegramDashboardChatRepliesFile: path.join(directory, 'telegram_dashboard_chat_replies.json'),
     lessonsFile,
@@ -290,6 +305,23 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   assert.equal(stats.dailyStats.length, 30);
   assert.equal(stats.dailyStats.at(-1).joins, 1);
   assert.equal(stats.dailyStats.at(-1).activeLearners, 1);
+  assert.deepEqual(stats.groupMemberHistory, [
+    { date: '2026-11-11', members: 240 },
+    { date: '2026-11-12', members: 245 }
+  ]);
+  const historicalStatsResponse = await fetch(
+    `${origin}/telegram-stats?timeZone=UTC&endDate=2020-01-30`
+  );
+  assert.equal(historicalStatsResponse.status, 200);
+  const historicalStats = await historicalStatsResponse.json();
+  assert.equal(historicalStats.periodStart, '2020-01-01');
+  assert.equal(historicalStats.periodEnd, '2020-01-30');
+  assert.equal(historicalStats.dailyStats.length, 30);
+  assert.equal(historicalStats.dailyStats.at(-1).joins, 0);
+  const invalidStatsDateResponse = await fetch(
+    `${origin}/telegram-stats?timeZone=UTC&endDate=2020-02-31`
+  );
+  assert.equal(invalidStatsDateResponse.status, 400);
   await fetch(`${origin}/telegram-stats?timeZone=UTC`);
   assert.equal(memberCountCalls, 1);
 
@@ -437,6 +469,11 @@ test('dashboard queues task rechecks only for an available active Telegram submi
   const requestFile = path.join(directory, 'telegram_lesson_skip_requests.json');
   const genderFile = path.join(directory, 'telegram_student_gender.json');
   const studentKey = 'telegram:-1001:10';
+  const taskMessage = 'Choose the expected answer.';
+  const answerKey = ['expected answer'];
+  const taskVersion = createHash('sha256')
+    .update(JSON.stringify([taskMessage, answerKey]))
+    .digest('hex');
   fs.writeFileSync(progressFile, JSON.stringify({
     [studentKey]: {
       name: 'Telegram learner',
@@ -447,6 +484,15 @@ test('dashboard queues task rechecks only for an available active Telegram submi
       currentLessonIndex: 0,
       currentLessonId: 'lesson_1',
       status: 'awaiting_reattempt',
+      exerciseScores: {
+        lesson_1: {
+          taskVersion,
+          scoringPolicy: 'first_attempt',
+          totalQuestions: 1,
+          attemptedQuestionNumbers: [1],
+          correctQuestionNumbers: [1]
+        }
+      },
       lastTaskSubmission: {
         grade: 'grade_3_secondary',
         lessonId: 'lesson_1',
@@ -458,7 +504,12 @@ test('dashboard queues task rechecks only for an available active Telegram submi
   fs.writeFileSync(lessonsFile, JSON.stringify({
     grade_3_secondary: {
       name: 'Third Secondary',
-      lessons: [{ id: 'lesson_1', title: 'Lesson One', answerKey: ['expected answer'] }]
+      lessons: [{
+        id: 'lesson_1',
+        title: 'Lesson One',
+        taskMessage,
+        answerKey
+      }]
     }
   }));
   const server = createAdminDashboardServer({
@@ -479,6 +530,79 @@ test('dashboard queues task rechecks only for an available active Telegram submi
   assert.equal(progress.students[0].canRegradeTask, true);
   assert.equal(progress.students[0].canSendReminder, true);
   assert.equal(progress.students[0].gender.value, 'unknown');
+  assert.equal(progress.students[0].exerciseScorePercent, 100);
+
+  const scoreMessageResponse = await fetch(`${origin}/api/admin/telegram-score-messages`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      rangeMin: 91,
+      rangeMax: 100,
+      messageTemplates: {
+        masculine: 'Hello {{name}}, your score is {{percent}}% ({{correct}}/{{total}}). Keep going!',
+        feminine: 'Hello {{name}}, your score is {{percent}}% ({{correct}}/{{total}}). Keep going, girl!'
+      },
+      expectedStudents: [{
+        studentKey,
+        name: 'Telegram learner',
+        percent: 100,
+        correct: 1,
+        total: 1,
+        gender: 'unknown'
+      }]
+    })
+  });
+  assert.equal(scoreMessageResponse.status, 202);
+  const scoreMessageResult = await scoreMessageResponse.json();
+  assert.equal(scoreMessageResult.queuedCount, 1);
+  assert.equal(scoreMessageResult.requestIds.length, 1);
+  const scoreMessageRequest = JSON.parse(fs.readFileSync(requestFile, 'utf8'))
+    .find(request => request.requestType === 'score_message');
+  assert.equal(scoreMessageRequest.scorePercent, 100);
+  assert.equal(
+    scoreMessageRequest.message,
+    'Hello Telegram learner, your score is 100% (1/1). Keep going!'
+  );
+  assert.equal(
+    (await (await fetch(`${origin}/api/admin/telegram-progress?timeZone=UTC`)).json())
+      .students[0].scoreMessageRequest.status,
+    'queued'
+  );
+  const deliveryProgressQuery = new URLSearchParams({
+    requestIds: scoreMessageResult.requestIds.join(',')
+  });
+  const queuedDeliveryProgress = await fetch(
+    `${origin}/api/admin/telegram-score-messages?${deliveryProgressQuery}`
+  );
+  assert.equal(queuedDeliveryProgress.status, 200);
+  assert.deepEqual((await queuedDeliveryProgress.json()).requests.map(request => request.status), ['queued']);
+  const staleScoreMessageResponse = await fetch(`${origin}/api/admin/telegram-score-messages`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      rangeMin: 91,
+      rangeMax: 100,
+      messageTemplates: {
+        masculine: 'Hello {{name}}, your score is {{percent}}%.',
+        feminine: 'Hello {{name}}, your score is {{percent}}%.'
+      },
+      expectedStudents: [{
+        studentKey,
+        name: 'Telegram learner',
+        percent: 100,
+        correct: 2,
+        total: 2,
+        gender: 'unknown'
+      }]
+    })
+  });
+  assert.equal(staleScoreMessageResponse.status, 409);
+  new LessonSkipQueue(requestFile).complete(scoreMessageRequest.id, 'sent');
+  const sentDeliveryProgress = await fetch(
+    `${origin}/api/admin/telegram-score-messages?${deliveryProgressQuery}`
+  );
+  assert.equal(sentDeliveryProgress.status, 200);
+  assert.deepEqual((await sentDeliveryProgress.json()).requests.map(request => request.status), ['sent']);
 
   const genderResponse = await fetch(`${origin}/api/admin/telegram-student-gender`, {
     method: 'POST',
@@ -488,6 +612,35 @@ test('dashboard queues task rechecks only for an available active Telegram submi
   assert.equal(genderResponse.status, 200);
   assert.equal((await genderResponse.json()).gender.source, 'manual');
   assert.deepEqual(JSON.parse(fs.readFileSync(genderFile, 'utf8')), { [studentKey]: 'female' });
+  const feminineScoreMessageResponse = await fetch(`${origin}/api/admin/telegram-score-messages`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      rangeMin: 91,
+      rangeMax: 100,
+      messageTemplates: {
+        masculine: 'Hello {{name}}, your score is {{percent}}%. Keep working!',
+        feminine: 'Hello {{name}}, your score is {{percent}}%. Keep going, girl!'
+      },
+      expectedStudents: [{
+        studentKey,
+        name: 'Telegram learner',
+        percent: 100,
+        correct: 1,
+        total: 1,
+        gender: 'female'
+      }]
+    })
+  });
+  assert.equal(feminineScoreMessageResponse.status, 202);
+  const feminineScoreMessageRequest = JSON.parse(fs.readFileSync(requestFile, 'utf8'))
+    .filter(request => request.requestType === 'score_message')
+    .at(-1);
+  assert.equal(
+    feminineScoreMessageRequest.message,
+    'Hello Telegram learner, your score is 100%. Keep going, girl!'
+  );
+  new LessonSkipQueue(requestFile).complete(feminineScoreMessageRequest.id, 'sent');
   const genderOverviewResponse = await fetch(`${origin}/api/admin/telegram-overview?timeZone=UTC`);
   assert.equal(genderOverviewResponse.status, 200);
   assert.equal((await genderOverviewResponse.json()).telegramGenderStatistics.female, 1);
@@ -507,7 +660,8 @@ test('dashboard queues task rechecks only for an available active Telegram submi
   });
   assert.equal(reminderResponse.status, 202);
   assert.equal((await reminderResponse.json()).status, 'queued');
-  const reminderRequest = JSON.parse(fs.readFileSync(requestFile, 'utf8'))[0];
+  const reminderRequest = JSON.parse(fs.readFileSync(requestFile, 'utf8'))
+    .find(request => request.requestType === 'manual_reminder');
   assert.equal(reminderRequest.requestType, 'manual_reminder');
   assert.equal(reminderRequest.studentKey, studentKey);
   new LessonSkipQueue(requestFile).complete(reminderRequest.id, 'sent');
@@ -3963,8 +4117,18 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
 
       const rosterUpdatedAt = new Date().toISOString();
       const groupRoster = [
-        { userId: '201', name: 'Group member without bot chat', presence: 'online' },
-        { userId: '202', name: 'Opted-out group member', presence: 'offline' },
+        {
+          userId: '201',
+          name: 'Group member without bot chat',
+          presence: 'online',
+          joinedAt: '2026-10-10T23:30:00.000Z'
+        },
+        {
+          userId: '202',
+          name: 'Opted-out group member',
+          presence: 'offline',
+          joinedAt: '2026-10-11T00:30:00.000Z'
+        },
         { userId: '203', name: 'Another group member', presence: 'unknown' }
       ];
       const progressWithPrivateChats = JSON.parse(fs.readFileSync(progressFile, 'utf8'));
@@ -3985,6 +4149,7 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
         `${url}?audience=group-members&includeStudents=true`
       )).json();
       assert.equal(groupPreview.groupMemberCount, 3);
+      assert.equal(groupPreview.allGroupMemberCount, 3);
       assert.deepEqual(groupPreview.groupMembers.map(member => member.userId), [
         '201',
         '202',
@@ -4000,6 +4165,31 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
         true,
         false
       ]);
+      assert.deepEqual(groupPreview.groupMembers.map(member => member.joinedAt), [
+        '2026-10-10T23:30:00.000Z',
+        '2026-10-11T00:30:00.000Z',
+        null
+      ]);
+      const utcJoinDatePreview = await (await fetch(
+        `${url}?audience=group-members&includeStudents=true&joinedAfter=2026-10-10&joinedBefore=2026-10-10&timeZone=UTC`
+      )).json();
+      assert.equal(utcJoinDatePreview.groupMemberCount, 1);
+      assert.equal(utcJoinDatePreview.allGroupMemberCount, 3);
+      assert.equal(utcJoinDatePreview.unknownGroupJoinDateCount, 1);
+      assert.deepEqual(utcJoinDatePreview.groupMembers.map(member => member.userId), ['201']);
+      const localJoinDatePreview = await (await fetch(
+        `${url}?audience=group-members&includeStudents=true&joinedAfter=2026-10-11&joinedBefore=2026-10-11&timeZone=Africa%2FKhartoum`
+      )).json();
+      assert.equal(localJoinDatePreview.groupMemberCount, 2);
+      assert.deepEqual(localJoinDatePreview.groupMembers.map(member => member.userId), ['201', '202']);
+      const invalidJoinDatePreview = await fetch(
+        `${url}?audience=group-members&joinedAfter=2026-02-30`
+      );
+      assert.equal(invalidJoinDatePreview.status, 400);
+      const reversedJoinDatePreview = await fetch(
+        `${url}?audience=group-members&joinedAfter=2026-10-12&joinedBefore=2026-10-11`
+      );
+      assert.equal(reversedJoinDatePreview.status, 400);
       const noPrivateMessagePreview = await (await fetch(
         `${url}?audience=group-members&filter=not-messaged-privately&includeStudents=true`
       )).json();
@@ -4053,6 +4243,33 @@ test('broadcast API queues only eligible recipients and supports stopping a queu
       assert.deepEqual(queuedGroupOffer.recipients, [
         { userId: '201', name: 'Group member without bot chat' },
         { userId: '203', name: 'Another group member' }
+      ]);
+      const dateFilteredOfferResponse = await fetch(url, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Hello {{name}}, a date-filtered offer.',
+          personalized: true,
+          audience: 'group-members',
+          audienceFilter: 'all',
+          joinedAfter: '2026-10-10',
+          joinedBefore: '2026-10-10',
+          timeZone: 'UTC',
+          expectedCount: utcJoinDatePreview.groupMemberCount,
+          expectedRosterUpdatedAt: utcJoinDatePreview.groupRosterUpdatedAt,
+          expectedAudienceVersion: utcJoinDatePreview.groupAudienceVersion
+        })
+      });
+      assert.equal(dateFilteredOfferResponse.status, 202);
+      const dateFilteredOffer = await dateFilteredOfferResponse.json();
+      assert.equal(dateFilteredOffer.total, 1);
+      const dateFilteredRequest = JSON.parse(fs.readFileSync(requestsFile, 'utf8'))
+        .find(request => request.id === dateFilteredOffer.id);
+      assert.equal(dateFilteredRequest.joinedAfter, '2026-10-10');
+      assert.equal(dateFilteredRequest.joinedBefore, '2026-10-10');
+      assert.equal(dateFilteredRequest.timeZone, 'UTC');
+      assert.deepEqual(dateFilteredRequest.recipients, [
+        { userId: '201', name: 'Group member without bot chat' }
       ]);
       const onlineOfferResponse = await fetch(url, {
         method: 'POST',

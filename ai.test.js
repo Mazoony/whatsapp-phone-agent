@@ -197,6 +197,18 @@ test('transient Gemini fetch failures are retried once', async () => {
   assert.equal(waitedMs, 1500);
 });
 
+test('Gemini quota errors move to fallback without an immediate retry', async () => {
+  let attempts = 0;
+  let waitedMs = 0;
+  await assert.rejects(generateWithTransientRetry(async () => {
+    attempts++;
+    throw new Error('[429 Too Many Requests] retry in 56s');
+  }, async ms => { waitedMs += ms; }), /429 Too Many Requests/);
+
+  assert.equal(attempts, 1);
+  assert.equal(waitedMs, 0);
+});
+
 test('permanent Gemini request errors are not retried', async () => {
   let attempts = 0;
   await assert.rejects(generateWithTransientRetry(async () => {
@@ -430,6 +442,67 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
   }
 });
 
+test('task grading tries the next API key before changing Gemini models', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length, 'account-one-key', 'account-two-key');
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({
+      model: /\/models\/([^:]+)/.exec(String(url))?.[1],
+      apiKey: options.headers.get('x-goog-api-key')
+    });
+    if (requests.length === 1) {
+      return {
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        json: async () => ({ error: { message: 'Quota exceeded.' } })
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                isTaskSubmission: true,
+                allCorrect: false,
+                answeredQuestionNumbers: [1],
+                correctQuestionNumbers: [],
+                uncertainQuestionNumbers: [],
+                incorrectAnswers: [{
+                  questionNumber: 1,
+                  studentAnswer: 'He go to school.',
+                  explanation: 'بعد he بنضيف s للفعل في المضارع البسيط.'
+                }]
+              })
+            }]
+          }
+        }]
+      })
+    };
+  };
+
+  try {
+    const result = await evaluateStudentTask({
+      title: 'Simple present',
+      taskMessage: 'Answer the question.',
+      answerKey: ['goes']
+    }, 'He go to school.');
+
+    assert.equal(result.allCorrect, false);
+    assert.deepEqual(requests, [
+      { model: 'gemini-3.1-flash-lite', apiKey: 'account-one-key' },
+      { model: 'gemini-3.1-flash-lite', apiKey: 'account-two-key' }
+    ]);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('task grading accepts a single-word answer as a complete submission', async () => {
   const previousKeys = [...config.geminiApiKeys];
   const previousFetch = globalThis.fetch;
@@ -596,6 +669,164 @@ test('task grading deterministically accepts exact numbered answers and listed a
       incorrectAnswers: [],
       feedback: 'صحيح، ممتاز.'
     });
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading deterministically accepts complete unnumbered answer lists in question order', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => {
+    throw new Error('Exact unnumbered answers should not call an AI grader.');
+  };
+
+  try {
+    const lessons = JSON.parse(readFileSync(new URL('./lessons.json', import.meta.url), 'utf8'));
+    const lesson = lessons.grade_3_secondary.lessons.find(item => item.id === 'lesson_3');
+    const result = await evaluateStudentTask(lesson, [
+      'Studies',
+      'enjoys',
+      'Cries',
+      'Finishes',
+      'Drives',
+      'Helps',
+      'tidies',
+      'Shares',
+      'Studies',
+      'Carries'
+    ].join('\n'));
+
+    assert.equal(result.isTaskSubmission, true);
+    assert.equal(result.allCorrect, true);
+    assert.deepEqual(result.answeredQuestionNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(result.correctQuestionNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(result.uncertainQuestionNumbers, []);
+    assert.deepEqual(result.incorrectAnswers, []);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading accepts the verb fragments requested by Lesson 6', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async () => {
+    throw new Error('Configured Lesson 6 answer fragments should not call an AI grader.');
+  };
+
+  try {
+    const lessons = JSON.parse(readFileSync(new URL('./lessons.json', import.meta.url), 'utf8'));
+    const lesson = lessons.grade_3_secondary.lessons.find(item => item.id === 'lesson_6');
+    const result = await evaluateStudentTask(lesson, [
+      'does - eat',
+      'does - study',
+      'does - start',
+      'Does - play',
+      'does - explain',
+      'does - get',
+      'does - go',
+      'Does - stop',
+      'does - do',
+      'does - clean'
+    ].join('\n'));
+
+    assert.equal(result.isTaskSubmission, true);
+    assert.equal(result.allCorrect, true);
+    assert.deepEqual(result.answeredQuestionNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(result.correctQuestionNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(result.uncertainQuestionNumbers, []);
+    assert.deepEqual(result.incorrectAnswers, []);
+  } finally {
+    config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('task grading maps unnumbered lists to their questions and leaves wrong forms pending', async () => {
+  const previousKeys = [...config.geminiApiKeys];
+  const previousFetch = globalThis.fetch;
+  config.geminiApiKeys.splice(0, config.geminiApiKeys.length);
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    const prompt = body.messages.at(-1).content;
+    assert.match(prompt, /expectedAnswer":"drives"/);
+    assert.ok(prompt.includes('STUDENT: "Drive\ntidys"'));
+    assert.doesNotMatch(prompt, /expectedAnswer":"studies"/);
+    return {
+      ok: true,
+      json: async () => ({
+        message: {
+          content: JSON.stringify({
+            isTaskSubmission: true,
+            allCorrect: false,
+            answeredQuestionNumbers: [5, 7],
+            correctQuestionNumbers: [],
+            uncertainQuestionNumbers: [],
+            incorrectAnswers: [
+              {
+                questionNumber: 5,
+                studentAnswer: 'Drive',
+                explanation: 'بعد الفاعل المفرد بنضيف s للفعل في المضارع البسيط.'
+              },
+              {
+                questionNumber: 7,
+                studentAnswer: 'tidys',
+                explanation: 'مع الفعل المنتهي بحرف ساكن ثم y، بنحوّل y إلى ies.'
+              }
+            ]
+          })
+        }
+      })
+    };
+  };
+
+  try {
+    const lessons = JSON.parse(readFileSync(new URL('./lessons.json', import.meta.url), 'utf8'));
+    const lesson = lessons.grade_3_secondary.lessons.find(item => item.id === 'lesson_3');
+    const result = await evaluateStudentTask(lesson, [
+      'Studies',
+      'enjoys',
+      'Cries',
+      'Finishes',
+      'Drive',
+      'Helps',
+      'tidys',
+      'Shares',
+      'Studies',
+      'Carries'
+    ].join('\n'));
+
+    assert.equal(result.allCorrect, false);
+    assert.deepEqual(result.answeredQuestionNumbers, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(result.correctQuestionNumbers, [1, 2, 3, 4, 6, 8, 9, 10]);
+    assert.deepEqual(result.incorrectAnswers.map(answer => answer.questionNumber), [5, 7]);
+    assert.equal(result.correctedAnswers, undefined);
+
+    const retriedResult = await evaluateStudentTask(
+      lesson,
+      [
+        'Studies',
+        'enjoys',
+        'Cries',
+        'Finishes',
+        'Drive',
+        'Helps',
+        'tidys',
+        'Shares',
+        'Studies',
+        'Carries'
+      ].join('\n'),
+      'الطالب',
+      { pendingQuestionNumbers: [2, 3, 4, 5, 6, 7, 8, 9, 10] }
+    );
+    assert.deepEqual(retriedResult.answeredQuestionNumbers, [2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(retriedResult.correctQuestionNumbers, [2, 3, 4, 6, 8, 9, 10]);
+    assert.deepEqual(retriedResult.incorrectAnswers.map(answer => answer.questionNumber), [5, 7]);
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
     globalThis.fetch = previousFetch;

@@ -167,6 +167,32 @@ export async function writeOverviewWorkbook(snapshot, filePath = OVERVIEW_WORKBO
   };
 }
 
+export async function readTelegramGroupMemberHistory(filePath = OVERVIEW_WORKBOOK_FILE) {
+  if (!fs.existsSync(filePath)) return [];
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
+  const sheet = workbook.getWorksheet(SHEETS.overview.name);
+  if (!sheet || sheet.rowCount < 2) return [];
+
+  const headers = sheet.getRow(1).values.slice(1).map(value => String(value || ''));
+  const dateColumn = headers.indexOf('Snapshot date') + 1;
+  const membersColumn = headers.indexOf('Primary group members') + 1;
+  if (dateColumn === 0 || membersColumn === 0) return [];
+
+  const snapshots = [];
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
+    const row = sheet.getRow(rowNumber);
+    const date = row.getCell(dateColumn).value;
+    const members = row.getCell(membersColumn).value;
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        !Number.isSafeInteger(members) || members < 0) {
+      continue;
+    }
+    snapshots.push({ date, members });
+  }
+  return snapshots.sort((left, right) => left.date.localeCompare(right.date));
+}
+
 export function createOverviewWorkbookManager({
   readSnapshot,
   filePath = OVERVIEW_WORKBOOK_FILE,

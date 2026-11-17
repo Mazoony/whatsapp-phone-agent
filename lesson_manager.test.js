@@ -15,6 +15,19 @@ import {
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 
+test('grade 3 secondary has lesson 12 as its latest lesson with the tree-care question', () => {
+  const lessons = lessonManager.lessonsConfig.grade_3_secondary.lessons;
+  const lesson = lessons.at(-1);
+  assert.equal(lesson.id, 'lesson_12');
+  assert.equal(lesson.title, 'Lesson 12: Taking Care of Trees');
+  assert.equal(lesson.taskMessage, 'Why do we need to take care of trees?');
+  assert.equal(lesson.answerKey.length, 1);
+  assert.match(lesson.answerKey[0], /healthy and productive environment/i);
+  assert.match(lesson.answerKey[0], /feed people around the world/i);
+  assert.match(lesson.answerKey[0], /sensible explanation of another benefit/i);
+  assert.ok(fs.statSync(resolveLessonVideoPath(lesson.videoFile)).size > 0);
+});
+
 test('a correct submission immediately delivers the next numbered lesson', async () => {
   const jid = 'immediate-lesson-progression-test@s.whatsapp.net';
   const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];

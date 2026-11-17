@@ -118,7 +118,7 @@ function isLessonRequest(text) {
 }
 
 function getTelegramTrackCommand(text) {
-  const command = /^\/(grammar|lesson|literature|spine)(?:@[a-z0-9_]+)?(?:\s|$)/i
+  const command = /^\/(lesson|grammar|literature|spine)(?:@[a-z0-9_]+)?(?:\s|$)/i
     .exec(text.trim())?.[1]?.toLowerCase();
   if (command === 'lesson' || command === 'grammar') return 'grammar';
   return command || null;
@@ -208,9 +208,13 @@ function getTelegramCelebrationPreferenceCommand(text) {
   return command === null ? null : command === 'on';
 }
 
-function getLessonCelebrationMessage(studentName, lessonTitle) {
+function getLessonCelebrationMessage(studentName, lessonTitle, username) {
+  const recipient = typeof username === 'string' &&
+    /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username)
+    ? `@${username}`
+    : studentName;
   return `عايز أحتفل معاكم
-🎉 برافو يا ${studentName}!
+🎉 برافو يا ${recipient}!
 جاوبت تمرين الحصة ${lessonTitle} كامل وكل إجاباتك صحيحة 👏🌟
 
 يلا نستمر كدا بي نفس التركيز، وعقبال الشهادة يا رب! 💪`;
@@ -267,9 +271,24 @@ function getNewStudentInstructions(users) {
   const plural = mentions.length > 1;
   text += ` 👋\n\nعشان تبدأ${plural ? 'وا' : ''} الدروس:
 ١. ${plural ? 'افتحوا' : 'افتح'} المحادثة الخاصة مع @eSchoolsdBot واضغط${plural ? 'وا' : ''} Start.
-٢. بعد الضغط على Start، ${plural ? 'أرسلوا' : 'أرسل'} /grammar في القروب. /lesson ما زال شغال كاختصار.
+٢. بعد الضغط على Start، اختار${plural ? 'وا' : ''} المسار البتبدأ${plural ? 'وا' : ''} بيه في الخاص:
+• /spine لدروس SPINE.
+• /grammar لدروس القواعد.
+• /literature لفصول Treasure Island.
 الدروس حتوصلك${plural ? 'م' : ''} في الخاص.`;
   return { text, entities };
+}
+
+function getTelegramCourseSelectionMessage() {
+  return `أهلين بيك 😍 اتسجلت معانا خلاص.
+
+اختار المسار البتبدأ بيه بإرسال واحد من الأوامر دي:
+• /spine لدروس SPINE.
+• /grammar لدروس القواعد.
+• /literature لفصول Treasure Island.
+
+لو عندك تقدم سابق، حتواصل من الدرس الجاي. وللقواعد تقدر تستخدم /lesson كاختصار.
+لما تجاوب تمرين الحصة كامل وكل إجاباتك تكون صحيحة، حنحتفل بيك في القروب.`;
 }
 
 function getTelegramStudentHelpMessage() {
@@ -277,9 +296,7 @@ function getTelegramStudentHelpMessage() {
 
 • أول مرة: افتح المحادثة الخاصة مع @eSchoolsdBot واضغط Start.
 
-• أرسل /grammar في القروب أو الخاص عشان تستلم درس القواعد الجاي أو تواصل درسك الحالي. /lesson شغال كاختصار.
-
-• أرسل /literature عشان تستلم فصول Treasure Island بالترتيب، أو /spine عشان تستلم الدروس المستقلة بالترتيب.
+• اختار المسار بإرسال الأمر في الخاص: /grammar للقواعد، /spine لدروس SPINE، أو /literature لفصول Treasure Island. /lesson اختصار للقواعد.
 
 • أرسل إجابات التمرين كنص في الخاص. لو في إجابات محتاجة تصحيح، حأحدد أرقام الأسئلة البتحتاج تعيدها.
 
@@ -470,6 +487,7 @@ export class TelegramLessonAgent {
     this.studentGenderStore = studentGenderStore;
     this.logger = logger;
     this.processingLessonSkips = false;
+    this.lastScoreMessageSentAt = 0;
     this.processingAnswerReminders = false;
     this.processingMediaRetries = false;
     this.progress = readJsonFile(progressFile, {});
@@ -682,6 +700,21 @@ export class TelegramLessonAgent {
       return;
     }
 
+    if (isTelegramPaymentQuestion(text)) {
+      if (this.progress[studentKey]?.telegramPrivateChatId) {
+        await this.sendPrivateNotice(studentKey, TELEGRAM_PAYMENT_INSTRUCTIONS);
+      } else {
+        const instructions = getNewStudentInstructions([message.from]);
+        await this.bot.sendMessage(
+          chatId,
+          instructions.text,
+          message.message_id,
+          instructions.entities
+        );
+      }
+      return;
+    }
+
     if (isPaymentStatusCommand(text)) {
       const state = this.progress[studentKey];
       if (state?.telegramPrivateChatId) {
@@ -766,7 +799,6 @@ export class TelegramLessonAgent {
       });
       return;
     }
-
     if (isLessonRequest(text)) {
       this.logger.info(`[Telegram] Starting or resuming a lesson for ${studentName}.`);
       await this.runStudentOperation(studentKey, async () => {
@@ -832,21 +864,29 @@ export class TelegramLessonAgent {
       });
       return;
     }
-    if (this.progress[studentKey]?.telegramPrivateChatId) {
-      await this.sendPrivateNotice(
-        studentKey,
-        'رسل لي الأجوبة في المحادثة الخاصة معاي.',
-      );
+    if (text.startsWith('/')) {
+      this.logger.info(`[Telegram] Ignoring unsupported command from ${studentName}.`);
       return;
     }
     const activeTaskState = this.progress[studentKey];
-    if (!hasActiveTelegramTask(activeTaskState)) {
-        this.logger.info(`[Telegram] Ignoring text from ${studentName}; they have no active lesson task. Send /lesson to start.`);
+    if (activeTaskState?.telegramPrivateChatId) {
+      if (!hasActiveTelegramTask(activeTaskState)) {
+        this.logger.info(`[Telegram] Ignoring unrelated group text from ${studentName}; no task is active.`);
         return;
+      }
+      if (await this.isTaskSubmissionForStudent(studentKey, text, studentName)) {
+        await this.sendPrivateNotice(
+          studentKey,
+          'رسل لي الأجوبة في المحادثة الخاصة معاي.'
+        );
+      }
+      return;
     }
-    if (text.startsWith('/')) {
-        this.logger.info(`[Telegram] Ignoring unsupported command from ${studentName}.`);
-        return;
+    if (!hasActiveTelegramTask(activeTaskState)) {
+      this.logger.info(
+        `[Telegram] Ignoring unrelated text from ${studentName}; they have no active lesson task. Send /lesson to start.`
+      );
+      return;
     }
 
     const submittedTrack = activeTaskState.activeTelegramTrack || 'grammar';
@@ -892,6 +932,46 @@ export class TelegramLessonAgent {
     } catch (error) {
       this.logger.error(
         `[Telegram] Could not send a private notice to ${studentKey}: ${error.message}`
+      );
+      return false;
+    }
+  }
+
+  async isTaskSubmissionForStudent(studentKey, submission, studentName) {
+    this.lessonManager.refreshLessonsConfig?.();
+    const state = this.progress[studentKey];
+    const { taskProgress, lesson } = this.getActiveTelegramTaskContext(state);
+    if (!hasActiveTelegramTask(state) || !isReadyLesson(lesson) || lesson.hasExercise === false) {
+      return false;
+    }
+
+    const taskVersionMatches = taskProgress.taskVersion === getLessonTaskVersion(lesson);
+    const completedQuestionNumbers = new Set(
+      taskVersionMatches
+        ? [
+            ...(Array.isArray(taskProgress.correctQuestionNumbers)
+              ? taskProgress.correctQuestionNumbers
+              : []),
+            ...(Array.isArray(taskProgress.resolvedQuestionNumbers)
+              ? taskProgress.resolvedQuestionNumbers
+              : [])
+          ].filter(number =>
+            Number.isInteger(number) && number >= 1 && number <= lesson.answerKey.length)
+        : []
+    );
+    const pendingQuestionNumbers = lesson.answerKey
+      .map((_, index) => index + 1)
+      .filter(number => !completedQuestionNumbers.has(number));
+    if (pendingQuestionNumbers.length === 0) return false;
+
+    try {
+      const result = await this.evaluateTask(lesson, submission, studentName, {
+        pendingQuestionNumbers
+      });
+      return result?.isTaskSubmission === true;
+    } catch (error) {
+      this.logger.error(
+        `[Telegram] Could not classify a group message as a task submission for ${studentKey}: ${error.message}`
       );
       return false;
     }
@@ -1122,6 +1202,21 @@ export class TelegramLessonAgent {
       return;
     }
     if (!found) {
+      const isRegistrationOrSupportedCommand =
+        /^\/start(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text) ||
+        isHelpCommand(text) ||
+        isPaymentStatusCommand(text) ||
+        isPaymentClaimCommand(text) ||
+        isExplicitPaidClaim(text) ||
+        getTelegramTrackCommand(text) !== null ||
+        getStudentGoalCommand(text) !== null ||
+        getStudentReminderCommand(text) !== null ||
+        getLessonNavigationCommand(text) !== null ||
+        getTelegramAnnouncementPreferenceCommand(text) !== null ||
+        getTelegramCelebrationPreferenceCommand(text) !== null ||
+        getNumberedLessonCommand(text) !== null ||
+        isLessonRequest(text);
+      if (!isRegistrationOrSupportedCommand) return;
       await this.bot.sendMessage(
         String(message.chat.id),
         text && (isLessonRequest(text) || ['literature', 'spine'].includes(getTelegramTrackCommand(text)))
@@ -1272,19 +1367,11 @@ export class TelegramLessonAgent {
 
     if (/^\/start(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text)) {
       await this.runStudentOperation(studentKey, async () => {
+        this.recordStudentActivity(studentKey, state.telegramChatId, message.from);
         await this.bot.sendMessage(
           String(message.chat.id),
-          'أهلين بيك 😍 اتسجلت معانا خلاص. حنرسل ليك الدرس في الخاص، وخليك معانا بالاستمرارية وإن شاء الله تحقق النتيجة البتتمناها!\n\nلما تجاوب تمرين الحصة كامل وكل إجاباتك تكون صحيحة، حنحتفل بيك في القروب.'
+          getTelegramCourseSelectionMessage()
         );
-        try {
-          await this.startOrResumeLesson(String(message.chat.id), studentKey, message.message_id);
-        } catch (error) {
-          this.logger.error(`[Telegram] Could not deliver a private lesson to ${studentKey}: ${error.message}`);
-          await this.sendPrivateNotice(
-            studentKey,
-            'واجهت مشكلة فنية في إرسال الدرس هسي. أرسل /lesson بعد شوية.'
-          );
-        }
       });
       return;
     }
@@ -1575,20 +1662,56 @@ export class TelegramLessonAgent {
   async deliverLessonSkipRequest(request) {
     this.lessonManager.refreshLessonsConfig?.();
     const state = this.progress[request.studentKey];
+    const isScoreMessage = request.requestType === 'score_message';
     if (!state ||
         request.studentKey !== `telegram:${request.chatId}:${request.userId}` ||
         String(state.telegramChatId) !== request.chatId ||
         String(state.telegramUserId) !== request.userId ||
-        state.currentLessonId !== request.currentLessonId ||
         state.grade !== request.gradeKey ||
-        !['awaiting_task', 'awaiting_reattempt', 'awaiting_content', 'completed'].includes(state.status)) {
+        (!isScoreMessage &&
+          (state.currentLessonId !== request.currentLessonId ||
+            !['awaiting_task', 'awaiting_reattempt', 'awaiting_content', 'completed'].includes(state.status)))) {
+      const errorMessage = isScoreMessage
+        ? 'Student identity or grade changed before the score message could be delivered.'
+        : 'Student progress changed before the lesson skip could be delivered.';
       this.lessonSkipQueue.complete(
         request.id,
         'failed',
-        'Student progress changed before the lesson skip could be delivered.'
+        errorMessage
       );
-      this.logger.info(`[Telegram] Discarded stale lesson skip request ${request.id}.`);
+      this.logger.info(
+        `[Telegram] Discarded stale ${isScoreMessage ? 'score message' : 'lesson skip'} request ${request.id}.`
+      );
       return false;
+    }
+
+    if (isScoreMessage) {
+      if (!state.telegramPrivateChatId ||
+          typeof request.message !== 'string' ||
+          !request.message.trim() ||
+          request.message.length > 4096) {
+        this.lessonSkipQueue.complete(
+          request.id,
+          'failed',
+          'A private chat and valid score message are required.'
+        );
+        return false;
+      }
+      const waitMs = 1000 - (Date.now() - this.lastScoreMessageSentAt);
+      if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+      this.lastScoreMessageSentAt = Date.now();
+      try {
+        await this.bot.sendMessage(state.telegramPrivateChatId, request.message);
+        this.lessonSkipQueue.complete(request.id, 'sent');
+        this.logger.info(`[Telegram] Sent a private exercise score update to ${request.studentKey}.`);
+        return true;
+      } catch (error) {
+        this.lessonSkipQueue.complete(request.id, 'failed', error.message);
+        this.logger.error(
+          `[Telegram] Could not send a private exercise score update to ${request.studentKey}: ${error.message}`
+        );
+        return false;
+      }
     }
 
     if (request.requestType === 'regrade_task') {
@@ -2306,6 +2429,7 @@ export class TelegramLessonAgent {
       throw new Error(`Active Telegram ${track} lesson is missing its task or answer key for ${studentKey}.`);
     }
 
+    const previousTaskSubmission = state.lastTaskSubmission;
     if (recordSubmission) {
       state.lastTaskSubmission = {
         grade: state.grade,
@@ -2364,7 +2488,17 @@ export class TelegramLessonAgent {
       await this.bot.sendMessage(chatId, `${reviewPrefix}${taskFailureMessage()}`, messageId);
       return false;
     }
-    if (!result.isTaskSubmission) return false;
+    if (!result.isTaskSubmission) {
+      if (recordSubmission) {
+        if (previousTaskSubmission === undefined) {
+          delete state.lastTaskSubmission;
+        } else {
+          state.lastTaskSubmission = previousTaskSubmission;
+        }
+        this.saveProgress();
+      }
+      return false;
+    }
 
     const pending = new Set(pendingQuestionNumbers);
     const answeredQuestionNumbers = Array.isArray(result.answeredQuestionNumbers)
@@ -2540,7 +2674,11 @@ export class TelegramLessonAgent {
       try {
         await this.bot.sendMessage(
           String(this.groupId),
-          getLessonCelebrationMessage(state.name || studentName, lesson.title || lesson.id)
+          getLessonCelebrationMessage(
+            state.name || studentName,
+            lesson.title || lesson.id,
+            state.telegramUsername
+          )
         );
       } catch (error) {
         this.logger.error(

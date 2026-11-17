@@ -137,6 +137,47 @@ export class LessonSkipQueue {
     });
   }
 
+  enqueueMany(detailsList) {
+    if (!Array.isArray(detailsList) || detailsList.length === 0 ||
+        detailsList.some(details =>
+          !details || typeof details.studentKey !== 'string' ||
+          typeof details.currentLessonId !== 'string' ||
+          typeof details.nextLessonId !== 'string')) {
+      throw new Error('A non-empty list of complete student requests is required.');
+    }
+    const studentKeys = detailsList.map(details => details.studentKey);
+    if (new Set(studentKeys).size !== studentKeys.length) {
+      throw new Error('A student can only be included once in a batch.');
+    }
+
+    return this.withLock(() => {
+      const requests = this.read();
+      const activeRequests = requests.filter(request =>
+        ['queued', 'processing'].includes(request.status));
+      const activeStudentKeys = new Set(activeRequests.map(request => request.studentKey));
+      const conflictingStudentKey = studentKeys.find(studentKey =>
+        activeStudentKeys.has(studentKey));
+      if (conflictingStudentKey) {
+        return { conflict: true, studentKey: conflictingStudentKey };
+      }
+
+      const createdAt = new Date().toISOString();
+      const newRequests = detailsList.map(details => ({
+        ...details,
+        id: randomUUID(),
+        status: 'queued',
+        createdAt,
+        updatedAt: createdAt,
+        error: null
+      }));
+      const completedRequests = requests
+        .filter(request => !['queued', 'processing'].includes(request.status))
+        .slice(-MAX_COMPLETED_REQUESTS);
+      this.write([...completedRequests, ...activeRequests, ...newRequests]);
+      return { requests: newRequests, conflict: false };
+    });
+  }
+
   claimNext(predicate = () => true) {
     if (typeof predicate !== 'function') {
       throw new TypeError('A lesson skip request selector must be a function.');

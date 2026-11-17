@@ -63,6 +63,13 @@ function getGroupMemberName(member) {
   return username ? `@${username}` : `Telegram user ${getEntityId(member)}`;
 }
 
+function getGroupMemberJoinedAt(member) {
+  const joinedAtSeconds = Number(member?.participant?.date);
+  if (!Number.isSafeInteger(joinedAtSeconds) || joinedAtSeconds <= 0) return null;
+  const joinedAt = new Date(joinedAtSeconds * 1000);
+  return Number.isFinite(joinedAt.getTime()) ? joinedAt.toISOString() : null;
+}
+
 function getOptedInRecipientIds(progress, groupId) {
   return new Set(Object.values(progress || {})
     .filter(student => isTelegramAnnouncementRecipient(student, groupId))
@@ -189,6 +196,7 @@ export class TelegramUserBroadcastWorker {
         userId,
         name: getGroupMemberName(member),
         presence: getTelegramPresenceStatus(member),
+        joinedAt: getGroupMemberJoinedAt(member),
         ...(typeof member.username === 'string' && member.username.trim()
           ? { username: member.username.trim() }
           : {})
