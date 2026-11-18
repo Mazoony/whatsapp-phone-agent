@@ -37,8 +37,10 @@ function describe(entry, position) {
   const chat = message.chat || {};
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() ||
     (user.username ? `@${user.username}` : `Telegram user ${user.id || ''}`);
-  const messageType = typeof message.text === 'string'
-    ? 'Text'
+  const messageType = Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0
+    ? 'Group join'
+    : typeof message.text === 'string'
+      ? 'Text'
     : message.photo?.length
       ? 'Photo'
       : message.video
@@ -55,6 +57,11 @@ function describe(entry, position) {
     queuedAt: entry.queuedAt,
     ...(position === 1 ? { startedAt: entry.startedAt } : {})
   };
+}
+
+function isGroupJoin(entry) {
+  const members = entry.update?.message?.new_chat_members;
+  return Array.isArray(members) && members.length > 0;
 }
 
 export function readTelegramUpdateQueue(
@@ -120,10 +127,15 @@ export class TelegramUpdateQueue {
   takeNext() {
     this.paused = readJsonFile(this.controlFile, { paused: false }).paused === true;
     if (this.paused || this.active || this.waiting.length === 0) return null;
-    this.active = this.waiting.shift();
+    const nextGroupJoinIndex = this.waiting.findIndex(isGroupJoin);
+    this.active = this.waiting.splice(nextGroupJoinIndex < 0 ? 0 : nextGroupJoinIndex, 1)[0];
     this.active.startedAt = new Date().toISOString();
     this.persist();
     return this.active;
+  }
+
+  isIdle() {
+    return this.active === null && this.waiting.length === 0;
   }
 
   finish(entry) {

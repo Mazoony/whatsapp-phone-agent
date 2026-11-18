@@ -28,6 +28,36 @@ test('grade 3 secondary has lesson 12 as its latest lesson with the tree-care qu
   assert.ok(fs.statSync(resolveLessonVideoPath(lesson.videoFile)).size > 0);
 });
 
+test('WhatsApp resolves the current lesson by ID after a lesson is moved to another type', () => {
+  const gradeKey = 'grade_3_secondary';
+  const jid = 'lesson-type-change-progress-test@s.whatsapp.net';
+  const originalGrade = lessonManager.lessonsConfig[gradeKey];
+  const originalProgress = lessonManager.progress[jid];
+  const lessons = [
+    { id: 'lesson_1' },
+    { id: 'lesson_2' },
+    { id: 'lesson_3' }
+  ];
+  lessonManager.lessonsConfig[gradeKey] = { ...originalGrade, lessons };
+  lessonManager.progress[jid] = {
+    grade: gradeKey,
+    currentLessonIndex: 1,
+    currentLessonId: 'lesson_2'
+  };
+
+  try {
+    lessons.shift();
+    assert.equal(lessonManager.getCurrentLesson(jid).id, 'lesson_2');
+
+    lessons.shift();
+    assert.equal(lessonManager.getCurrentLesson(jid), null);
+  } finally {
+    lessonManager.lessonsConfig[gradeKey] = originalGrade;
+    if (originalProgress === undefined) delete lessonManager.progress[jid];
+    else lessonManager.progress[jid] = originalProgress;
+  }
+});
+
 test('a correct submission immediately delivers the next numbered lesson', async () => {
   const jid = 'immediate-lesson-progression-test@s.whatsapp.net';
   const lesson = lessonManager.lessonsConfig.grade_3_secondary.lessons[0];

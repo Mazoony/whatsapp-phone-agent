@@ -199,19 +199,20 @@
     .gender-stat-track { height: 6px; margin-top: 10px; overflow: hidden; border-radius: 99px; background: #eef2ef; }
     .gender-stat-fill { width: 0; height: 100%; border-radius: inherit; background: #248962; transition: width .35s ease; }
     .gender-stat-note { margin: 8px 0 0; color: var(--muted); font-size: 10px; }
-    .weekly-chat-panel { padding: 15px 17px 12px; }
-    .weekly-chat-panel h2 { margin: 0; font-size: 13px; }
-    .weekly-chat-panel p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
-    .weekly-chat-chart { position: relative; overflow-x: auto; margin-top: 8px; }
+    .weekly-chat-panel { padding: 18px; border-radius: 14px; }
+    .weekly-chat-panel h2 { margin: 0; font-size: 14px; }
+    .weekly-chat-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+    .weekly-chat-chart { position: relative; overflow-x: auto; margin-top: 10px; padding: 9px 8px 4px; border: 1px solid #e8eeea; border-radius: 12px; background: linear-gradient(180deg, #fff 0%, #fbfdfb 100%); }
     .weekly-chat-chart svg { display: block; width: 100%; min-width: 540px; height: auto; }
     .weekly-chat-chart text { fill: var(--muted); font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
-    .weekly-chat-chart .weekly-chat-grid { stroke: #e5ebe7; stroke-width: 1; }
-    .weekly-chat-chart .weekly-chat-line { fill: none; stroke: #23875a; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-    .weekly-chat-chart .weekly-chat-point { fill: white; stroke: #23875a; stroke-width: 3; }
-    .weekly-chat-chart .weekly-chat-new-line { fill: none; stroke: #5278c7; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-    .weekly-chat-chart .weekly-chat-new-point { fill: white; stroke: #5278c7; stroke-width: 3; }
-    .weekly-chat-chart .weekly-chat-telegram-line { fill: none; stroke: #8e55b9; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-    .weekly-chat-chart .weekly-chat-telegram-point { fill: white; stroke: #8e55b9; stroke-width: 3; }
+    .weekly-chat-chart .weekly-chat-grid { stroke: #e9efeb; stroke-width: 1; }
+    .weekly-chat-chart .weekly-chat-area { fill: #23875a0c; }
+    .weekly-chat-chart .weekly-chat-line { fill: none; stroke: #23875a; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+    .weekly-chat-chart .weekly-chat-point { fill: white; stroke: #23875a; stroke-width: 2.5; }
+    .weekly-chat-chart .weekly-chat-new-line { fill: none; stroke: #5278c7; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+    .weekly-chat-chart .weekly-chat-new-point { fill: white; stroke: #5278c7; stroke-width: 2; }
+    .weekly-chat-chart .weekly-chat-telegram-line { fill: none; stroke: #8e55b9; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+    .weekly-chat-chart .weekly-chat-telegram-point { fill: white; stroke: #8e55b9; stroke-width: 2; }
     .weekly-chat-chart .weekly-chat-joins-line { fill: none; stroke: #d47b2d; stroke-width: 2; stroke-dasharray: 5 4; stroke-linejoin: round; stroke-linecap: round; }
     .weekly-chat-chart .weekly-chat-joins-point { fill: white; stroke: #d47b2d; stroke-width: 2; }
     .weekly-chat-chart .weekly-chat-telegram-hit-line { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; }
@@ -230,8 +231,13 @@
     .weekly-chat-legend .weekly-chat-new-key { background: #5278c7; }
     .weekly-chat-legend .weekly-chat-telegram-key { background: #8e55b9; }
     .weekly-chat-legend .weekly-chat-joins-key { background: #d47b2d; }
-    .weekly-chat-summary { margin-top: 3px !important; }
-    .telegram-stats-panel { margin: 14px 0; padding: 15px 17px 12px; }
+    .weekly-chat-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin: 12px 0 0 !important; }
+    .weekly-chat-stat { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
+    .weekly-chat-stat-label { display: block; color: var(--muted); font-size: 10px; font-weight: 650; }
+    .weekly-chat-stat-value { display: block; margin-top: 3px; color: var(--ink); font-size: 19px; font-weight: 760; letter-spacing: -.4px; }
+    .weekly-chat-stat-note { margin: 2px 0 0 !important; color: #849189 !important; font-size: 9px !important; }
+    .weekly-chat-note { margin-top: 9px !important; }
+    .telegram-stats-panel { margin: 14px 0; padding: 18px; border-radius: 14px; }
     .telegram-stats-panel h2 { margin: 0; font-size: 15px; }
     .telegram-stats-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
     .telegram-class-panel { margin: 14px 0; padding: 15px 17px; }
@@ -254,28 +260,34 @@
     .telegram-class-trend-legend span { display: inline-flex; align-items: center; gap: 4px; }
     .telegram-class-trend-legend i { width: 9px; height: 3px; border-radius: 2px; background: #23875a; }
     .telegram-class-trend-legend span + span i { background: #5278c7; }
-    .telegram-stats-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
-    .telegram-stat-card { padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .telegram-stats-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; margin-top: 15px; }
+    .telegram-stat-card { min-width: 0; min-height: 82px; padding: 11px 13px; border: 1px solid var(--line); border-top: 3px solid #23875a; border-radius: 11px; background: #fff; box-shadow: 0 3px 10px rgba(30, 56, 44, .035); }
+    .telegram-stat-card:nth-child(2) { border-top-color: #5278c7; }
+    .telegram-stat-card:nth-child(3) { border-top-color: #8e55b9; }
+    .telegram-stat-card:nth-child(4), .telegram-stat-card:nth-child(5) { border-top-color: #d47b2d; }
     .telegram-stat-action { width: 100%; color: inherit; font: inherit; text-align: left; }
     .telegram-stat-action > span { display: block; }
     .telegram-stat-action:not(:disabled) { cursor: pointer; }
     .telegram-stat-action:not(:disabled):hover, .telegram-stat-action:not(:disabled):focus-visible { border-color: #9dc8ae; box-shadow: 0 0 0 3px #137b5a15; outline: none; }
     .telegram-stat-action:disabled { cursor: default; }
     .telegram-stat-label { color: var(--muted); font-size: 10px; font-weight: 650; }
-    .telegram-stat-value { margin-top: 5px; font-size: 21px; font-weight: 760; }
+    .telegram-stat-value { margin-top: 5px; font-size: 22px; font-weight: 760; letter-spacing: -.4px; }
     .telegram-stat-foot { margin-top: 2px; color: #94a099; font-size: 9px; }
-    .telegram-stats-chart { position: relative; overflow-x: auto; margin-top: 10px; }
+    .telegram-stats-chart { position: relative; overflow-x: auto; margin-top: 10px; padding: 9px 8px 4px; border: 1px solid #e8eeea; border-radius: 12px; background: linear-gradient(180deg, #fff 0%, #fbfdfb 100%); }
     .telegram-history-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
     .telegram-history-controls button { border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; background: white; color: var(--ink); cursor: pointer; font-size: 10px; }
     .telegram-history-controls button:disabled { opacity: .5; cursor: default; }
     .telegram-history-range { flex: 1 1 100%; order: -1; color: var(--muted); font-size: 11px; text-align: center; }
     .telegram-stats-chart svg { display: block; width: 100%; min-width: 600px; height: auto; }
     .telegram-stats-chart text { fill: var(--muted); font: 10px Inter, ui-sans-serif, system-ui, sans-serif; }
-    .telegram-stats-chart .telegram-stats-grid { stroke: #e5ebe7; stroke-width: 1; }
-    .telegram-stats-chart .telegram-joins-line { fill: none; stroke: #23875a; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-    .telegram-stats-chart .telegram-active-line { fill: none; stroke: #5278c7; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .telegram-stats-chart .telegram-stats-grid { stroke: #e9efeb; stroke-width: 1; }
+    .telegram-stats-chart .telegram-stats-area { fill: #5278c70c; }
+    .telegram-stats-chart .telegram-members-area { fill: #d47b2d0c; }
+    .telegram-stats-chart .telegram-joins-area { fill: #23875a0b; }
+    .telegram-stats-chart .telegram-joins-line { fill: none; stroke: #23875a; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+    .telegram-stats-chart .telegram-active-line { fill: none; stroke: #5278c7; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
     .telegram-stats-chart .telegram-members-line { stroke: #d47b2d; stroke-width: 2; stroke-dasharray: 6 4; }
-    .telegram-stats-chart .telegram-members-history-line { fill: none; stroke: #d47b2d; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .telegram-stats-chart .telegram-members-history-line { fill: none; stroke: #d47b2d; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
     .telegram-stats-chart .telegram-members-history-point { fill: white; stroke: #d47b2d; stroke-width: 2; cursor: pointer; }
     .telegram-stats-chart .telegram-members-history-point:focus { outline: none; stroke-width: 3; }
     .telegram-stats-chart .telegram-joins-point { fill: white; stroke: #23875a; stroke-width: 2; }
@@ -297,7 +309,10 @@
     .telegram-presence.online { color: #18764d; background: #e6f4ed; }
     .telegram-presence.offline { color: #63716a; background: #eef1ef; }
     .telegram-presence.unknown { color: #8a6a2a; background: #fff5df; }
-    @media (max-width: 700px) { .telegram-stats-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 700px) {
+      .telegram-stats-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .weekly-chat-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     .payment-calendar-panel { padding: 16px; }
     .payment-calendar-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
     .payment-calendar-toolbar button { border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px; color: var(--ink); background: white; font: inherit; font-size: 12px; }
@@ -1080,6 +1095,12 @@
           </div>
           <h3>Historical group membership</h3>
           <p class="activity-note">One member-count snapshot is saved daily. History starts when daily snapshots began; earlier group totals were not recorded.</p>
+          <div class="telegram-history-controls" aria-label="Browse historical group membership">
+            <button type="button" id="telegram-members-previous" aria-label="Show the previous 30 days">← Previous 30 days</button>
+            <span class="telegram-history-range" id="telegram-members-range" role="status" aria-live="polite">Loading date range…</span>
+            <button type="button" id="telegram-members-current">Latest period</button>
+            <button type="button" id="telegram-members-next" aria-label="Show the next 30 days" disabled>Next 30 days →</button>
+          </div>
           <div class="telegram-stats-chart" id="telegram-members-history-chart" aria-live="polite">
             <p>Loading historical group membership…</p>
           </div>
@@ -1096,7 +1117,7 @@
           <pre class="agent-log" id="telegram-agent-log" aria-live="polite">Waiting for Telegram agent output…</pre>
         </article>
         <article class="panel agent-queue-panel" id="telegram-chat-queue-panel">
-          <div class="agent-media-top"><h3>Live Telegram update queue</h3><div class="agent-queue-controls"><span class="agent-queue-state">FIFO · updates live</span><button class="agent-queue-control" id="telegram-queue-toggle" type="button" disabled>Pause handling</button></div></div>
+          <div class="agent-media-top"><h3>Live Telegram update queue</h3><div class="agent-queue-controls"><span class="agent-queue-state">Group joins prioritized · updates live</span><button class="agent-queue-control" id="telegram-queue-toggle" type="button" disabled>Pause handling</button></div></div>
           <div class="agent-queue-paused" id="telegram-queue-paused" hidden>Telegram update handling is paused. The bot will keep receiving updates; queued updates wait until handling resumes.</div>
           <h4 class="agent-queue-subheading">Incoming Telegram updates</h4>
           <div class="agent-queue-list" id="telegram-queue-list" aria-live="polite"><div class="agent-queue-empty">No Telegram updates are waiting.</div></div>
@@ -1153,6 +1174,7 @@
         <div class="section-heading"><div><h2>Telegram learners &amp; weekly activity</h2><p>Track Telegram learner activity alongside the WhatsApp chat trend.</p></div></div>
         <article class="panel weekly-chat-panel">
           <div id="weekly-chat-summary" class="weekly-chat-summary" aria-live="polite">Loading the last seven days…</div>
+          <p id="weekly-chat-note" class="weekly-chat-note">Loading the activity period…</p>
           <div id="weekly-chat-chart" class="weekly-chat-chart" aria-live="polite"></div>
           <div class="weekly-chat-legend" aria-label="Chart legend">
             <span><i></i>All active chats</span>
@@ -2963,6 +2985,10 @@
         indicator.textContent = 'Live updates on';
         indicator.classList.remove('reconnecting');
         refreshAll({ clearCache: true });
+        if (document.querySelector('#section-student-chat').classList.contains('active')) {
+          loadProgress().catch(error =>
+            showError(`Could not refresh Telegram student chat: ${error.message}`));
+        }
       });
       dashboardEvents.addEventListener('dashboard-update', () => {
         const indicator = $('#live-update-status');
@@ -3438,6 +3464,8 @@
       const newLine = points.map(point => `${point.x},${point.newY}`).join(' ');
       const telegramLine = points.map(point => `${point.x},${point.telegramY}`).join(' ');
       const telegramJoinsLine = points.map(point => `${point.x},${point.joinsY}`).join(' ');
+      const baselineY = top + plotHeight;
+      const chatArea = `${line} ${points.at(-1).x},${baselineY} ${points[0].x},${baselineY}`;
       const telegramHitLines = points.slice(1).map((point, index) => {
         const previous = points[index];
         const describe = day =>
@@ -3458,6 +3486,7 @@
       container.innerHTML = `
         <svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Daily active WhatsApp chats and new conversations, plus Telegram active learners and group joins shown on a shared separate scale, for the last seven days">
           ${grid}
+          <polygon class="weekly-chat-area" points="${chatArea}"></polygon>
           <polyline class="weekly-chat-line" points="${line}"></polyline>
           <polyline class="weekly-chat-new-line" points="${newLine}"></polyline>
           <polyline class="weekly-chat-telegram-line" points="${telegramLine}"></polyline>
@@ -3498,8 +3527,19 @@
       const newTotal = days.reduce((sum, day) => sum + day.newChats, 0);
       const telegramTotal = days.reduce((sum, day) => sum + day.telegramActiveStudents, 0);
       const telegramJoinTotal = days.reduce((sum, day) => sum + day.telegramJoins, 0);
-      $('#weekly-chat-summary').textContent =
-        `${total.toLocaleString()} active chat-days · ${newTotal.toLocaleString()} new chats · ${telegramTotal.toLocaleString()} Telegram active learner-days · ${telegramJoinTotal.toLocaleString()} Telegram group joins over the last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
+      $('#weekly-chat-summary').innerHTML = [
+        ['Active chats', total, 'chat-days'],
+        ['New chats', newTotal, 'conversations'],
+        ['Telegram activity', telegramTotal, 'active learner-days'],
+        ['Group joins', telegramJoinTotal, 'recorded joins']
+      ].map(([label, value, note]) => `
+        <div class="weekly-chat-stat">
+          <span class="weekly-chat-stat-label">${label}</span>
+          <strong class="weekly-chat-stat-value">${value.toLocaleString()}</strong>
+          <p class="weekly-chat-stat-note">${note}</p>
+        </div>`).join('');
+      $('#weekly-chat-note').textContent =
+        `Last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
     }
 
     function renderTelegramClasses(classes) {
@@ -3635,6 +3675,9 @@
       });
       const joinsLine = points.map(point => `${point.x},${point.joinsY}`).join(' ');
       const activeLine = points.map(point => `${point.x},${point.activeY}`).join(' ');
+      const baselineY = top + plotHeight;
+      const joinsArea = `${joinsLine} ${points.at(-1).x},${baselineY} ${points[0].x},${baselineY}`;
+      const activeArea = `${activeLine} ${points.at(-1).x},${baselineY} ${points[0].x},${baselineY}`;
       const hasGroupMemberCount = Number.isSafeInteger(stats.totalGroupMembers) &&
         stats.totalGroupMembers >= 0;
       const groupMembersLine = hasGroupMemberCount
@@ -3668,6 +3711,8 @@
         <svg viewBox="0 0 ${width} ${height}" role="img"
           aria-label="Telegram daily group joins and active tracked learners from ${escapeHtml(days[0].date)} to ${escapeHtml(days.at(-1).date)}. Left scale is joins; right scale is active learners. ${hasGroupMemberCount ? `Current total group members: ${stats.totalGroupMembers}.` : ''}">
           ${grid}
+          <polygon class="telegram-joins-area" points="${joinsArea}"></polygon>
+          <polygon class="telegram-stats-area" points="${activeArea}"></polygon>
           <text x="${left}" y="14">Joins</text>
           <text x="${width - right}" y="14" text-anchor="end">Active learners</text>
           ${groupMembersLine}
@@ -3711,7 +3756,11 @@
       });
     }
 
-    function renderTelegramMemberHistory(history, periodStart, periodEnd) {
+    let telegramMemberHistoryEndDate = null;
+    let telegramMemberHistoryFollowsLatest = true;
+
+    function renderTelegramMemberHistory(history, periodEnd) {
+      const periodStart = shiftDateKey(periodEnd, -29);
       const chart = $('#telegram-members-history-chart');
       const snapshots = Array.isArray(history)
         ? history.filter(snapshot =>
@@ -3755,6 +3804,8 @@
           <text x="${left - 8}" y="${y + 3}" text-anchor="end">${members.toLocaleString()}</text>`;
       }).join('');
       const line = points.map(point => `${point.x},${point.y}`).join(' ');
+      const baselineY = top + plotHeight;
+      const area = `${line} ${points.at(-1).x},${baselineY} ${points[0].x},${baselineY}`;
       const labelInterval = Math.max(1, Math.ceil(points.length / 6));
       const marks = points.map((point, index) => {
         const dateLabel = index === 0 || index === points.length - 1 || index % labelInterval === 0
@@ -3773,10 +3824,11 @@
         <svg viewBox="0 0 ${width} ${height}" role="img"
           aria-label="Daily Telegram group member totals from ${escapeHtml(points[0].date)} to ${escapeHtml(points.at(-1).date)}.">
           ${grid}
+          <polygon class="telegram-members-area" points="${area}"></polygon>
           <text x="${left}" y="14">Group members</text>
           <polyline class="telegram-members-history-line" points="${line}"></polyline>
           ${marks}
-          <text x="${width / 2}" y="${height - 3}" text-anchor="middle">Daily snapshots</text>
+          <text x="${width / 2}" y="${height - 3}" text-anchor="middle">Selected 30-day period</text>
         </svg>
         <div class="telegram-stats-tooltip" role="status" hidden></div>`;
       const tooltip = chart.querySelector('.telegram-stats-tooltip');
@@ -3843,15 +3895,32 @@
         endDate: telegramStatsWindowEndDate
       })}`);
       renderTelegramStats(stats, timeZone);
-      renderTelegramMemberHistory(
-        stats.groupMemberHistory,
-        stats.periodStart,
-        stats.periodEnd
-      );
+      const groupMemberHistory = Array.isArray(stats.groupMemberHistory)
+        ? stats.groupMemberHistory.filter(snapshot =>
+            typeof snapshot?.date === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(snapshot.date) &&
+            Number.isSafeInteger(snapshot.members) &&
+            snapshot.members >= 0)
+        : [];
+      const latestMemberSnapshotDate = groupMemberHistory.at(-1)?.date || today;
+      if (telegramMemberHistoryFollowsLatest || !telegramMemberHistoryEndDate) {
+        telegramMemberHistoryEndDate = latestMemberSnapshotDate;
+      } else if (telegramMemberHistoryEndDate > latestMemberSnapshotDate) {
+        telegramMemberHistoryEndDate = latestMemberSnapshotDate;
+      }
+      const memberHistoryStartDate = shiftDateKey(telegramMemberHistoryEndDate, -29);
+      renderTelegramMemberHistory(groupMemberHistory, telegramMemberHistoryEndDate);
       $('#telegram-stats-range').textContent =
         `${formatDateKey(stats.periodStart)} – ${formatDateKey(stats.periodEnd)}`;
       $('#telegram-stats-next').disabled = stats.periodEnd >= today;
       $('#telegram-stats-current').disabled = stats.periodEnd === today;
+      $('#telegram-members-range').textContent =
+        `${formatDateKey(memberHistoryStartDate)} – ${formatDateKey(telegramMemberHistoryEndDate)}`;
+      $('#telegram-members-previous').disabled =
+        !groupMemberHistory.some(snapshot => snapshot.date < memberHistoryStartDate);
+      $('#telegram-members-next').disabled =
+        telegramMemberHistoryEndDate >= latestMemberSnapshotDate;
+      $('#telegram-members-current').disabled = telegramMemberHistoryFollowsLatest;
     }
 
     async function loadOverview() {
@@ -4554,7 +4623,7 @@
             <select data-profile-lesson ${hasPendingLessonRequest ? 'disabled' : ''}>
               <option value="">Choose from curriculum…</option>
               ${student.availableLessons.map(lesson =>
-                `<option value="${escapeHtml(lesson.id)}">${escapeHtml(lesson.title)}</option>`).join('')}
+                `<option value="${escapeHtml(lesson.selectionKey)}">[${escapeHtml(lesson.track)}] ${escapeHtml(lesson.title)}</option>`).join('')}
             </select>
           </label>
           <button type="button" data-profile-action="send" disabled>${isSendingLesson ? 'Sending…' : 'Send lesson'}</button>
@@ -4678,16 +4747,16 @@
         return;
       }
       if (button.dataset.profileAction === 'send') {
-        const lessonId = $('#student-profile-actions').querySelector('[data-profile-lesson]').value;
+        const selectionKey = $('#student-profile-actions').querySelector('[data-profile-lesson]').value;
         const picker = row.querySelector('[data-send-lesson-picker]');
-        const option = [...(picker?.querySelectorAll('[data-lesson-id]') || [])]
-          .find(item => item.dataset.lessonId === lessonId);
+        const option = [...(picker?.querySelectorAll('[data-lesson-key]') || [])]
+          .find(item => item.dataset.lessonKey === selectionKey);
         const sendButton = row.querySelector('.send-lesson-button');
-        if (!lessonId || !picker || !option || !sendButton) {
+        if (!selectionKey || !picker || !option || !sendButton) {
           showError('Choose an available lesson before sending.');
           return;
         }
-        picker.dataset.selectedLesson = lessonId;
+        picker.dataset.selectedLesson = selectionKey;
         picker.querySelector('[data-selected-lesson]').textContent = option.querySelector('span').textContent;
         sendButton.click();
         return;
@@ -5454,11 +5523,13 @@
           : skipRequest?.status === 'failed'
             ? `Previous attempt failed: ${escapeHtml(skipRequest.error || 'delivery error')}`
             : `Next: ${escapeHtml(student.nextLessonTitle)}`;
-        const skipAction = student.canSkipToNextLesson
+        const requiresPrivateStart = student.platform === 'Telegram' &&
+          student.canReplyPrivately !== true;
+        const skipAction = student.canSkipToNextLesson && !requiresPrivateStart
           ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-skip-platform="${escapeHtml(student.platform)}" data-skip-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${hasPendingLessonRequest ? 'disabled' : ''}>${skipButtonLabel}</button><small class="skip-lesson-status">${skipStatusText}</small></div>`
           : '';
         const availableLessons = student.platform === 'Telegram' ? student.availableLessons || [] : [];
-        const sendLessonAction = availableLessons.length
+        const sendLessonAction = availableLessons.length && !requiresPrivateStart
           ? `<div class="send-lesson-controls">
               <div class="send-lesson-picker" data-send-lesson-picker>
                 <span>Choose a lesson</span>
@@ -5472,8 +5543,8 @@
                 <div class="send-lesson-menu" role="listbox"
                   aria-label="Available lessons for ${escapeHtml(student.name)}" hidden>
                   ${availableLessons.map(lesson => `<button class="send-lesson-option" type="button"
-                    role="option" aria-selected="false" data-lesson-id="${escapeHtml(lesson.id)}">
-                    <span>${escapeHtml(lesson.title)}</span>
+                    role="option" aria-selected="false" data-lesson-key="${escapeHtml(lesson.selectionKey)}">
+                    <span>[${escapeHtml(lesson.track)}] ${escapeHtml(lesson.title)}</span>
                     <span class="send-lesson-option-check" aria-hidden="true"></span>
                   </button>`).join('')}
                 </div>
@@ -5490,6 +5561,9 @@
                 ? ''
                 : '<small class="send-lesson-status">This becomes their active lesson.</small>'}
             </div>`
+          : '';
+        const privateStartNotice = requiresPrivateStart
+          ? '<small class="skip-lesson-status">Student must start a private chat with the bot before receiving lessons.</small>'
           : '';
         const regradeAction = student.canRegradeTask
           ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-regrade-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${isRegradingTask || hasPendingLessonRequest ? 'disabled' : ''}>${regradeButtonLabel}</button><small class="skip-lesson-status">${regradeStatusText}</small></div>`
@@ -5524,7 +5598,7 @@
         const exerciseScoreLabel = Number.isFinite(student.exerciseScorePercent)
           ? `${student.exerciseScorePercent}% · ${student.scoreCorrectQuestions} / ${student.scoreTotalQuestions}`
           : 'Not recorded';
-        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td title="Lessons passed out of lessons received">${lessonCompletionLabel}</td><td title="Correct answers across delivered exercises; corrected answers also count">${exerciseScoreLabel}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || '—'}</div></td></tr>`;
+        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td title="Lessons passed out of lessons received">${lessonCompletionLabel}</td><td title="Correct answers across delivered exercises; corrected answers also count">${exerciseScoreLabel}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || (requiresPrivateStart ? '' : '—')}${privateStartNotice}</div></td></tr>`;
       }).join('') : '<tr><td colspan="14" class="empty">No student progress recorded yet.</td></tr>';
       applyProgressFilters();
       $('#progress-rows').querySelectorAll('[data-send-lesson-picker]').forEach(picker => {
@@ -5569,7 +5643,7 @@
               item.setAttribute('aria-selected', String(isSelected));
               item.querySelector('.send-lesson-option-check').textContent = isSelected ? '✓' : '';
             });
-            picker.dataset.selectedLesson = option.dataset.lessonId;
+            picker.dataset.selectedLesson = option.dataset.lessonKey;
             picker.querySelector('[data-selected-lesson]').textContent =
               option.querySelector('span').textContent;
             closeMenu({ restoreFocus: true });
@@ -5623,9 +5697,10 @@
         button.addEventListener('click', async () => {
           const student = students.find(item =>
             item.platform === 'Telegram' && item.jid === button.dataset.sendLessonJid);
-          const selectedLessonId = button.closest('tr')
+          const selectedLessonKey = button.closest('tr')
             ?.querySelector('[data-send-lesson-picker]')?.dataset.selectedLesson;
-          const lesson = student?.availableLessons?.find(item => item.id === selectedLessonId);
+          const lesson = student?.availableLessons?.find(item =>
+            item.selectionKey === selectedLessonKey);
           if (!student || !lesson) {
             showError('Choose an available lesson before sending.');
             return;
@@ -5642,7 +5717,9 @@
               body: JSON.stringify({
                 jid: student.jid,
                 currentLessonId: button.dataset.currentLesson,
-                lessonId: lesson.id
+                lessonId: lesson.id,
+                track: lesson.track,
+                collectionId: lesson.collectionId
               })
             });
             await loadProgress();
@@ -7345,17 +7422,18 @@
           if (document.querySelector('#section-overview').classList.contains('active')) {
             tasks.push(loadTelegramStats());
           }
-          if (isProgressSectionActive()) {
-            tasks.push(loadProgress());
-          }
-          if (has('telegram_progress.json') &&
+          if (isProgressSectionActive() ||
               document.querySelector('#section-student-chat').classList.contains('active')) {
-            tasks.push(loadTelegramStudentChat({ silent: true }));
+            tasks.push(loadProgress());
           }
           if (has('lessons.json') &&
               document.querySelector('#section-curriculum').classList.contains('active')) {
             tasks.push(loadCurriculumOverview());
           }
+        }
+        if (has('telegram_dashboard_chat_replies.json') &&
+            document.querySelector('#section-student-chat').classList.contains('active')) {
+          tasks.push(loadTelegramStudentChat({ silent: true }));
         }
         if (has('telegram_lesson_skip_requests.json')) {
           if (isProgressSectionActive()) {
@@ -7581,6 +7659,27 @@
       telegramStatsWindowEndDate = getDateKeyInTimeZone(timeZone);
       loadTelegramStats().catch(error =>
         showError(`Could not load current Telegram statistics: ${error.message}`));
+    });
+    $('#telegram-members-previous').addEventListener('click', () => {
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const endDate = telegramMemberHistoryEndDate || getDateKeyInTimeZone(timeZone);
+      telegramMemberHistoryFollowsLatest = false;
+      telegramMemberHistoryEndDate = shiftDateKey(endDate, -30);
+      loadTelegramStats().catch(error =>
+        showError(`Could not load earlier group membership history: ${error.message}`));
+    });
+    $('#telegram-members-next').addEventListener('click', () => {
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const endDate = telegramMemberHistoryEndDate || getDateKeyInTimeZone(timeZone);
+      telegramMemberHistoryEndDate = shiftDateKey(endDate, 30);
+      loadTelegramStats().catch(error =>
+        showError(`Could not load later group membership history: ${error.message}`));
+    });
+    $('#telegram-members-current').addEventListener('click', () => {
+      telegramMemberHistoryFollowsLatest = true;
+      telegramMemberHistoryEndDate = null;
+      loadTelegramStats().catch(error =>
+        showError(`Could not load the latest group membership history: ${error.message}`));
     });
     $('#discount-offer-delivery').addEventListener('toggle', event => {
       const details = event.target;

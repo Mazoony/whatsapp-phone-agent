@@ -318,6 +318,10 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   assert.equal(historicalStats.periodEnd, '2020-01-30');
   assert.equal(historicalStats.dailyStats.length, 30);
   assert.equal(historicalStats.dailyStats.at(-1).joins, 0);
+  assert.deepEqual(historicalStats.groupMemberHistory, [
+    { date: '2026-11-11', members: 240 },
+    { date: '2026-11-12', members: 245 }
+  ]);
   const invalidStatsDateResponse = await fetch(
     `${origin}/telegram-stats?timeZone=UTC&endDate=2020-02-31`
   );
@@ -1055,6 +1059,8 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   const firstVideoFile = path.join(directory, 'lesson_1.mp4');
   const videoFile = path.join(directory, 'lesson_2.mp4');
   const videoOnlyFile = path.join(directory, 'lesson_3.mp4');
+  const spineVideoFile = path.join(directory, 'spine_lesson.mp4');
+  const literatureVideoFile = path.join(directory, 'literature_lesson.mp4');
   const lessonsFile = path.join(directory, 'lessons.json');
   const whatsappQueueFile = path.join(directory, 'whatsapp-skip.json');
   const telegramQueueFile = path.join(directory, 'telegram-skip.json');
@@ -1064,6 +1070,8 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   fs.writeFileSync(firstVideoFile, 'video 1');
   fs.writeFileSync(videoFile, 'video');
   fs.writeFileSync(videoOnlyFile, 'video only');
+  fs.writeFileSync(spineVideoFile, 'spine video');
+  fs.writeFileSync(literatureVideoFile, 'literature video');
   fs.writeFileSync(agentStatusFile, JSON.stringify({
     connectionState: 'connected',
     updatedAt: new Date().toISOString()
@@ -1094,7 +1102,26 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
             videoFile: videoOnlyFile,
             hasExercise: false
           }
-        ]
+        ],
+        standaloneLessons: [{
+          id: 'lesson_spine_1',
+          title: 'SPINE lesson',
+          videoFile: spineVideoFile,
+          taskMessage: 'Answer the SPINE question.',
+          answerKey: ['SPINE answer']
+        }],
+        collections: {
+          treasure_island: {
+            title: 'Treasure Island',
+            lessons: [{
+              id: 'lesson_literature_1',
+              title: 'Treasure Island lesson',
+              videoFile: literatureVideoFile,
+              taskMessage: 'Answer the literature question.',
+              answerKey: ['Literature answer']
+            }]
+          }
+        }
       }
     },
     progress: {
@@ -1150,6 +1177,13 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   assert.equal((await whatsappResponse.json()).status, 'queued');
   assert.equal(JSON.parse(fs.readFileSync(whatsappQueueFile, 'utf8'))[0].nextLessonId, 'lesson_2');
 
+  const noPrivateChatSkip = await postSkip('Telegram', 'telegram:-100123:44');
+  assert.equal(noPrivateChatSkip.status, 409);
+  assert.match((await noPrivateChatSkip.json()).error, /start a private chat/);
+  assert.equal(fs.existsSync(telegramQueueFile), false);
+  data.telegramProgress['telegram:-100123:44'].telegramPrivateChatId = '44';
+  fs.writeFileSync(telegramProgressFile, JSON.stringify(data.telegramProgress));
+
   const telegramResponse = await postSkip('Telegram', 'telegram:-100123:44');
   assert.equal(telegramResponse.status, 202);
   assert.equal((await telegramResponse.json()).status, 'queued');
@@ -1167,31 +1201,58 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   assert.equal(telegramProgressResponse.status, 200);
   const telegramStudents = await telegramProgressResponse.json();
   const telegramStudent = telegramStudents.students[0];
-  assert.deepEqual(telegramStudent.availableLessons.map(lesson => lesson.id), [
-    'lesson_1',
-    'lesson_2',
-    'lesson_3'
+  assert.deepEqual(telegramStudent.availableLessons.map(lesson => lesson.track), [
+    'grammar',
+    'grammar',
+    'grammar',
+    'spine',
+    'literature'
   ]);
+  assert.equal(telegramStudent.availableLessons[2].id, 'lesson_3');
+  assert.equal(telegramStudent.availableLessons[3].selectionKey, 'spine:standalone:lesson_spine_1');
+  assert.equal(telegramStudent.availableLessons[4].selectionKey,
+    'literature:treasure_island:lesson_literature_1');
+  delete data.telegramProgress['telegram:-100123:44'].telegramPrivateChatId;
+  fs.writeFileSync(telegramProgressFile, JSON.stringify(data.telegramProgress));
+  const noPrivateChatSend = await fetch(`${origin}/api/admin/progress/send-lesson`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jid: telegramStudent.jid,
+      currentLessonId: telegramStudent.currentLessonId,
+      lessonId: 'lesson_literature_1',
+      track: 'literature',
+      collectionId: 'treasure_island'
+    })
+  });
+  assert.equal(noPrivateChatSend.status, 409);
+  assert.match((await noPrivateChatSend.json()).error, /start a private chat/);
+  data.telegramProgress['telegram:-100123:44'].telegramPrivateChatId = '44';
+  fs.writeFileSync(telegramProgressFile, JSON.stringify(data.telegramProgress));
   const sendLessonResponse = await fetch(`${origin}/api/admin/progress/send-lesson`, {
     method: 'POST',
     headers: { Origin: origin, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       jid: telegramStudent.jid,
       currentLessonId: telegramStudent.currentLessonId,
-      lessonId: 'lesson_1'
+      lessonId: 'lesson_literature_1',
+      track: 'literature',
+      collectionId: 'treasure_island'
     })
   });
   assert.equal(sendLessonResponse.status, 202);
-  assert.equal((await sendLessonResponse.json()).lessonId, 'lesson_1');
+  assert.equal((await sendLessonResponse.json()).lessonId, 'lesson_literature_1');
   const queuedLesson = JSON.parse(fs.readFileSync(telegramQueueFile, 'utf8'))
     .find(request => request.requestType === 'send_lesson');
-  assert.equal(queuedLesson.nextLessonId, 'lesson_1');
+  assert.equal(queuedLesson.nextLessonId, 'lesson_literature_1');
+  assert.equal(queuedLesson.track, 'literature');
+  assert.equal(queuedLesson.collectionId, 'treasure_island');
   writeAgentMediaActivity({
     id: 'telegram-lesson-upload',
     platform: 'Telegram',
     mediaType: 'video',
     studentKey: telegramStudent.jid,
-    lessonId: 'lesson_1',
+    lessonId: 'lesson_literature_1',
     status: 'uploading',
     loaded: 512,
     total: 1024,
@@ -3420,7 +3481,12 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
     updatedAt: new Date().toISOString()
   }));
   fs.writeFileSync(telegramProgressFile, JSON.stringify({
-    'telegram:-100123:44': { name: 'Ali', telegramUserId: 44 },
+    'telegram:-100123:44': {
+      name: 'Ali',
+      telegramUserId: 44,
+      telegramChatId: '-100123',
+      telegramPrivateChatId: '44'
+    },
     'telegram:-100123:45': { name: 'Sara', telegramUserId: 45 }
   }));
   const adminActionQueue = new LessonSkipQueue(telegramLessonSkipRequestsFile);
@@ -3499,6 +3565,22 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
     const media = await mediaResponse.json();
     assert.equal(mediaResponse.status, 200);
     assert.equal(media.activities[0].retryAvailable, true);
+
+    const telegramProgress = JSON.parse(fs.readFileSync(telegramProgressFile, 'utf8'));
+    delete telegramProgress['telegram:-100123:44'].telegramPrivateChatId;
+    fs.writeFileSync(telegramProgressFile, JSON.stringify(telegramProgress));
+    const blockedRetry = await fetch(
+      `${origin}/api/admin/telegram-agent-media/telegram-failed-video-1/retry`,
+      {
+        method: 'POST',
+        headers: { origin, 'content-type': 'application/json' },
+        body: '{}'
+      }
+    );
+    assert.equal(blockedRetry.status, 409);
+    assert.match((await blockedRetry.json()).error, /start a private chat/);
+    telegramProgress['telegram:-100123:44'].telegramPrivateChatId = '44';
+    fs.writeFileSync(telegramProgressFile, JSON.stringify(telegramProgress));
 
     const retryResponse = await fetch(
       `${origin}/api/admin/telegram-agent-media/telegram-failed-video-1/retry`,
@@ -3720,10 +3802,15 @@ test('dashboard event stream pushes Telegram progress updates', async () => {
     temporaryDirectory,
     'telegram_lesson_skip_requests.json'
   );
+  const telegramDashboardChatRepliesFile = path.join(
+    temporaryDirectory,
+    'telegram_dashboard_chat_replies.json'
+  );
   const server = createAdminDashboardServer({
     readData: () => sampleData,
     telegramProgressFile,
-    telegramLessonSkipRequestsFile
+    telegramLessonSkipRequestsFile,
+    telegramDashboardChatRepliesFile
   });
   const controller = new AbortController();
   let reader;
@@ -3760,6 +3847,20 @@ test('dashboard event stream pushes Telegram progress updates', async () => {
     ]);
     assert.match(queueUpdate, /event: dashboard-update/);
     assert.match(queueUpdate, /telegram_lesson_skip_requests\.json/);
+
+    fs.writeFileSync(telegramDashboardChatRepliesFile, JSON.stringify({
+      'telegram:-100123:44': [{
+        role: 'bot',
+        text: 'Reply from the dashboard',
+        timestamp: new Date().toISOString()
+      }]
+    }));
+    const replyUpdate = await Promise.race([
+      reader.read().then(result => decoder.decode(result.value)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for a student chat reply update.')), 2_000))
+    ]);
+    assert.match(replyUpdate, /event: dashboard-update/);
+    assert.match(replyUpdate, /telegram_dashboard_chat_replies\.json/);
   } finally {
     controller.abort();
     if (reader) await reader.cancel().catch(() => {});

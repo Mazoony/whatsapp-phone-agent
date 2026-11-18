@@ -609,29 +609,45 @@ function latestMessage(messages = []) {
 }
 
 function getReadyTelegramLessons(gradeKey, lessons) {
-  const gradeLessons = lessons?.[gradeKey]?.lessons;
-  if (!Array.isArray(gradeLessons)) return [];
-  return gradeLessons.flatMap((lesson, lessonIndex) => {
-    if (typeof lesson?.id !== 'string' ||
-        typeof lesson.videoFile !== 'string' ||
-        (lesson.hasExercise !== false &&
-          (typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
-          !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0))) return [];
-    const videoPath = path.resolve(ROOT_DIR, lesson.videoFile);
-    const relativePath = path.relative(ROOT_DIR, videoPath);
-    if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) return [];
-    try {
-      const stats = fs.statSync(videoPath);
-      if (!stats.isFile() || stats.size === 0) return [];
-    } catch (error) {
-      if (error.code === 'ENOENT') return [];
-      throw error;
-    }
-    return [{
-      id: lesson.id,
-      title: lesson.title || lesson.id,
-      lessonIndex
-    }];
+  const grade = lessons?.[gradeKey];
+  if (!grade) return [];
+  const collections = [
+    { track: 'grammar', collectionId: null, lessons: grade.lessons },
+    { track: 'spine', collectionId: 'standalone', lessons: grade.standaloneLessons },
+    ...Object.entries(grade.collections || {}).map(([collectionId, collection]) => ({
+      track: collectionId === 'treasure_island' ? 'literature' : null,
+      collectionId,
+      lessons: collection?.lessons
+    }))
+  ];
+  return collections.flatMap(({ track, collectionId, lessons: collectionLessons }) => {
+    if (!track || !Array.isArray(collectionLessons)) return [];
+    return collectionLessons.flatMap((lesson, lessonIndex) => {
+      if (typeof lesson?.id !== 'string' ||
+          typeof lesson.videoFile !== 'string' ||
+          (track !== 'grammar' && lesson.hasExercise === false) ||
+          (lesson.hasExercise !== false &&
+            (typeof lesson.taskMessage !== 'string' || !lesson.taskMessage.trim() ||
+            !Array.isArray(lesson.answerKey) || lesson.answerKey.length === 0))) return [];
+      const videoPath = path.resolve(ROOT_DIR, lesson.videoFile);
+      const relativePath = path.relative(ROOT_DIR, videoPath);
+      if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) return [];
+      try {
+        const stats = fs.statSync(videoPath);
+        if (!stats.isFile() || stats.size === 0) return [];
+      } catch (error) {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+      }
+      return [{
+        id: lesson.id,
+        selectionKey: `${track}:${collectionId || ''}:${lesson.id}`,
+        title: lesson.title || lesson.id,
+        track,
+        collectionId,
+        lessonIndex
+      }];
+    });
   });
 }
 
@@ -2883,6 +2899,7 @@ export function createAdminDashboardServer({
     telegramAgentControlFile,
     lessonsFile,
     telegramProgressFile,
+    telegramDashboardChatRepliesFile,
     telegramUserBroadcastFiles.requests,
     telegramUserBroadcastFiles.state,
     paymentLedgerFile,
@@ -4895,6 +4912,14 @@ export function createAdminDashboardServer({
           sendJson(res, 409, { error: 'The Telegram lesson video source could not be identified for retry.' });
           return;
         }
+        const student = readJsonFileOr(telegramProgressFile, {})[activity.studentKey];
+        if (!student?.telegramPrivateChatId ||
+            String(student.telegramPrivateChatId) !== String(activity.recipientJid)) {
+          sendJson(res, 409, {
+            error: 'The student must start a private chat with the bot before this lesson video can be retried.'
+          });
+          return;
+        }
         const lesson = readJsonFile(lessonsFile)?.[activity.grade]?.lessons?.find(item =>
           item?.id === activity.lessonId);
         if (lesson?.videoFile !== activity.videoFile) {
@@ -5510,6 +5535,7 @@ export function createAdminDashboardServer({
           });
           replies[body.studentKey] = studentReplies.slice(-200);
           writeJsonFile(telegramDashboardChatRepliesFile, replies);
+          scheduleChange(path.basename(telegramDashboardChatRepliesFile));
           sendJson(res, 200, { sent: true });
         } catch (error) {
           console.error(
@@ -5735,6 +5761,14 @@ export function createAdminDashboardServer({
           sendJson(res, 409, { error: 'This Telegram student does not have a valid group destination.' });
           return;
         }
+        if (body.platform === 'Telegram' &&
+            (typeof student.telegramPrivateChatId !== 'string' ||
+             !student.telegramPrivateChatId.trim())) {
+          sendJson(res, 409, {
+            error: 'The student must start a private chat with the bot before receiving a lesson.'
+          });
+          return;
+        }
 
         const nextLesson = getNextLessonToSkip(student, data.lessons);
         if (!nextLesson) {
@@ -5821,12 +5855,24 @@ export function createAdminDashboardServer({
           sendJson(res, 409, { error: 'This Telegram student does not have a valid group destination.' });
           return;
         }
+        if (typeof student.telegramPrivateChatId !== 'string' ||
+            !student.telegramPrivateChatId.trim()) {
+          sendJson(res, 409, {
+            error: 'The student must start a private chat with the bot before receiving a lesson.'
+          });
+          return;
+        }
 
         const lessons = readJsonFile(lessonsFile);
         const selectedLesson = getReadyTelegramLessons(student.grade, lessons)
-          .find(lesson => lesson.id === body.lessonId);
+          .find(lesson =>
+            lesson.id === body.lessonId &&
+            lesson.track === (body.track || 'grammar') &&
+            lesson.collectionId === (body.collectionId || null));
         if (!selectedLesson) {
-          sendJson(res, 409, { error: 'The selected lesson is not fully configured with a video, exercise, and answer key.' });
+          sendJson(res, 409, {
+            error: 'The selected lesson is missing its video or required exercise and answer key.'
+          });
           return;
         }
 
@@ -5840,7 +5886,9 @@ export function createAdminDashboardServer({
           currentLessonId: student.currentLessonId || '',
           nextLessonId: selectedLesson.id,
           lessonIndex: selectedLesson.lessonIndex,
-          nextLessonTitle: selectedLesson.title
+          nextLessonTitle: selectedLesson.title,
+          track: selectedLesson.track,
+          collectionId: selectedLesson.collectionId
         });
         if (conflict) {
           sendJson(res, 409, { error: 'Another lesson request is already queued for this student.' });

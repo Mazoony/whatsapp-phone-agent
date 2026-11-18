@@ -561,6 +561,9 @@ class LessonManager {
     const student = this.getStudent(jid, phoneJid);
     if (!student || !this.lessonsConfig[student.grade]) return null;
     const lessons = this.lessonsConfig[student.grade].lessons || [];
+    if (student.currentLessonId) {
+      return lessons.find(lesson => lesson.id === student.currentLessonId) || null;
+    }
     return lessons[student.currentLessonIndex] || null;
   }
 
@@ -811,14 +814,7 @@ class LessonManager {
       return true;
     }
 
-    let lesson = this.getCurrentLesson(jid, phoneJid);
-    if (!lesson && student?.grade && Number.isInteger(student.currentLessonIndex)) {
-      lesson = this.lessonsConfig[student.grade]?.lessons?.[student.currentLessonIndex] || null;
-    }
-    if (!lesson && student?.grade && student.currentLessonId) {
-      lesson = this.lessonsConfig[student.grade]?.lessons
-        ?.find(item => item.id === student.currentLessonId) || null;
-    }
+    const lesson = this.getCurrentLesson(jid, phoneJid);
     if (!lesson?.taskMessage?.trim()) {
       const message = 'ما لقيت تمرين حالي أرسله ليك. أرسل لي صفك أو أطلب فيديو الدرس أول.';
       await sock.sendMessage(jid, { text: message });
