@@ -240,6 +240,17 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   });
   assert.equal(progress.students[0].canReplyPrivately, true);
 
+  const historicalProgressResponse = await fetch(
+    `${origin}/telegram-progress?timeZone=UTC&trendEndDate=2020-01-30&enrollmentEndDate=2020-01-20`
+  );
+  assert.equal(historicalProgressResponse.status, 200);
+  const historicalProgress = await historicalProgressResponse.json();
+  assert.equal(historicalProgress.insights.engagementTrend.at(-1).date, '2020-01-30');
+  assert.equal(
+    historicalProgress.insights.telegramEnrollment.dailyJoins.at(-1).date,
+    '2020-01-20'
+  );
+
   const replyResponse = await fetch(`${origin}/telegram-student-reply`, {
     method: 'POST',
     headers: {
@@ -465,6 +476,14 @@ test('Telegram overview reports class-specific statistics and deduplicates all-c
     }
   ]);
   assert.ok(overview.telegramClasses.every(classStats => classStats.dailyStats.length === 30));
+
+  const historicalResponse = await fetch(
+    `http://127.0.0.1:${server.address().port}/api/admin/telegram-overview?timeZone=UTC&endDate=2020-01-30`
+  );
+  assert.equal(historicalResponse.status, 200);
+  const historicalOverview = await historicalResponse.json();
+  assert.ok(historicalOverview.telegramClasses.every(classStats =>
+    classStats.dailyStats.at(-1).date === '2020-01-30'));
 });
 
 test('dashboard queues task rechecks only for an available active Telegram submission', async t => {
@@ -1487,6 +1506,51 @@ test('weekly dashboard activity counts distinct direct chats for the local calen
   });
 });
 
+test('weekly dashboard activity can browse an earlier seven-day calendar window', () => {
+  const now = Date.parse('2026-10-16T12:00:00.000Z');
+  const activity = getDashboardWeeklyChatActivity({
+    ...sampleData,
+    telegramProgress: {},
+    history: {
+      '1001@s.whatsapp.net': [
+        { role: 'client', timestamp: Date.parse('2026-10-10T09:00:00.000Z') },
+        { role: 'client', timestamp: Date.parse('2026-10-16T09:00:00.000Z') }
+      ],
+      '1002@s.whatsapp.net': [
+        { role: 'client', timestamp: Date.parse('2026-10-12T09:00:00.000Z') }
+      ]
+    }
+  }, 'UTC', now, '2026-10-12');
+
+  assert.equal(activity.days.length, 7);
+  assert.equal(activity.days[0].date, '2026-10-06');
+  assert.equal(activity.days.at(-1).date, '2026-10-12');
+  assert.equal(activity.days.find(day => day.date === '2026-10-10').chats, 1);
+  assert.equal(activity.days.find(day => day.date === '2026-10-12').chats, 1);
+  assert.equal(activity.days.some(day => day.date === '2026-10-16'), false);
+});
+
+test('overview API validates and serves a historical weekly activity window', async () => {
+  const server = createAdminDashboardServer({ readData: () => sampleData });
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}/api/admin/overview`;
+    const historicalResponse = await fetch(
+      `${baseUrl}?timeZone=UTC&endDate=2020-01-30`
+    );
+    assert.equal(historicalResponse.status, 200);
+    const overview = await historicalResponse.json();
+    assert.equal(overview.weeklyChatActivity.days.at(-1).date, '2020-01-30');
+
+    const invalidResponse = await fetch(
+      `${baseUrl}?timeZone=UTC&endDate=2020-02-31`
+    );
+    assert.equal(invalidResponse.status, 400);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
 test('weekly dashboard activity counts distinct Telegram learners per local calendar day', () => {
   const now = Date.parse('2026-10-16T12:00:00.000Z');
   const activity = getDashboardWeeklyChatActivity({
@@ -1678,7 +1742,7 @@ test('student progress shows incoming-message volume and frequency across linked
 test('student progress insights show calendar-day engagement and stale lesson follow-ups', () => {
   const now = Date.UTC(2026, 9, 16, 12);
   const day = 24 * 60 * 60 * 1000;
-  const result = listDashboardStudentProgress({
+  const data = {
     ...sampleData,
     contacts: {
       ...sampleData.contacts,
@@ -1722,7 +1786,8 @@ test('student progress insights show calendar-day engagement and stale lesson fo
         { role: 'client', text: 'I tried again', timestamp: (now - 5 * day) / 1000 }
       ]
     }
-  }, now, 'UTC');
+  };
+  const result = listDashboardStudentProgress(data, now, 'UTC');
 
   assert.equal(result.insights.activeStudentsLast7Days, 2);
   const today = result.insights.engagementTrend.at(-1);
@@ -1736,6 +1801,18 @@ test('student progress insights show calendar-day engagement and stale lesson fo
     jid: student.jid,
     daysSinceActivity: student.daysSinceActivity
   })), [{ jid: '2001@s.whatsapp.net', daysSinceActivity: 9 }]);
+
+  const historical = listDashboardStudentProgress(
+    data,
+    now,
+    'UTC',
+    '2026-10-05',
+    '2026-10-05'
+  );
+  assert.equal(historical.insights.engagementTrend[0].date, '2026-09-06');
+  assert.equal(historical.insights.engagementTrend.at(-1).date, '2026-10-05');
+  assert.equal(historical.insights.telegramEnrollment.dailyJoins[0].date, '2026-09-29');
+  assert.equal(historical.insights.telegramEnrollment.dailyJoins.at(-1).date, '2026-10-05');
 });
 
 test('chat list and conversation show the manually selected contact gender', () => {
@@ -1997,6 +2074,36 @@ test('student activity counts incoming messages by local weekday and hour for th
   assert.equal(getDashboardStudentActivity(data, '1003@g.us', 30, 'UTC', now), null);
 });
 
+test('student activity can browse an earlier date range without counting newer messages', () => {
+  const now = Date.UTC(2026, 9, 16, 12);
+  const data = {
+    ...sampleData,
+    history: {
+      ...sampleData.history,
+      '1001@s.whatsapp.net': [
+        { role: 'client', timestamp: Date.UTC(2026, 9, 10, 9) / 1000 },
+        { role: 'agent', timestamp: Date.UTC(2026, 9, 10, 10) / 1000 },
+        { role: 'client', timestamp: Date.UTC(2026, 9, 16, 9) / 1000 }
+      ]
+    }
+  };
+  const activity = getDashboardStudentActivity(
+    data,
+    '1001@s.whatsapp.net',
+    30,
+    'UTC',
+    now,
+    '2026-10-12'
+  );
+
+  assert.equal(activity.totalMessages, 1);
+  assert.equal(activity.responseCount, 1);
+  assert.equal(activity.dailyActivity[0].date, '2026-09-13');
+  assert.equal(activity.dailyActivity.at(-1).date, '2026-10-12');
+  assert.equal(activity.dailyActivity.find(day => day.date === '2026-10-10').incoming, 1);
+  assert.equal(activity.dailyActivity.find(day => day.date === '2026-10-10').outgoing, 1);
+});
+
 test('student activity resolves phone-book contacts to LID history and handles contacts with no messages', () => {
   const now = Date.UTC(2026, 9, 15, 12);
   const phoneJid = '2001@s.whatsapp.net';
@@ -2044,6 +2151,20 @@ test('student activity API validates chat, range, and timezone', async () => {
     const validResponse = await fetch(`${baseUrl}?${validQuery}`);
     assert.equal(validResponse.status, 200);
     assert.equal((await validResponse.json()).timeZone, 'Africa/Khartoum');
+
+    const historicalQuery = new URLSearchParams({
+      jid: '1001@s.whatsapp.net',
+      days: '30',
+      timeZone: 'UTC',
+      endDate: '2020-01-30'
+    });
+    const historicalResponse = await fetch(`${baseUrl}?${historicalQuery}`);
+    assert.equal(historicalResponse.status, 200);
+    assert.equal((await historicalResponse.json()).dailyActivity.at(-1).date, '2020-01-30');
+    const invalidEndDate = await fetch(
+      `${baseUrl}?jid=1001%40s.whatsapp.net&days=30&timeZone=UTC&endDate=2020-02-31`
+    );
+    assert.equal(invalidEndDate.status, 400);
 
     const invalidRange = await fetch(`${baseUrl}?jid=1001%40s.whatsapp.net&days=60&timeZone=UTC`);
     assert.equal(invalidRange.status, 400);

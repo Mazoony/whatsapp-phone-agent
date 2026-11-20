@@ -12,11 +12,11 @@ const LOCKOUT_MS = 5 * 60 * 1000;
 const SCRYPT_OPTIONS = { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const PASSWORD_HASH_BYTES = 64;
 
-function sessionTokenFromRequest(req) {
+function sessionTokenFromRequest(req, cookieName) {
   const cookieHeader = req.headers.cookie || '';
   for (const part of cookieHeader.split(';')) {
     const separator = part.indexOf('=');
-    if (separator < 0 || part.slice(0, separator).trim() !== SESSION_COOKIE) continue;
+    if (separator < 0 || part.slice(0, separator).trim() !== cookieName) continue;
     try {
       return decodeURIComponent(part.slice(separator + 1).trim());
     } catch {
@@ -26,13 +26,13 @@ function sessionTokenFromRequest(req) {
   return '';
 }
 
-function setSessionCookie(res, token, maxAge = SESSION_TTL_MS / 1000) {
+function setSessionCookie(res, token, cookieName, maxAge = SESSION_TTL_MS / 1000, secure = false) {
   res.setHeader('Set-Cookie',
-    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`);
+    `${cookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? '; Secure' : ''}`);
 }
 
-function clearSessionCookie(res) {
-  setSessionCookie(res, '', 0);
+function clearSessionCookie(res, cookieName, secure = false) {
+  setSessionCookie(res, '', cookieName, 0, secure);
 }
 
 async function derivePasswordHash(password, salt) {
@@ -40,8 +40,9 @@ async function derivePasswordHash(password, salt) {
 }
 
 export class DashboardAuth {
-  constructor(authFile) {
+  constructor(authFile, { cookieName = SESSION_COOKIE } = {}) {
     this.authFile = authFile;
+    this.cookieName = cookieName;
     this.sessions = new Map();
     this.loginAttempts = new Map();
   }
@@ -58,7 +59,7 @@ export class DashboardAuth {
   }
 
   isAuthenticated(req) {
-    const token = sessionTokenFromRequest(req);
+    const token = sessionTokenFromRequest(req, this.cookieName);
     const expiresAt = this.sessions.get(token);
     if (!expiresAt) return false;
     if (expiresAt <= Date.now()) {
@@ -150,16 +151,16 @@ export class DashboardAuth {
   }
 
   logout(req) {
-    const token = sessionTokenFromRequest(req);
+    const token = sessionTokenFromRequest(req, this.cookieName);
     this.sessions.delete(token);
   }
 
-  setCookie(res, token, maxAge) {
-    setSessionCookie(res, token, maxAge);
+  setCookie(res, token, maxAge, secure = false) {
+    setSessionCookie(res, token, this.cookieName, maxAge, secure);
   }
 
-  clearCookie(res) {
-    clearSessionCookie(res);
+  clearCookie(res, secure = false) {
+    clearSessionCookie(res, this.cookieName, secure);
   }
 
   readCredential() {

@@ -54,6 +54,18 @@ Run commands from the repository root:
 
 The WhatsApp agent uses a QR code to link its account on first startup. Keep the corresponding process running while that agent is in use. Telegram bot, Telegram personal-account sender, and dashboard are separate processes; start only the ones you need.
 
+### Private read-only dashboard access
+
+The dashboard has a separate viewer page at `/viewer`. To set its password, sign in to the admin dashboard locally, then open `http://127.0.0.1:3001/viewer` in the same browser and create a viewer password. Share only that password with the viewer; it does not unlock the admin dashboard.
+
+For private remote access, install and sign in to Tailscale on the dashboard computer and the viewer's device, then use Tailscale Serve to publish the local dashboard only inside your tailnet:
+
+```powershell
+tailscale serve --bg http://127.0.0.1:3001
+```
+
+Give the viewer the HTTPS address Tailscale reports, with `/viewer` appended. Do not use Tailscale Funnel or otherwise expose the admin dashboard to the public internet. Viewer sessions can read dashboard data but cannot change records or send messages. To revoke the viewer password, stop the dashboard, remove `data/admin_viewer_auth.json`, restart it, and set a new password from the local admin session.
+
 ## Project layout
 
 ```text

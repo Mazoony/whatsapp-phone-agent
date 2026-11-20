@@ -50,8 +50,8 @@
     .auth-form .primary-button { min-height: 42px; margin-top: 4px; }
     .auth-error { min-height: 18px; margin: 0; color: var(--red); font-size: 11px; }
     .auth-help { margin-top: 15px; color: var(--muted); font-size: 10px; }
-    .layout { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); }
-    aside { position: fixed; inset: 0 auto 0 0; width: 244px; overflow-y: auto; background: #17362e; color: white; padding: 26px 18px; display: flex; flex-direction: column; gap: 30px; }
+    .layout { --sidebar-width: 244px; min-height: 100vh; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); transition: grid-template-columns .22s ease; }
+    aside#dashboard-sidebar { position: fixed; inset: 0 auto 0 0; width: var(--sidebar-width); overflow-y: auto; background: #17362e; color: white; padding: 26px 18px; display: flex; flex-direction: column; gap: 30px; transition: width .22s ease, padding .22s ease; }
     .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
     .brand-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: #d8f3e2; color: #12563f; font-weight: 850; }
     .brand strong { display: block; font-size: 16px; letter-spacing: -.3px; }
@@ -63,6 +63,21 @@
     .nav-icon { width: 19px; text-align: center; opacity: .9; }
     .side-note { margin-top: auto; border: 1px solid #376354; background: #20483b; color: #c7ded2; border-radius: 12px; padding: 13px; font-size: 11px; }
     .side-note b { display: block; color: white; margin-bottom: 5px; }
+    .sidebar-toggle { width: 100%; min-height: 38px; margin-top: 2px; border: 1px solid #376354; border-radius: 9px; background: #20483b; color: #d5e4dc; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 750; }
+    .sidebar-toggle:hover { background: #285345; color: white; }
+    .sidebar-toggle:focus-visible { outline: 2px solid #a7d8bd; outline-offset: 2px; }
+    .sidebar-toggle-icon { display: inline-block; font-size: 16px; transition: transform .22s ease; }
+    body.sidebar-collapsed .layout { --sidebar-width: 72px; }
+    body.sidebar-collapsed aside#dashboard-sidebar { padding-inline: 10px; }
+    body.sidebar-collapsed .brand { justify-content: center; padding: 0; }
+    body.sidebar-collapsed .brand-copy, body.sidebar-collapsed .nav-label,
+    body.sidebar-collapsed .nav-text, body.sidebar-collapsed .side-note,
+    body.sidebar-collapsed .sidebar-toggle-label { display: none; }
+    body.sidebar-collapsed nav { gap: 7px; }
+    body.sidebar-collapsed .nav-item { justify-content: center; padding: 11px 0; }
+    body.sidebar-collapsed .nav-icon { width: auto; font-size: 17px; }
+    body.sidebar-collapsed .sidebar-toggle { padding-inline: 0; }
+    body.sidebar-collapsed .sidebar-toggle-icon { transform: rotate(180deg); }
     main { grid-column: 2; min-width: 0; padding: 30px clamp(18px, 4vw, 54px) 54px; max-width: 1600px; width: 100%; margin: 0 auto; }
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 27px; }
     h1 { font-size: clamp(23px, 3vw, 30px); letter-spacing: -1px; margin: 0 0 4px; }
@@ -72,6 +87,10 @@
     .notification-status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     .local-tag { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #d8e8dd; background: #f7fcf8; color: #326a4f; border-radius: 999px; padding: 7px 11px; font-size: 11px; font-weight: 700; white-space: nowrap; }
     .local-dot { width: 7px; height: 7px; background: #2eaa71; border-radius: 50%; }
+    .viewer-mode-banner { margin: -12px 0 20px; padding: 11px 14px; border: 1px solid #cfe7d7; border-radius: 10px; color: #245c41; background: #eef8f0; font-size: 12px; }
+    .viewer-mode-banner strong { margin-right: 5px; }
+    body.viewer-mode form:not(#auth-form) { display: none !important; }
+    body.viewer-mode #dashboard-notifications { display: none !important; }
     .refresh { width: 36px; height: 36px; background: white; border: 1px solid var(--line); color: var(--ink); border-radius: 10px; box-shadow: 0 2px 6px #17362e0a; }
     .section { display: none; }
     .section.active { display: block; }
@@ -236,6 +255,12 @@
     .weekly-chat-stat-value { display: block; margin-top: 3px; color: var(--ink); font-size: 19px; font-weight: 760; letter-spacing: -.4px; }
     .weekly-chat-stat-note { margin: 2px 0 0 !important; color: #849189 !important; font-size: 9px !important; }
     .weekly-chat-note { margin-top: 9px !important; }
+    .timeline-controls { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 10px 0 0; color: var(--muted); font-size: 10px; }
+    .timeline-controls button { min-height: 30px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); font: inherit; cursor: pointer; }
+    .timeline-controls button:disabled { opacity: .45; cursor: not-allowed; }
+    .timeline-controls button:focus-visible { outline: 2px solid #23875a; outline-offset: 2px; }
+    .timeline-pan-target { cursor: grab; touch-action: pan-y; }
+    .timeline-pan-target.timeline-pan-active { cursor: grabbing; user-select: none; }
     .telegram-stats-panel { margin: 14px 0; padding: 18px; border-radius: 14px; }
     .telegram-stats-panel h2 { margin: 0; font-size: 15px; }
     .telegram-stats-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
@@ -469,6 +494,7 @@
     .presence-timeline .online-label { color: #16804b; font-weight: 700; }
     .activity-chart-title { margin: 12px 0 0; font-size: 10px; color: #52635a; font-weight: 700; }
     .student-insight-chart-wrap { position: relative; min-height: 180px; margin-top: 12px; border-radius: 10px; background: linear-gradient(to bottom, transparent 24.5%, #edf2ef 25%, transparent 25.5%, transparent 49.5%, #edf2ef 50%, transparent 50.5%, transparent 74.5%, #edf2ef 75%, transparent 75.5%), #fbfcfb; }
+    .student-insight-chart-wrap.timeline-pan-target { touch-action: pan-y; }
     .student-insight-chart { display: grid; grid-template-columns: repeat(30, minmax(3px, 1fr)); align-items: end; gap: 3px; min-height: 180px; padding: 12px 8px 28px; }
     .student-insight-chart-wrap .student-insight-chart { margin-top: 0; }
     .student-insight-lines { position: absolute; left: 8px; right: 8px; top: 12px; z-index: 2; width: calc(100% - 16px); height: 140px; overflow: visible; pointer-events: none; }
@@ -963,10 +989,11 @@
     @media (max-width: 950px) { .metrics { grid-template-columns: repeat(2, 1fr); } .columns { grid-template-columns: 1fr; } .agent-runtime-grid { grid-template-columns: 1fr; } }
 
     @media (max-width: 700px) {
-      .layout { grid-template-columns: 1fr; padding-top: 60px; }
-      aside { inset: 0 0 auto; z-index: 5; width: auto; height: 60px; overflow-x: auto; overflow-y: hidden; padding: 10px 13px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+      .layout, body.sidebar-collapsed .layout { --sidebar-width: 1fr; grid-template-columns: 1fr; padding-top: 60px; }
+      aside#dashboard-sidebar { inset: 0 0 auto; z-index: 5; width: auto; height: 60px; overflow-x: auto; overflow-y: hidden; padding: 10px 13px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
       .brand { padding: 0; } .brand-icon { width: 32px; height: 32px; } .brand strong { font-size: 13px; }
-      .nav-label, .side-note { display: none; } nav { display: flex; gap: 4px; }
+      body.sidebar-collapsed .brand-copy, body.sidebar-collapsed .nav-text { display: block; }
+      .nav-label, .side-note, .sidebar-toggle, body.sidebar-collapsed .sidebar-toggle { display: none; } nav { display: flex; gap: 4px; }
       .nav-item { width: auto; padding: 8px 9px; font-size: 11px; gap: 5px; }
       main { grid-column: 1; padding: 19px 13px 34px; }
       .topbar { margin-bottom: 18px; } .local-tag { font-size: 0; padding: 9px; } .local-dot { width: 8px; height: 8px; }
@@ -1017,22 +1044,26 @@
     </div>
   </section>
   <div class="layout">
-    <aside>
+    <aside id="dashboard-sidebar">
       <div class="brand">
         <div class="brand-icon">✈</div>
-        <div><strong>eShool Telegram</strong><small>Learning dashboard</small></div>
+        <div class="brand-copy"><strong>eShool Telegram</strong><small>Learning dashboard</small></div>
       </div>
       <div class="nav-label">Telegram learning</div>
       <nav aria-label="Dashboard sections">
-        <button class="nav-item active" data-section="overview"><span class="nav-icon">▦</span>Overview</button>
-        <button class="nav-item" data-section="progress"><span class="nav-icon">◷</span>Student progress</button>
-        <button class="nav-item" data-section="score-distribution"><span class="nav-icon">%</span>Score distribution</button>
-        <button class="nav-item" data-section="student-chat"><span class="nav-icon">☷</span>Students chat</button>
-        <button class="nav-item" data-section="telegram-broadcast"><span class="nav-icon">✉</span>Telegram announcements</button>
-        <button class="nav-item" data-section="curriculum"><span class="nav-icon">📚</span>Lessons &amp; curriculum</button>
-        <button class="nav-item" data-section="payment-ledger"><span class="nav-icon">$</span>Payment ledger</button>
+        <button class="nav-item active" data-section="overview" title="Overview"><span class="nav-icon">▦</span><span class="nav-text">Overview</span></button>
+        <button class="nav-item" data-section="progress" title="Student progress"><span class="nav-icon">◷</span><span class="nav-text">Student progress</span></button>
+        <button class="nav-item" data-section="score-distribution" title="Score distribution"><span class="nav-icon">%</span><span class="nav-text">Score distribution</span></button>
+        <button class="nav-item" data-section="student-chat" title="Students chat"><span class="nav-icon">☷</span><span class="nav-text">Students chat</span></button>
+        <button class="nav-item" data-section="telegram-broadcast" title="Telegram announcements"><span class="nav-icon">✉</span><span class="nav-text">Telegram announcements</span></button>
+        <button class="nav-item" data-section="curriculum" title="Lessons &amp; curriculum"><span class="nav-icon">📚</span><span class="nav-text">Lessons &amp; curriculum</span></button>
+        <button class="nav-item" data-section="payment-ledger" title="Payment ledger"><span class="nav-icon">$</span><span class="nav-text">Payment ledger</span></button>
       </nav>
       <div class="side-note"><b>Telegram learning</b>Manage Telegram learners, lesson progress, announcements, and curriculum here.</div>
+      <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-expanded="true" aria-controls="dashboard-sidebar" title="Collapse sidebar">
+        <span class="sidebar-toggle-icon" aria-hidden="true">‹</span>
+        <span class="sidebar-toggle-label">Collapse sidebar</span>
+      </button>
     </aside>
 
     <main>
@@ -1040,6 +1071,7 @@
         <div><h1 id="page-title">Telegram overview</h1><p class="subheading" id="page-subtitle">Monitor bot status, learners, and lesson progress. <span class="live-update-indicator" id="live-update-status">Live updates on</span></p></div>
         <div class="top-actions"><span class="local-tag"><i class="local-dot"></i> Local only</span><button class="pagination button notification-toggle" id="dashboard-notifications" type="button" aria-pressed="false">Enable notifications</button><span class="notification-status" id="dashboard-notification-status" role="status" aria-live="polite"></span><button class="pagination button" id="dashboard-logout" type="button">Lock</button><button class="refresh" id="refresh" title="Refresh data" aria-label="Refresh data">↻</button></div>
       </header>
+      <div class="viewer-mode-banner" id="viewer-mode-banner" role="status" hidden><strong>Read-only viewer.</strong> You can browse dashboard information, but cannot send messages or change records.</div>
       <div id="error" class="error" hidden></div>
 
       <section class="section active" id="section-overview">
@@ -1248,7 +1280,7 @@
         </div>
         <div class="roster-insights">
           <article class="panel roster-insight-panel">
-            <h3>Student engagement · last 30 days</h3>
+            <h3>Student engagement · 30-day periods</h3>
             <p class="activity-summary" id="progress-engagement-summary" aria-live="polite">Loading student engagement…</p>
             <div id="progress-engagement-chart"></div>
             <div class="student-insight-legend"><span><i class="active-line-key"></i>Active students</span><span><i class="message-bar-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
@@ -1652,7 +1684,7 @@
         </article>
         <div class="roster-insights">
           <article class="panel roster-insight-panel">
-            <h3>Student engagement · last 30 days</h3>
+            <h3>Student engagement · 30-day periods</h3>
             <p class="activity-summary" id="progress-engagement-summary-page" aria-live="polite">Loading student engagement…</p>
             <div id="progress-engagement-chart-page"></div>
             <div class="student-insight-legend"><span><i class="active-line-key"></i>Active students</span><span><i class="message-bar-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
@@ -2274,9 +2306,15 @@
     let selectedJid = '';
     let lessonVideoPreviewUrl = null;
     let activityDays = 30;
+    let activityWindowEndDate = null;
     let esActivityJid = '';
     let esActivityName = '';
     let esActivityDays = 30;
+    let esActivityWindowEndDate = null;
+    let weeklyChatWindowEndDate = null;
+    let telegramClassWindowEndDate = null;
+    let telegramEnrollmentWindowEndDate = null;
+    let progressTrendWindowEndDate = null;
     let paymentCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let paymentCalendarSelectedDate = new Date();
     let paymentCalendarPayments = [];
@@ -2302,6 +2340,8 @@
     let broadcastQueueing = false;
     let authSetupRequired = false;
     let dashboardStarted = false;
+    const viewerMode = window.location.pathname === '/viewer';
+    let viewerControlsObserver = null;
     let dashboardEvents = null;
     let dashboardPollTimer = null;
     let agentPollTimer = null;
@@ -2610,6 +2650,9 @@
 
     async function api(path, options = {}) {
       const method = (options.method || 'GET').toUpperCase();
+      if (viewerMode && method !== 'GET') {
+        throw new Error('This dashboard is read-only.');
+      }
       const { skipDashboardCache = false, ...requestOptions } = options;
       const cacheKey = !skipDashboardCache && method === 'GET' && !requestOptions.body
         ? dashboardApiCacheKey(path)
@@ -2919,6 +2962,85 @@
       }, 30000);
     }
 
+    function isViewerSafeButton(button) {
+      return button.matches([
+        'nav button',
+        '.metric-button',
+        '.chat-item',
+        '[data-go]',
+        '[data-open-online-members]',
+        '[data-open-chat]',
+        '[data-open-progress]',
+        '[data-student-activity]',
+        '[data-open-student-profile]',
+        '[data-telegram-chat-student]',
+        '[data-timeline-previous]',
+        '[data-timeline-current]',
+        '[data-timeline-next]',
+        '#refresh',
+        '#previous',
+        '#next',
+        '#contact-previous',
+        '#contact-next',
+        '#telegram-stats-previous',
+        '#telegram-stats-next',
+        '#telegram-stats-current',
+        '#telegram-members-previous',
+        '#telegram-members-next',
+        '#telegram-members-current',
+        '#payment-calendar-previous',
+        '#payment-calendar-next',
+        '#telegram-payment-month-previous',
+        '#telegram-payment-month-next',
+        '#refresh-es-contacts',
+        '#payment-ledger-refresh',
+        '#score-distribution-refresh',
+        '#refresh-scheduled-lessons',
+        '#toggle-contact-view',
+        '#clear-contact-activity-date',
+        '#close-es-activity',
+        '#student-profile-close',
+        '#dashboard-logout',
+        '#telegram-user-broadcast-preview-toggle',
+        '#telegram-user-broadcast-preview-more',
+        '#discount-offer-more',
+        '[aria-label^="Show the previous"]',
+        '[aria-label^="Show the next"]'
+      ].join(','));
+    }
+
+    function configureViewerMode() {
+      if (document.body.classList.contains('viewer-mode')) return;
+      document.body.classList.add('viewer-mode');
+      $('#viewer-mode-banner').hidden = false;
+      $('.local-tag').innerHTML = '<i class="local-dot"></i> Read-only viewer';
+      $('#dashboard-logout').textContent = 'Leave viewer';
+      $('.brand strong').textContent = 'eShool Viewer';
+      $('.side-note').innerHTML = '<b>Read-only access</b>Browse student progress, activity, curriculum, and payment information. Editing and messaging are disabled.';
+      document.title = 'eShool | Read-only dashboard';
+
+      const lockButtons = root => {
+        if (root.matches?.('button') && !isViewerSafeButton(root)) {
+          root.disabled = true;
+          root.title = 'Unavailable in read-only view.';
+        }
+        root.querySelectorAll?.('button').forEach(button => {
+          if (isViewerSafeButton(button)) return;
+          button.disabled = true;
+          button.title = 'Unavailable in read-only view.';
+        });
+      };
+      lockButtons(document);
+      viewerControlsObserver = new MutationObserver(records => {
+        for (const record of records) {
+          record.addedNodes.forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE) lockButtons(node);
+          });
+        }
+      });
+      viewerControlsObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
     function showAuthenticationScreen(setupRequired) {
       clearDashboardApiCache();
       if (dashboardEvents) dashboardEvents.close();
@@ -2939,16 +3061,30 @@
       authSetupRequired = setupRequired;
       document.body.classList.add('auth-locked');
       $('#auth-screen').hidden = false;
-      $('#auth-title').textContent = setupRequired ? 'Create a dashboard password' : 'Unlock your dashboard';
+      if (viewerMode) {
+        $('.auth-brand strong').textContent = 'eShool Viewer';
+        $('.auth-brand small').textContent = 'Read-only dashboard access';
+      }
+      $('#auth-title').textContent = setupRequired
+        ? viewerMode ? 'Set up viewer access' : 'Create a dashboard password'
+        : viewerMode ? 'Open read-only dashboard' : 'Unlock your dashboard';
       $('#auth-description').textContent = setupRequired
-        ? 'Choose a strong password to protect student and contact information on this device.'
-        : 'Enter your dashboard password to view student and contact information.';
+        ? viewerMode
+          ? 'Create a separate password for the read-only dashboard. Setup is allowed only after signing in to the local admin dashboard.'
+          : 'Choose a strong password to protect student and contact information on this device.'
+        : viewerMode
+          ? 'Enter your viewer password to view dashboard information without admin controls.'
+          : 'Enter your dashboard password to view student and contact information.';
       $('#auth-confirm-field').hidden = !setupRequired;
       $('#auth-password').autocomplete = setupRequired ? 'new-password' : 'current-password';
       $('#auth-confirm-password').required = setupRequired;
-      $('#auth-submit').textContent = setupRequired ? 'Set password and unlock' : 'Unlock dashboard';
+      $('#auth-submit').textContent = setupRequired
+        ? viewerMode ? 'Set viewer password' : 'Set password and unlock'
+        : viewerMode ? 'View dashboard' : 'Unlock dashboard';
       $('#auth-help').textContent = setupRequired
-        ? 'Use at least 12 characters. The password is stored locally as a salted scrypt hash. If you forget it, remove data/admin_auth.json while the dashboard is stopped to set a new one.'
+        ? viewerMode
+          ? 'Use at least 12 characters. First unlock the local admin dashboard in this browser, then return here to set up viewer access.'
+          : 'Use at least 12 characters. The password is stored locally as a salted scrypt hash. If you forget it, remove data/admin_auth.json while the dashboard is stopped to set a new one.'
         : 'Your session expires after 12 hours or when the dashboard restarts.';
       $('#auth-error').textContent = '';
       $('#auth-password').value = '';
@@ -2967,15 +3103,18 @@
       $('#auth-screen').hidden = true;
       $('#auth-password').value = '';
       $('#auth-confirm-password').value = '';
+      if (viewerMode) configureViewerMode();
       if (dashboardStarted) return;
       dashboardStarted = true;
-      updateDashboardNotificationsControl();
-      if (dashboardNotificationsWereEnabled()) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-          enableDashboardNotifications();
-        } else {
-          setDashboardNotificationsPreference(false);
-          updateDashboardNotificationsControl('Notifications are no longer permitted in browser settings.');
+      if (!viewerMode) {
+        updateDashboardNotificationsControl();
+        if (dashboardNotificationsWereEnabled()) {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            enableDashboardNotifications();
+          } else {
+            setDashboardNotificationsPreference(false);
+            updateDashboardNotificationsControl('Notifications are no longer permitted in browser settings.');
+          }
         }
       }
       refreshAll();
@@ -3442,6 +3581,8 @@
         throw new Error('Weekly chat activity data is incomplete.');
       }
       const days = activity.days.map(day => ({ ...day }));
+      const periodStart = days[0].date;
+      const periodEnd = days.at(-1).date;
       if (days.every(day => day.telegramActiveStudents === undefined)) {
         const telegramCounts = new Map();
         const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -3535,7 +3676,7 @@
         return `<circle class="weekly-chat-point" cx="${point.x}" cy="${point.y}" r="5"><title>${escapeHtml(description)}</title></circle><circle class="weekly-chat-new-point" cx="${point.x}" cy="${point.newY}" r="4"><title>${escapeHtml(description)}</title></circle>${point.telegramActiveStudents ? `<circle class="weekly-chat-telegram-point" cx="${point.x}" cy="${point.telegramY}" r="4"></circle>` : ''}<circle class="weekly-chat-joins-point" cx="${point.x}" cy="${point.joinsY}" r="3"><title>${escapeHtml(telegramDescription)}</title></circle><text class="weekly-chat-count weekly-chat-count-all" x="${point.x}" y="${point.y - 10}" text-anchor="middle">${point.chats}</text><text class="weekly-chat-count weekly-chat-count-new" x="${point.x}" y="${point.newY + 16}" text-anchor="middle">${point.newChats}</text><text x="${point.x}" y="${height - 37}" text-anchor="middle">${escapeHtml(point.day)}</text><text x="${point.x}" y="${height - 23}" text-anchor="middle">${escapeHtml(labelDate)}</text><text class="weekly-chat-count weekly-chat-count-joins" x="${point.x}" y="${point.joinsY - 10}" text-anchor="middle" aria-label="${point.telegramJoins} Telegram group joins">${point.telegramJoins}</text><circle class="weekly-chat-telegram-hit-point" cx="${point.x}" cy="${point.telegramY}" r="8" tabindex="0" role="img" aria-label="${escapeHtml(telegramDescription)}" aria-describedby="weekly-chat-tooltip" data-weekly-tooltip="${escapeHtml(telegramDescription)}"><title>${escapeHtml(telegramDescription)}</title></circle>`;
       }).join('');
       container.innerHTML = `
-        <svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Daily active WhatsApp chats and new conversations, plus Telegram active learners and group joins shown on a shared separate scale, for the last seven days">
+        <svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Daily active WhatsApp chats and new conversations, plus Telegram active learners and group joins shown on a shared separate scale, ${periodStart} through ${periodEnd}">
           ${grid}
           <polygon class="weekly-chat-area" points="${chatArea}"></polygon>
           <polyline class="weekly-chat-line" points="${line}"></polyline>
@@ -3590,7 +3731,7 @@
           <p class="weekly-chat-stat-note">${note}</p>
         </div>`).join('');
       $('#weekly-chat-note').textContent =
-        `Last 7 calendar days · ${activity.timeZone} · Today may be incomplete`;
+        `Seven calendar days through ${formatDateKey(periodEnd)} · ${activity.timeZone}${periodEnd === getDateKeyInTimeZone(activity.timeZone) ? ' · Today may be incomplete' : ''}`;
     }
 
     function renderTelegramClasses(classes) {
@@ -3639,7 +3780,7 @@
             </div>`).join('')}
           </div>
           <div class="telegram-class-trend" role="img"
-            aria-label="${escapeHtml(`${classStats.name} daily group joins and active learners for the last ${dailyStats.length} days`)}">
+            aria-label="${escapeHtml(`${classStats.name} daily group joins and active learners from ${dailyStats[0]?.date || ''} through ${dailyStats.at(-1)?.date || ''}`)}">
             ${trend}
           </div>
           <div class="telegram-class-trend-legend">
@@ -3936,16 +4077,119 @@
       }).format(new Date(`${dateKey}T12:00:00Z`));
     }
 
+    const timelineGestureBindings = new WeakMap();
+    const timelineControlBindings = new WeakMap();
+
+    function attachTimelineGestures(chart, onNavigate, periodDays) {
+      let binding = timelineGestureBindings.get(chart);
+      if (!binding) {
+        binding = { onNavigate, periodDays };
+        timelineGestureBindings.set(chart, binding);
+        chart.classList.add('timeline-pan-target');
+        chart.tabIndex = 0;
+        chart.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight');
+        chart.setAttribute('aria-label',
+          `${chart.getAttribute('aria-label') || 'Time-series chart'}. Drag horizontally to browse dates; focus and use the arrow keys to navigate.`);
+        chart.addEventListener('pointerdown', event => {
+          if (event.button !== 0 ||
+              (event.target instanceof Element &&
+                event.target.closest('button,a,input,select,textarea'))) return;
+          event.preventDefault();
+          binding.pointerId = event.pointerId;
+          binding.startX = event.clientX;
+          chart.classList.add('timeline-pan-active');
+          chart.setPointerCapture(event.pointerId);
+        });
+        chart.addEventListener('pointerup', event => {
+          if (event.pointerId !== binding.pointerId) return;
+          const distance = event.clientX - binding.startX;
+          binding.pointerId = null;
+          chart.classList.remove('timeline-pan-active');
+          if (Math.abs(distance) < 12) return;
+          const width = chart.getBoundingClientRect().width;
+          if (!width) return;
+          const shiftDays = Math.max(1, Math.round(
+            Math.abs(distance) / width * binding.periodDays
+          ));
+          binding.onNavigate(distance < 0 ? 1 : -1, shiftDays);
+        });
+        chart.addEventListener('pointercancel', () => {
+          binding.pointerId = null;
+          chart.classList.remove('timeline-pan-active');
+        });
+        chart.addEventListener('keydown', event => {
+          if (event.target !== chart) return;
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            binding.onNavigate(event.key === 'ArrowRight' ? 1 : -1);
+          }
+        });
+      } else {
+        binding.onNavigate = onNavigate;
+        binding.periodDays = periodDays;
+      }
+    }
+
+    function configureTimelineNavigation(host, charts, {
+      days,
+      endDate,
+      maxEndDate,
+      onNavigate
+    }) {
+      let controls = host.previousElementSibling;
+      if (!controls?.classList.contains('timeline-controls')) {
+        controls = document.createElement('div');
+        controls.className = 'timeline-controls';
+        controls.innerHTML = `
+          <button type="button" data-timeline-previous></button>
+          <span data-timeline-range role="status" aria-live="polite"></span>
+          <button type="button" data-timeline-current>Current</button>
+          <button type="button" data-timeline-next></button>`;
+        host.before(controls);
+        const binding = { onNavigate };
+        timelineControlBindings.set(controls, binding);
+        controls.querySelector('[data-timeline-previous]').addEventListener('click', () =>
+          binding.onNavigate(-1));
+        controls.querySelector('[data-timeline-current]').addEventListener('click', () =>
+          binding.onNavigate(0));
+        controls.querySelector('[data-timeline-next]').addEventListener('click', () =>
+          binding.onNavigate(1));
+      }
+      const controlBinding = timelineControlBindings.get(controls);
+      controlBinding.onNavigate = onNavigate;
+      controls.querySelector('[data-timeline-previous]').textContent =
+        `← Previous ${days} days`;
+      controls.querySelector('[data-timeline-next]').textContent =
+        `Next ${days} days →`;
+      controls.querySelector('[data-timeline-range]').textContent =
+        `${formatDateKey(shiftDateKey(endDate, 1 - days))} – ${formatDateKey(endDate)}`;
+      controls.querySelector('[data-timeline-current]').disabled = endDate >= maxEndDate;
+      controls.querySelector('[data-timeline-next]').disabled = endDate >= maxEndDate;
+      for (const chart of charts) attachTimelineGestures(chart, onNavigate, days);
+    }
+
     async function loadTelegramStats() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const today = getDateKeyInTimeZone(timeZone);
       telegramStatsWindowEndDate ||= today;
       if (telegramStatsWindowEndDate > today) telegramStatsWindowEndDate = today;
+      const requestedEndDate = telegramStatsWindowEndDate;
       const stats = await api(`/api/admin/telegram-stats?${new URLSearchParams({
         timeZone,
-        endDate: telegramStatsWindowEndDate
+        endDate: requestedEndDate
       })}`);
+      if (requestedEndDate !== telegramStatsWindowEndDate) return;
       renderTelegramStats(stats, timeZone);
+      attachTimelineGestures($('#telegram-stats-chart'), (direction, dragDays) => {
+        if (direction > 0 && $('#telegram-stats-next').disabled) return;
+        const endDate = telegramStatsWindowEndDate || today;
+        telegramStatsWindowEndDate = direction === 0
+          ? today
+          : shiftDateKey(endDate, direction * (dragDays || 30));
+        if (telegramStatsWindowEndDate > today) telegramStatsWindowEndDate = today;
+        loadTelegramStats().catch(error =>
+          showError(`Could not browse Telegram statistics: ${error.message}`));
+      }, 30);
       const groupMemberHistory = Array.isArray(stats.groupMemberHistory)
         ? stats.groupMemberHistory.filter(snapshot =>
             typeof snapshot?.date === 'string' &&
@@ -3961,6 +4205,25 @@
       }
       const memberHistoryStartDate = shiftDateKey(telegramMemberHistoryEndDate, -29);
       renderTelegramMemberHistory(groupMemberHistory, telegramMemberHistoryEndDate);
+      attachTimelineGestures($('#telegram-members-history-chart'), (direction, dragDays) => {
+        if (direction < 0 && $('#telegram-members-previous').disabled) return;
+        if (direction > 0 && $('#telegram-members-next').disabled) return;
+        if (direction === 0) {
+          telegramMemberHistoryFollowsLatest = true;
+          telegramMemberHistoryEndDate = null;
+        } else {
+          telegramMemberHistoryFollowsLatest = false;
+          telegramMemberHistoryEndDate = shiftDateKey(
+            telegramMemberHistoryEndDate || latestMemberSnapshotDate,
+            direction * (dragDays || 30)
+          );
+          if (telegramMemberHistoryEndDate > latestMemberSnapshotDate) {
+            telegramMemberHistoryEndDate = latestMemberSnapshotDate;
+          }
+        }
+        loadTelegramStats().catch(error =>
+          showError(`Could not browse group membership history: ${error.message}`));
+      }, 30);
       $('#telegram-stats-range').textContent =
         `${formatDateKey(stats.periodStart)} – ${formatDateKey(stats.periodEnd)}`;
       $('#telegram-stats-next').disabled = stats.periodEnd >= today;
@@ -3976,7 +4239,23 @@
 
     async function loadOverview() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const data = await api(`/api/admin/telegram-overview?${new URLSearchParams({ timeZone })}`);
+      const today = getDateKeyInTimeZone(timeZone);
+      telegramClassWindowEndDate ||= today;
+      weeklyChatWindowEndDate ||= today;
+      if (telegramClassWindowEndDate > today) telegramClassWindowEndDate = today;
+      if (weeklyChatWindowEndDate > today) weeklyChatWindowEndDate = today;
+      const classEndDate = telegramClassWindowEndDate;
+      const weeklyEndDate = weeklyChatWindowEndDate;
+      const [data, overview] = await Promise.all([
+        api(`/api/admin/telegram-overview?${new URLSearchParams({
+          timeZone,
+          endDate: classEndDate
+        })}`),
+        api(`/api/admin/overview?${new URLSearchParams({
+          timeZone,
+          endDate: weeklyEndDate
+        })}`)
+      ]);
       $('#metric-telegram-students').textContent = data.telegramStudents.toLocaleString();
       $('#metric-telegram-joins').textContent =
         `Joined today ${data.telegramJoinedToday.toLocaleString()} · last 7 days ${data.telegramJoinedLast7Days.toLocaleString()}`;
@@ -3985,6 +4264,47 @@
       $('#metric-telegram-lessons-completed-recent').textContent =
         `Last 7 days ${data.telegramLessonCompletionsLast7Days.toLocaleString()}`;
       renderTelegramClasses(data.telegramClasses);
+      if (classEndDate === telegramClassWindowEndDate) {
+        configureTimelineNavigation(
+          $('#telegram-class-grid'),
+          [...$('#telegram-class-grid').querySelectorAll('.telegram-class-trend')],
+          {
+            days: 30,
+            endDate: classEndDate,
+            maxEndDate: today,
+            onNavigate: (direction, dragDays) => {
+              const currentEndDate = telegramClassWindowEndDate || classEndDate;
+              telegramClassWindowEndDate = direction === 0
+                ? today
+                : shiftDateKey(currentEndDate, direction * (dragDays || 30));
+              if (telegramClassWindowEndDate > today) telegramClassWindowEndDate = today;
+              loadOverview().catch(error =>
+                showError(`Could not browse Telegram class activity: ${error.message}`));
+            }
+          }
+        );
+      }
+      if (weeklyEndDate === weeklyChatWindowEndDate) {
+        renderWeeklyChatActivity(overview.weeklyChatActivity);
+        configureTimelineNavigation(
+          $('#weekly-chat-chart'),
+          [$('#weekly-chat-chart')],
+          {
+            days: 7,
+            endDate: weeklyEndDate,
+            maxEndDate: today,
+            onNavigate: (direction, dragDays) => {
+              const currentEndDate = weeklyChatWindowEndDate || weeklyEndDate;
+              weeklyChatWindowEndDate = direction === 0
+                ? today
+                : shiftDateKey(currentEndDate, direction * (dragDays || 7));
+              if (weeklyChatWindowEndDate > today) weeklyChatWindowEndDate = today;
+              loadOverview().catch(error =>
+                showError(`Could not browse weekly chat activity: ${error.message}`));
+            }
+          }
+        );
+      }
       const genderStatistics = data.telegramGenderStatistics;
       if (!genderStatistics ||
           !Number.isInteger(genderStatistics.female) ||
@@ -4013,7 +4333,7 @@
       if (activeChatsOnly) query.set('active', '24h');
       if (handledChatsOnly) query.set('handled', '1');
       const data = await api(`/api/admin/chats?${query}`);
-      if ($('#section-chats').classList.contains('active') && !handledChatsOnly && data.chats.length) {
+      if (!viewerMode && $('#section-chats').classList.contains('active') && !handledChatsOnly && data.chats.length) {
         const jids = [selectedJid, ...data.chats.map(chat => chat.jid)]
           .filter((jid, index, all) => jid && all.indexOf(jid) === index)
           .slice(0, 30);
@@ -4052,11 +4372,13 @@
 
     async function loadConversation(jid) {
       selectedJid = jid;
-      await api('/api/admin/chat-read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jid })
-      });
+      if (!viewerMode) {
+        await api('/api/admin/chat-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jid })
+        });
+      }
       await loadChats();
       const query = new URLSearchParams({ jid });
       const conversation = await api(`/api/admin/conversation?${query}`);
@@ -4099,17 +4421,19 @@
       $('#send-chat-message').disabled = !$('#chat-message').value.trim();
       $('#activity-days').disabled = false;
       await Promise.all([loadDirectMessageStatuses(jid), loadStudentActivity(jid)]);
-      try {
-        await api('/api/admin/presence-subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jid })
-        });
-      } catch (error) {
-        console.error('[Dashboard] Could not request WhatsApp presence:', error.message);
-        const presence = $('#conversation-presence');
-        if (presence && jid === selectedJid) {
-          presence.innerHTML = presenceMarkup(null, { alwaysShow: true });
+      if (!viewerMode) {
+        try {
+          await api('/api/admin/presence-subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jid })
+          });
+        } catch (error) {
+          console.error('[Dashboard] Could not request WhatsApp presence:', error.message);
+          const presence = $('#conversation-presence');
+          if (presence && jid === selectedJid) {
+            presence.innerHTML = presenceMarkup(null, { alwaysShow: true });
+          }
         }
       }
     }
@@ -4167,23 +4491,50 @@
     async function loadStudentActivity(jid = selectedJid) {
       if (!jid) return;
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const today = getDateKeyInTimeZone(timeZone);
+      activityWindowEndDate ||= today;
+      if (activityWindowEndDate > today) activityWindowEndDate = today;
+      const endDate = activityWindowEndDate;
       const query = new URLSearchParams({
         jid,
         days: String(activityDays),
-        timeZone
+        timeZone,
+        endDate
       });
       const activity = await api(`/api/admin/student-activity?${query}`);
-      if (jid !== selectedJid) return;
+      if (jid !== selectedJid ||
+          activity.days !== activityDays ||
+          endDate !== activityWindowEndDate) return;
+      const periodStart = activity.dailyActivity[0]?.date || endDate;
+      const periodEnd = activity.dailyActivity.at(-1)?.date || endDate;
 
       const estimatePrefix = activity.activeDays < 3 ? 'Early estimate · ' : '';
       $('#activity-summary').textContent =
-        `${estimatePrefix}${activity.totalMessages.toLocaleString()} incoming messages across ${activity.activeDays.toLocaleString()} active days in the last ${activity.days} days · ${activity.timeZone}`;
+        `${estimatePrefix}${activity.totalMessages.toLocaleString()} incoming messages across ${activity.activeDays.toLocaleString()} active days from ${formatDateKey(periodStart)} through ${formatDateKey(periodEnd)} · ${activity.timeZone}`;
       renderPresenceMetrics(activity.presence, '#activity-presence-metrics');
       renderLessonFollowThrough(activity.lessonProgress, '#activity-lesson-follow-through');
       renderStudentMessageTrend(activity.dailyActivity, '#activity-message-trend');
       renderStudentResponseTrend(activity, '#activity-response-summary', '#activity-response-trend');
       renderActivityHeatmap(activity, '#activity-grid-wrap');
       renderHourlyActivityChart(activity, '#activity-hourly-chart');
+      configureTimelineNavigation(
+        $('#activity-message-trend'),
+        [$('#activity-message-trend'), $('#activity-response-trend')],
+        {
+          days: activityDays,
+          endDate,
+          maxEndDate: today,
+          onNavigate: (direction, dragDays) => {
+            const currentEndDate = activityWindowEndDate || endDate;
+            activityWindowEndDate = direction === 0
+              ? today
+              : shiftDateKey(currentEndDate, direction * (dragDays || activityDays));
+            if (activityWindowEndDate > today) activityWindowEndDate = today;
+            loadStudentActivity().catch(error =>
+              showError(`Could not browse student message activity: ${error.message}`));
+          }
+        }
+      );
     }
 
     function formatPresenceDuration(durationMs) {
@@ -4263,7 +4614,16 @@
       container.innerHTML = `<strong>Lesson follow-through</strong><div>${escapeHtml(lessonProgress.gradeName)} · ${escapeHtml(lessonProgress.lessonTitle || 'No current lesson')} · ${escapeHtml(labels[lessonProgress.status] || lessonProgress.status)}</div><small>Last lesson delivery: ${escapeHtml(formatDate(lessonProgress.deliveredAt))}</small>`;
     }
 
-    function renderRosterInsights(insights, summarySelector, chartSelector, followUpSummarySelector, followUpListSelector, timeZone, students) {
+    function renderRosterInsights(
+      insights,
+      summarySelector,
+      chartSelector,
+      followUpSummarySelector,
+      followUpListSelector,
+      timeZone,
+      students,
+      trendEndDate
+    ) {
       const summary = $(summarySelector);
       const chart = $(chartSelector);
       const followUpSummary = $(followUpSummarySelector);
@@ -4290,6 +4650,8 @@
         Math.max(day.activeStudents, day.telegramActiveStudents || 0)));
       const maximumTelegram = Math.max(1, ...trend.map(day => day.telegramActiveStudents || 0));
       const maximumMessages = Math.max(1, ...trend.map(day => day.incomingMessages));
+      const trendStartDate = trend[0]?.date || trendEndDate;
+      const actualTrendEndDate = trend.at(-1)?.date || trendEndDate;
       const activeLinePoints = trend.map((day, index) => {
         const x = trend.length > 1 ? 10 + index * 580 / (trend.length - 1) : 300;
         const y = 130 - day.activeStudents / maximumActive * 118;
@@ -4305,12 +4667,12 @@
       const peakActive = Math.max(0, ...trend.map(day => day.activeStudents));
       summary.innerHTML = `
         <div class="engagement-metric-grid">
-          <div class="engagement-metric"><span>Active students</span><strong>${activeStudents.toLocaleString()}</strong><small>last 7 days</small></div>
-          <div class="engagement-metric"><span>Student messages</span><strong>${messagesLast7Days.toLocaleString()}</strong><small>last 7 days</small></div>
-          <div class="engagement-metric"><span>Daily peak</span><strong>${peakActive.toLocaleString()}</strong><small>last 30 days</small></div>
+          <div class="engagement-metric"><span>Active students</span><strong>${activeStudents.toLocaleString()}</strong><small>7 days ending ${formatDateKey(actualTrendEndDate)}</small></div>
+          <div class="engagement-metric"><span>Student messages</span><strong>${messagesLast7Days.toLocaleString()}</strong><small>7 days ending ${formatDateKey(actualTrendEndDate)}</small></div>
+          <div class="engagement-metric"><span>Daily peak</span><strong>${peakActive.toLocaleString()}</strong><small>30 days ending ${formatDateKey(actualTrendEndDate)}</small></div>
         </div>`;
       chart.innerHTML = trend.length ? `
-        <div class="student-insight-chart-wrap" role="img" aria-label="Daily active tracked students and incoming student messages over the last 30 days. Telegram active students use a separate scale.">
+        <div class="student-insight-chart-wrap" role="img" aria-label="Daily active tracked students and incoming student messages from ${trendStartDate} through ${actualTrendEndDate}. Telegram active students use a separate scale.">
           <div class="student-insight-chart">
             ${trend.map((day, index) => {
               const messageHeight = day.incomingMessages ? Math.max(3, day.incomingMessages / maximumMessages * 118) : 0;
@@ -4324,6 +4686,21 @@
             <polyline class="telegram-line" points="${telegramLinePoints}"></polyline>
           </svg>
         </div>` : '<div class="empty">No tracked student engagement data.</div>';
+      configureTimelineNavigation(chart, [chart], {
+        days: 30,
+        endDate: trendEndDate,
+        maxEndDate: getDateKeyInTimeZone(timeZone),
+        onNavigate: (direction, dragDays) => {
+          const today = getDateKeyInTimeZone(timeZone);
+          const currentEndDate = progressTrendWindowEndDate || trendEndDate;
+          progressTrendWindowEndDate = direction === 0
+            ? today
+            : shiftDateKey(currentEndDate, direction * (dragDays || 30));
+          if (progressTrendWindowEndDate > today) progressTrendWindowEndDate = today;
+          loadProgress().catch(error =>
+            showError(`Could not browse student engagement: ${error.message}`));
+        }
+      });
       const followUps = insights?.followUpStudents || [];
       followUpSummary.textContent = `${followUps.length.toLocaleString()} students have a pending exercise and no recorded activity for at least 7 days. Open a student to check in personally; the inactivity filter below can find others.`;
       followUpList.innerHTML = followUps.length ? followUps.slice(0, 10).map(student => {
@@ -4336,11 +4713,11 @@
       }).join('') : '<div class="empty">No overdue lesson follow-ups right now.</div>';
     }
 
-    function renderTelegramEnrollment(enrollment, timeZone) {
+    function renderTelegramEnrollment(enrollment, timeZone, enrollmentEndDate) {
       const days = enrollment?.dailyJoins || [];
       const maximum = Math.max(1, ...days.map(day => day.students));
       $('#telegram-enrollment-summary').textContent =
-        `${(enrollment?.totalStudents || 0).toLocaleString()} Telegram accounts with saved progress · ${(enrollment?.joinedToday || 0).toLocaleString()} joined today · ${(enrollment?.joinedLast7Days || 0).toLocaleString()} in the last 7 calendar days · ${timeZone}. Join dates are recorded from when the bot is added to the group.`;
+        `${(enrollment?.totalStudents || 0).toLocaleString()} Telegram accounts with saved progress · ${(enrollment?.joinedToday || 0).toLocaleString()} joined on ${formatDateKey(enrollmentEndDate)} · ${(enrollment?.joinedLast7Days || 0).toLocaleString()} in the seven days ending then · ${timeZone}. Join dates are recorded from when the bot is added to the group.`;
       $('#telegram-join-chart').innerHTML = days.length ? days.map(day => {
         const height = day.students ? Math.max(3, day.students / maximum * 46) : 2;
         const label = new Intl.DateTimeFormat(undefined, {
@@ -4349,6 +4726,30 @@
         }).format(new Date(`${day.date}T12:00:00Z`));
         return `<div class="telegram-join-day" title="${escapeHtml(day.date)}: ${day.students} joined"><span>${day.students}</span><i style="height:${height}px"></i><small>${escapeHtml(label)}</small></div>`;
       }).join('') : '<div class="empty">No Telegram enrollment dates recorded yet.</div>';
+      configureTimelineNavigation(
+        $('#telegram-join-chart'),
+        [$('#telegram-join-chart')],
+        {
+          days: 7,
+          endDate: enrollmentEndDate,
+          maxEndDate: getDateKeyInTimeZone(timeZone),
+          onNavigate: (direction, dragDays) => {
+            const today = getDateKeyInTimeZone(timeZone);
+            const currentEndDate = telegramEnrollmentWindowEndDate || enrollmentEndDate;
+            telegramEnrollmentWindowEndDate = direction === 0
+              ? today
+              : shiftDateKey(
+                currentEndDate,
+                direction * (dragDays || 7)
+              );
+            if (telegramEnrollmentWindowEndDate > today) {
+              telegramEnrollmentWindowEndDate = today;
+            }
+            loadProgress().catch(error =>
+              showError(`Could not browse Telegram enrollment: ${error.message}`));
+          }
+        }
+      );
     }
 
     function renderPresenceMetrics(presence, containerSelector) {
@@ -4470,32 +4871,61 @@
 
     async function loadEsStudentActivity() {
       if (!esActivityJid) return;
-      api('/api/admin/presence-subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jid: esActivityJid })
-      }).catch(error => console.error('[Dashboard] Could not request student presence:', error.message));
+      if (!viewerMode) {
+        api('/api/admin/presence-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jid: esActivityJid })
+        }).catch(error => console.error('[Dashboard] Could not request student presence:', error.message));
+      }
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const today = getDateKeyInTimeZone(timeZone);
+      esActivityWindowEndDate ||= today;
+      if (esActivityWindowEndDate > today) esActivityWindowEndDate = today;
+      const endDate = esActivityWindowEndDate;
       const query = new URLSearchParams({
         jid: esActivityJid,
         days: String(esActivityDays),
-        timeZone
+        timeZone,
+        endDate
       });
       $('#es-activity-title').textContent = `Typical messaging activity · ${esActivityName}`;
       $('#es-activity-summary').textContent = 'Loading incoming-message activity…';
       $('#es-activity-grid').innerHTML = '';
       const activity = await api(`/api/admin/student-activity?${query}`);
-      if (activity.jid !== esActivityJid || activity.days !== esActivityDays) return;
+      if (activity.jid !== esActivityJid ||
+          activity.days !== esActivityDays ||
+          endDate !== esActivityWindowEndDate) return;
+      const periodStart = activity.dailyActivity[0]?.date || endDate;
+      const periodEnd = activity.dailyActivity.at(-1)?.date || endDate;
 
       const estimatePrefix = activity.activeDays < 3 ? 'Early estimate · ' : '';
       $('#es-activity-summary').textContent =
-        `${estimatePrefix}${activity.totalMessages.toLocaleString()} incoming messages across ${activity.activeDays.toLocaleString()} active days in the last ${activity.days} days · ${activity.timeZone}`;
+        `${estimatePrefix}${activity.totalMessages.toLocaleString()} incoming messages across ${activity.activeDays.toLocaleString()} active days from ${formatDateKey(periodStart)} through ${formatDateKey(periodEnd)} · ${activity.timeZone}`;
       renderPresenceMetrics(activity.presence, '#es-activity-presence-metrics');
       renderLessonFollowThrough(activity.lessonProgress, '#es-activity-lesson-follow-through');
       renderStudentMessageTrend(activity.dailyActivity, '#es-activity-message-trend');
       renderStudentResponseTrend(activity, '#es-activity-response-summary', '#es-activity-response-trend');
       renderActivityHeatmap(activity, '#es-activity-grid');
       renderHourlyActivityChart(activity, '#es-activity-hourly-chart');
+      configureTimelineNavigation(
+        $('#es-activity-message-trend'),
+        [$('#es-activity-message-trend'), $('#es-activity-response-trend')],
+        {
+          days: esActivityDays,
+          endDate,
+          maxEndDate: today,
+          onNavigate: (direction, dragDays) => {
+            const currentEndDate = esActivityWindowEndDate || endDate;
+            esActivityWindowEndDate = direction === 0
+              ? today
+              : shiftDateKey(currentEndDate, direction * (dragDays || esActivityDays));
+            if (esActivityWindowEndDate > today) esActivityWindowEndDate = today;
+            loadEsStudentActivity().catch(error =>
+              showError(`Could not browse student message activity: ${error.message}`));
+          }
+        }
+      );
     }
 
     async function loadDirectMessageStatuses(jid = selectedJid) {
@@ -5218,7 +5648,7 @@
       const lastIncomingMessage = messages
         .filter(message => message.role === 'student' && Number.isFinite(Date.parse(message.timestamp)))
         .at(-1);
-      if (lastIncomingMessage &&
+      if (!viewerMode && lastIncomingMessage &&
           $('#telegram-student-chat-panel').classList.contains('has-selection') &&
           selectedStudent?.unread) {
         await api('/api/admin/telegram-student-chat-read', {
@@ -5527,7 +5957,20 @@
 
     async function loadProgress() {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const { students, insights } = await api(`/api/admin/telegram-progress?${new URLSearchParams({ timeZone })}`);
+      const today = getDateKeyInTimeZone(timeZone);
+      progressTrendWindowEndDate ||= today;
+      telegramEnrollmentWindowEndDate ||= today;
+      if (progressTrendWindowEndDate > today) progressTrendWindowEndDate = today;
+      if (telegramEnrollmentWindowEndDate > today) telegramEnrollmentWindowEndDate = today;
+      const trendEndDate = progressTrendWindowEndDate;
+      const enrollmentEndDate = telegramEnrollmentWindowEndDate;
+      const { students, insights } = await api(`/api/admin/telegram-progress?${new URLSearchParams({
+        timeZone,
+        trendEndDate,
+        enrollmentEndDate
+      })}`);
+      if (trendEndDate !== progressTrendWindowEndDate ||
+          enrollmentEndDate !== telegramEnrollmentWindowEndDate) return;
       progressStudents = students;
       renderExerciseScoreDistribution(students);
       renderTelegramStudentChatOptions(students);
@@ -5542,7 +5985,7 @@
         });
       }
       initializeProgressFilters(students);
-      renderTelegramEnrollment(insights.telegramEnrollment, timeZone);
+      renderTelegramEnrollment(insights.telegramEnrollment, timeZone, enrollmentEndDate);
       renderRosterInsights(
         insights,
         '#progress-engagement-summary',
@@ -5550,7 +5993,8 @@
         '#progress-follow-up-summary',
         '#progress-follow-up-list',
         timeZone,
-        students
+        students,
+        trendEndDate
       );
       renderRosterInsights(
         insights,
@@ -5559,7 +6003,8 @@
         '#progress-follow-up-summary-page',
         '#progress-follow-up-list-page',
         timeZone,
-        students
+        students,
+        trendEndDate
       );
       $('#progress-rows').innerHTML = students.length ? students.map(student => {
         const skipRequest = student.skipRequest;
@@ -8154,6 +8599,21 @@
         }
       }
     });
+    const sidebarToggle = $('#sidebar-toggle');
+    const savedSidebarState = localStorage.getItem('dashboard-sidebar-collapsed') === 'true';
+    function setSidebarCollapsed(collapsed) {
+      document.body.classList.toggle('sidebar-collapsed', collapsed);
+      sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+      sidebarToggle.setAttribute('title', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      sidebarToggle.querySelector('.sidebar-toggle-label').textContent =
+        collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+      localStorage.setItem('dashboard-sidebar-collapsed', String(collapsed));
+    }
+    setSidebarCollapsed(savedSidebarState);
+    sidebarToggle.addEventListener('click', () => {
+      setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+    });
+
     document.querySelectorAll('.nav-item').forEach(button => button.addEventListener('click', () => {
       if (button.dataset.section === 'chats') {
         openChats();
@@ -8255,6 +8715,9 @@
     });
     $('#es-activity-days').addEventListener('change', event => {
       esActivityDays = Number(event.target.value);
+      esActivityWindowEndDate = getDateKeyInTimeZone(
+        Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+      );
       loadEsStudentActivity().catch(error => {
         $('#es-activity-summary').textContent = `Could not load activity: ${error.message}`;
       });
@@ -8686,6 +9149,9 @@
     });
     $('#activity-days').addEventListener('change', event => {
       activityDays = Number(event.target.value);
+      activityWindowEndDate = getDateKeyInTimeZone(
+        Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+      );
       loadStudentActivity().catch(error => {
         $('#activity-summary').textContent = `Could not load activity: ${error.message}`;
       });
@@ -8812,6 +9278,7 @@
       const confirmPassword = $('#auth-confirm-password').value;
       const button = $('#auth-submit');
       const error = $('#auth-error');
+      const authPath = viewerMode ? '/api/viewer/auth' : '/api/admin/auth';
       error.textContent = '';
       if (authSetupRequired && password !== confirmPassword) {
         error.textContent = 'The passwords do not match.';
@@ -8820,7 +9287,7 @@
       button.disabled = true;
       try {
         if (authSetupRequired) {
-          const setupResponse = await fetch('/api/admin/auth/setup', {
+          const setupResponse = await fetch(`${authPath}/setup`, {
             method: 'POST',
             headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
             credentials: 'same-origin',
@@ -8830,7 +9297,7 @@
           const setupResult = await setupResponse.json();
           if (!setupResponse.ok) throw new Error(setupResult.error || `Setup failed (${setupResponse.status})`);
         }
-        const loginResponse = await fetch('/api/admin/auth/login', {
+        const loginResponse = await fetch(`${authPath}/login`, {
           method: 'POST',
           headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
           credentials: 'same-origin',
@@ -8852,7 +9319,8 @@
     });
     $('#dashboard-logout').addEventListener('click', async () => {
       try {
-        const response = await fetch('/api/admin/auth/logout', {
+        const authPath = viewerMode ? '/api/viewer/auth' : '/api/admin/auth';
+        const response = await fetch(`${authPath}/logout`, {
           method: 'POST',
           headers: { Accept: 'application/json' },
           credentials: 'same-origin',
@@ -10260,7 +10728,8 @@
 
     async function initializeDashboardAuth() {
       try {
-        const response = await fetch('/api/admin/auth/status', {
+        const authPath = viewerMode ? '/api/viewer/auth' : '/api/admin/auth';
+        const response = await fetch(`${authPath}/status`, {
           headers: { Accept: 'application/json' },
           credentials: 'same-origin',
           cache: 'no-store'

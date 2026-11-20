@@ -362,7 +362,7 @@ function getTelegramLessonCompletionTotals(progress, now) {
   }, { total: 0, last7Days: 0 });
 }
 
-function getTelegramClassStatistics(progress, lessons, groupGrades, now, timeZone) {
+function getTelegramClassStatistics(progress, lessons, groupGrades, now, timeZone, trendEndDate) {
   const classes = new Map();
   for (const [chatId, grade] of groupGrades) {
     const classStats = classes.get(grade) || { grade, groupIds: new Set(), students: new Map() };
@@ -396,7 +396,10 @@ function getTelegramClassStatistics(progress, lessons, groupGrades, now, timeZon
 
   const today = calendarDateKey(now, timeZone);
   const weekCutoff = now - 7 * 24 * 60 * 60 * 1000;
-  const dates = getRecentCalendarDates(now, 30, timeZone);
+  const dates = getCalendarDatesEndingAt(
+    trendEndDate || calendarDateKey(now, timeZone),
+    30
+  );
   return [...classes.values()]
     .map(({ grade, groupIds, students }) => {
       const studentRecords = [...students.values()];
@@ -948,8 +951,27 @@ function telegramActivityTimestamps(student) {
   return Number.isFinite(fallback) ? [fallback] : [];
 }
 
-export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 'UTC') {
+export function listDashboardStudentProgress(
+  data,
+  now = Date.now(),
+  timeZone = 'UTC',
+  trendEndDate = null,
+  enrollmentEndDate = trendEndDate
+) {
   const nowTimestamp = timestampMs(now);
+  const todayDate = calendarDateKey(nowTimestamp, timeZone);
+  const trendEndDateKey = trendEndDate || todayDate;
+  if (!isValidCalendarDateKey(trendEndDateKey) || trendEndDateKey > todayDate) {
+    throw new Error('A valid past or current trend end date is required.');
+  }
+  const enrollmentEndDateKey = enrollmentEndDate || trendEndDateKey;
+  if (!isValidCalendarDateKey(enrollmentEndDateKey) || enrollmentEndDateKey > todayDate) {
+    throw new Error('A valid past or current enrollment end date is required.');
+  }
+  const trendDates = getCalendarDatesEndingAt(trendEndDateKey, 30);
+  const trendStartDate = trendDates[0];
+  const enrollmentDates = getCalendarDatesEndingAt(enrollmentEndDateKey, 7);
+  const enrollmentDatesSet = new Set(enrollmentDates);
   const activityByPhone = new Map();
   const sevenDayCutoff = nowTimestamp - 7 * 24 * 60 * 60 * 1000;
   const thirtyDayCutoff = nowTimestamp - 30 * 24 * 60 * 60 * 1000;
@@ -1180,11 +1202,12 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
     for (const message of messages) {
       if (message.role !== 'client') continue;
       const timestamp = timestampMs(message.timestamp);
-      if (!timestamp || timestamp > nowTimestamp || timestamp < nowTimestamp - 30 * 24 * 60 * 60 * 1000) continue;
+      if (!timestamp || timestamp > nowTimestamp) continue;
       const parts = Object.fromEntries(
         dateFormatter.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
       );
       const date = `${parts.year}-${parts.month}-${parts.day}`;
+      if (date < trendStartDate || date > trendEndDateKey) continue;
       let record = engagementByDate.get(date);
       if (!record) {
         record = {
@@ -1201,8 +1224,9 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
   }
   for (const [key, student] of telegramProgress) {
     for (const timestamp of telegramActivityTimestamps(student)) {
-      if (!Number.isFinite(timestamp) || timestamp > nowTimestamp || timestamp < nowTimestamp - 30 * 24 * 60 * 60 * 1000) continue;
+      if (!Number.isFinite(timestamp) || timestamp > nowTimestamp) continue;
       const date = calendarDateKey(timestamp, timeZone);
+      if (date < trendStartDate || date > trendEndDateKey) continue;
       let record = engagementByDate.get(date);
       if (!record) {
         record = {
@@ -1218,15 +1242,7 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       record.incomingMessages += 1;
     }
   }
-  const todayParts = Object.fromEntries(
-    dateFormatter.formatToParts(new Date(nowTimestamp)).map(part => [part.type, part.value])
-  );
-  const todayDate = `${todayParts.year}-${todayParts.month}-${todayParts.day}`;
-  const recentCalendarDates = getRecentCalendarDates(nowTimestamp, 7, timeZone);
-  const recentDatesSet = new Set(recentCalendarDates);
-  const todayUtc = Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day));
-  const engagementTrend = Array.from({ length: 30 }, (_, index) => {
-    const date = new Date(todayUtc - (29 - index) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const engagementTrend = trendDates.map(date => {
     const record = engagementByDate.get(date);
     return {
       date,
@@ -1250,12 +1266,12 @@ export function listDashboardStudentProgress(data, now = Date.now(), timeZone = 
       telegramEnrollment: {
         totalStudents: telegramStudents.length,
         joinedToday: telegramStudents.filter(student =>
-          student.joinedAt && calendarDateKey(Date.parse(student.joinedAt), timeZone) === todayDate
+          student.joinedAt && calendarDateKey(Date.parse(student.joinedAt), timeZone) === enrollmentEndDateKey
         ).length,
         joinedLast7Days: telegramStudents.filter(student =>
-          student.joinedAt && recentDatesSet.has(calendarDateKey(Date.parse(student.joinedAt), timeZone))
+          student.joinedAt && enrollmentDatesSet.has(calendarDateKey(Date.parse(student.joinedAt), timeZone))
         ).length,
-        dailyJoins: recentCalendarDates.map(date => ({
+        dailyJoins: enrollmentDates.map(date => ({
           date,
           students: telegramStudents.filter(student =>
             student.joinedAt && calendarDateKey(Date.parse(student.joinedAt), timeZone) === date
@@ -1496,7 +1512,12 @@ function contactActivityByPhone(data, readState = {}) {
   return activity;
 }
 
-export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Date.now()) {
+export function getDashboardWeeklyChatActivity(
+  data,
+  timeZone = 'UTC',
+  now = Date.now(),
+  endDate = null
+) {
   const nowTimestamp = timestampMs(now);
   let formatter;
   try {
@@ -1514,11 +1535,14 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
   const nowParts = Object.fromEntries(
     formatter.formatToParts(new Date(nowTimestamp)).map(part => [part.type, part.value])
   );
-  const today = Date.UTC(Number(nowParts.year), Number(nowParts.month) - 1, Number(nowParts.day));
+  const today = `${nowParts.year}-${nowParts.month}-${nowParts.day}`;
+  const periodEnd = endDate || today;
+  if (!isValidCalendarDateKey(periodEnd) || periodEnd > today) {
+    throw new Error('A valid past or current activity end date is required.');
+  }
   const daysByDate = new Map();
-  for (let daysAgo = 6; daysAgo >= 0; daysAgo -= 1) {
-    const date = new Date(today - daysAgo * 24 * 60 * 60 * 1000);
-    const dateKey = date.toISOString().slice(0, 10);
+  for (const dateKey of getCalendarDatesEndingAt(periodEnd, 7)) {
+    const date = new Date(`${dateKey}T00:00:00.000Z`);
     daysByDate.set(dateKey, {
       date: dateKey,
       day: new Intl.DateTimeFormat('en-US', {
@@ -1596,7 +1620,7 @@ export function getDashboardWeeklyChatActivity(data, timeZone = 'UTC', now = Dat
   };
 }
 
-export function getDashboardOverview(data, now = Date.now(), timeZone = 'UTC') {
+export function getDashboardOverview(data, now = Date.now(), timeZone = 'UTC', weeklyEndDate = null) {
   const nowTimestamp = timestampMs(now);
   const directChats = Object.entries(data.history)
     .filter(([jid, messages]) => isDirectChat(jid) && Array.isArray(messages) && messages.length > 0);
@@ -1635,7 +1659,7 @@ export function getDashboardOverview(data, now = Date.now(), timeZone = 'UTC') {
     permanentHistoryContacts: Object.values(data.contacts)
       .filter(contact => contact.isEs === true).length,
     genderStatistics: esContacts.genderStatistics,
-    weeklyChatActivity: getDashboardWeeklyChatActivity(data, timeZone, nowTimestamp),
+    weeklyChatActivity: getDashboardWeeklyChatActivity(data, timeZone, nowTimestamp, weeklyEndDate),
     studentsWithProgress: progressRecords.length + telegramProgressRecords.length,
     awaitingTask: [...progressRecords, ...telegramProgressRecords]
       .filter(student => student.status === 'awaiting_task').length,
@@ -1871,7 +1895,14 @@ export function listRecentAgentMessages(data, limit = 100) {
     .map(({ order, ...message }) => message);
 }
 
-export function getDashboardStudentActivity(data, jid, days, timeZone, now = Date.now()) {
+export function getDashboardStudentActivity(
+  data,
+  jid,
+  days,
+  timeZone,
+  now = Date.now(),
+  endDate = null
+) {
   if (!jid || !isDirectChat(jid)) return null;
   if (![30, 90].includes(days)) throw new Error('Activity range must be 30 or 90 days.');
   if (typeof timeZone !== 'string' || !timeZone.trim() || timeZone.length > 100) {
@@ -1918,7 +1949,6 @@ export function getDashboardStudentActivity(data, jid, days, timeZone, now = Dat
       left.historyOrder - right.historyOrder ||
       left.messageOrder - right.messageOrder);
   if (!histories.length && aliases.length === 0) return null;
-  const cutoff = now - days * 24 * 60 * 60 * 1000;
   const counts = ACTIVITY_WEEKDAYS.map(day => ({ day, hours: Array(24).fill(0) }));
   const hourlyTotals = Array(24).fill(0);
   const activeDates = new Set();
@@ -1937,6 +1967,17 @@ export function getDashboardStudentActivity(data, jid, days, timeZone, now = Dat
     );
     return `${parts.year}-${parts.month}-${parts.day}`;
   };
+  const todayDate = dateKey(now);
+  const periodEnd = endDate || todayDate;
+  if (!isValidCalendarDateKey(periodEnd) || periodEnd > todayDate) {
+    throw new Error('A valid past or current activity end date is required.');
+  }
+  const periodDates = getCalendarDatesEndingAt(periodEnd, days);
+  const periodStart = periodDates[0];
+  const isInPeriod = timestamp => {
+    const date = dateKey(timestamp);
+    return date >= periodStart && date <= periodEnd;
+  };
   let pendingStudentMessageAt = null;
   const responseTimes = [];
   let unansweredIncomingCount = 0;
@@ -1944,7 +1985,9 @@ export function getDashboardStudentActivity(data, jid, days, timeZone, now = Dat
   for (const message of histories) {
     const timestamp = message.timestamp;
     if (timestamp > now) continue;
-    if (message.role === 'client' && timestamp >= cutoff) {
+    const messageDate = dateKey(timestamp);
+    if (messageDate > periodEnd) continue;
+    if (message.role === 'client' && messageDate >= periodStart) {
       totalMessages += 1;
       const key = dateKey(timestamp);
       let daily = dailyActivityByDate.get(key);
@@ -1969,14 +2012,14 @@ export function getDashboardStudentActivity(data, jid, days, timeZone, now = Dat
       continue;
     }
     if (message.role === 'agent') {
-      if (timestamp >= cutoff) {
+      if (messageDate >= periodStart) {
         const key = dateKey(timestamp);
         const daily = dailyActivityByDate.get(key) || { incoming: 0, outgoing: 0 };
         daily.outgoing += 1;
         dailyActivityByDate.set(key, daily);
       }
       if (pendingStudentMessageAt !== null) {
-        if (pendingStudentMessageAt >= cutoff) {
+        if (isInPeriod(pendingStudentMessageAt)) {
           const delay = Math.max(0, timestamp - pendingStudentMessageAt);
           responseTimes.push(delay);
           const key = dateKey(pendingStudentMessageAt);
@@ -1989,16 +2032,10 @@ export function getDashboardStudentActivity(data, jid, days, timeZone, now = Dat
     }
   }
 
-  if (pendingStudentMessageAt !== null && pendingStudentMessageAt >= cutoff) {
+  if (pendingStudentMessageAt !== null && isInPeriod(pendingStudentMessageAt)) {
     unansweredIncomingCount = 1;
   }
-  const todayParts = Object.fromEntries(
-    dailyFormatter.formatToParts(new Date(now)).map(part => [part.type, part.value])
-  );
-  const todayUtc = Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day));
-  const dailyActivity = Array.from({ length: days }, (_, index) => {
-    const date = new Date(todayUtc - (days - 1 - index) * 24 * 60 * 60 * 1000)
-      .toISOString().slice(0, 10);
+  const dailyActivity = periodDates.map(date => {
     const delays = responseTimesByDate.get(date) || [];
     return {
       date,
@@ -2060,6 +2097,22 @@ function isSameOriginLoopbackRequest(req) {
     return parsedOrigin.protocol === 'http:' &&
       parsedOrigin.host === host &&
       ['127.0.0.1', 'localhost', '[::1]'].includes(parsedOrigin.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isSameOriginDashboardRequest(req) {
+  const origin = req.headers.origin;
+  const host = req.headers.host;
+  if (!origin || !host) return false;
+
+  try {
+    const parsedOrigin = new URL(origin);
+    return parsedOrigin.host === host &&
+      (parsedOrigin.protocol === 'https:' ||
+        (parsedOrigin.protocol === 'http:' &&
+          ['127.0.0.1', 'localhost', '[::1]'].includes(parsedOrigin.hostname)));
   } catch {
     return false;
   }
@@ -2497,6 +2550,8 @@ export function createAdminDashboardServer({
   broadcastMediaDirectory = BROADCAST_MEDIA_DIRECTORY,
   authFile = path.join(ROOT_DIR, 'data', 'admin_auth.json'),
   authManager = new DashboardAuth(authFile),
+  viewerAuthFile = path.join(ROOT_DIR, 'data', 'admin_viewer_auth.json'),
+  viewerAuthManager = new DashboardAuth(viewerAuthFile, { cookieName: 'eshool_dashboard_viewer' }),
   contactSyncRequestsFile = CONTACT_SYNC_REQUESTS_FILE,
   contactSyncStatusFile = CONTACT_SYNC_STATUS_FILE,
   blockedContactsFile = BLOCKED_NUMBERS_FILE,
@@ -2725,7 +2780,13 @@ export function createAdminDashboardServer({
     };
     return cachedDashboardData;
   };
-  const getTelegramProgressSnapshot = (timeZone, now = Date.now(), includeMediaProgress = false) => {
+  const getTelegramProgressSnapshot = (
+    timeZone,
+    now = Date.now(),
+    includeMediaProgress = false,
+    trendEndDate = null,
+    enrollmentEndDate = trendEndDate
+  ) => {
     const telegramAccountState = readJsonFileOr(telegramUserBroadcastFiles.state, {});
     const rosterSyncedAt = Date.parse(telegramAccountState.groupRosterSyncedAt || '');
     const presenceIsFresh = Number.isFinite(rosterSyncedAt) &&
@@ -2747,7 +2808,13 @@ export function createAdminDashboardServer({
       lessons: readJsonFile(lessonsFile)
     };
     const genderOverrides = telegramStudentGenders.list();
-    const progress = listDashboardStudentProgress(data, now, timeZone);
+    const progress = listDashboardStudentProgress(
+      data,
+      now,
+      timeZone,
+      trendEndDate,
+      enrollmentEndDate
+    );
     const telegramChatReadState = chatReadState.read();
     const telegramMediaActivities = includeMediaProgress
       ? readAgentMediaActivities(telegramAgentMediaActivityFile)
@@ -3182,16 +3249,88 @@ export function createAdminDashboardServer({
       return;
     }
 
-    if (requestUrl.pathname.startsWith('/api/admin/') && !authManager.isAuthenticated(req)) {
+    if (requestUrl.pathname.startsWith('/api/viewer/auth/')) {
+      if (req.method === 'GET' && requestUrl.pathname === '/api/viewer/auth/status') {
+        try {
+          sendJson(res, 200, viewerAuthManager.status(req));
+        } catch (error) {
+          console.error('[Admin Dashboard] Could not read viewer authentication state:', error.message);
+          sendJson(res, 500, { error: 'Could not read viewer authentication state.' });
+        }
+        return;
+      }
+
+      if (req.method === 'POST' &&
+          ['/api/viewer/auth/setup', '/api/viewer/auth/login', '/api/viewer/auth/logout'].includes(requestUrl.pathname)) {
+        const isSetup = requestUrl.pathname === '/api/viewer/auth/setup';
+        if (isSetup && !isSameOriginLoopbackRequest(req)) {
+          sendJson(res, 403, { error: 'Viewer access can only be set up from this local dashboard.' });
+          return;
+        }
+        if (!isSetup && !isSameOriginDashboardRequest(req)) {
+          sendJson(res, 403, { error: 'Viewer authentication must come from this dashboard.' });
+          return;
+        }
+        if (isSetup && !authManager.isAuthenticated(req)) {
+          sendJson(res, 401, { error: 'Sign in to the local admin dashboard before setting up viewer access.' });
+          return;
+        }
+
+        if (requestUrl.pathname === '/api/viewer/auth/logout') {
+          viewerAuthManager.logout(req);
+          viewerAuthManager.clearCookie(res, new URL(req.headers.origin).protocol === 'https:');
+          sendJson(res, 200, { authenticated: false });
+          return;
+        }
+
+        readRequestBody(req).then(async body => {
+          if (isSetup) {
+            if (body.password !== body.confirmPassword) {
+              sendJson(res, 400, { error: 'The passwords do not match.' });
+              return;
+            }
+            const result = await viewerAuthManager.setup(body.password);
+            sendJson(res, result.ok ? 201 : result.status, result.ok ? { configured: true } : { error: result.error });
+            return;
+          }
+
+          if (!viewerAuthManager.isConfigured()) {
+            sendJson(res, 409, { error: 'Viewer access has not been set up on the local dashboard yet.' });
+            return;
+          }
+          const result = await viewerAuthManager.login(req, body.password);
+          if (!result.ok) {
+            if (result.retryAfter) res.setHeader('Retry-After', String(result.retryAfter));
+            sendJson(res, result.status, { error: result.error });
+            return;
+          }
+          const secure = new URL(req.headers.origin).protocol === 'https:';
+          viewerAuthManager.setCookie(res, result.token, result.maxAge, secure);
+          sendJson(res, 200, { authenticated: true });
+        }).catch(error => {
+          console.error('[Admin Dashboard] Could not process viewer authentication:', error.message);
+          sendJson(res, 500, { error: 'Could not process viewer authentication.' });
+        });
+        return;
+      }
+
+      sendJson(res, 405, { error: 'Method not allowed' });
+      return;
+    }
+
+    const isAdminApi = requestUrl.pathname.startsWith('/api/admin/');
+    const isAdminAuthenticated = authManager.isAuthenticated(req);
+    const isViewerReadRequest = req.method === 'GET' && viewerAuthManager.isAuthenticated(req);
+    if (isAdminApi && !isAdminAuthenticated && !isViewerReadRequest) {
       sendJson(res, 401, { error: 'Dashboard login required.' });
       return;
     }
 
-    if (requestUrl.pathname.startsWith('/api/admin/') &&
+    if (isAdminApi &&
         ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) &&
-        !isSameOriginLoopbackRequest(req)) {
+        (!isAdminAuthenticated || !isSameOriginLoopbackRequest(req))) {
       sendJson(res, 403, {
-        error: 'State-changing dashboard requests must come from this local dashboard.'
+        error: 'State-changing dashboard requests require a local admin session.'
       });
       return;
     }
@@ -3223,10 +3362,34 @@ export function createAdminDashboardServer({
 
       try {
         const now = Date.now();
+        const dateParameter = requestUrl.pathname === '/api/admin/telegram-progress'
+          ? 'trendEndDate'
+          : 'endDate';
+        const requestedEndDate = requestUrl.searchParams.get(dateParameter);
+        const requestedEnrollmentEndDate =
+          requestUrl.pathname === '/api/admin/telegram-progress'
+            ? requestUrl.searchParams.get('enrollmentEndDate')
+            : null;
+        const today = calendarDateKey(now, timeZone);
+        if (requestedEndDate &&
+            (!isValidCalendarDateKey(requestedEndDate) || requestedEndDate > today)) {
+          sendJson(res, 400, { error: 'A valid past or current end date is required.' });
+          return;
+        }
+        if (requestedEnrollmentEndDate &&
+            (!isValidCalendarDateKey(requestedEnrollmentEndDate) ||
+              requestedEnrollmentEndDate > today)) {
+          sendJson(res, 400, { error: 'A valid past or current enrollment end date is required.' });
+          return;
+        }
         const progress = getTelegramProgressSnapshot(
           timeZone,
           now,
+          requestUrl.pathname === '/api/admin/telegram-progress',
+          requestUrl.pathname === '/api/admin/telegram-progress' ? requestedEndDate : null,
           requestUrl.pathname === '/api/admin/telegram-progress'
+            ? requestedEnrollmentEndDate
+            : null
         );
         if (requestUrl.pathname === '/api/admin/telegram-progress') {
           sendJson(res, 200, progress);
@@ -3253,7 +3416,8 @@ export function createAdminDashboardServer({
           lessons,
           telegramGroupGrades,
           now,
-          timeZone
+          timeZone,
+          requestedEndDate
         );
         const sumClassStatistics = key => telegramClasses.reduce((total, classStats) =>
           total + classStats[key], 0);
@@ -3760,7 +3924,8 @@ export function createAdminDashboardServer({
       return;
     }
 
-    if (req.method === 'GET' && (requestUrl.pathname === '/' || requestUrl.pathname === '/admin')) {
+    if (req.method === 'GET' &&
+        ['/', '/admin', '/viewer'].includes(requestUrl.pathname)) {
       const htmlPath = path.join(ROOT_DIR, 'public', 'admin.html');
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
@@ -6153,10 +6318,16 @@ export function createAdminDashboardServer({
         const timeZone = requestUrl.searchParams.get('timeZone') || 'UTC';
         try {
           const now = Date.now();
+          const endDate = requestUrl.searchParams.get('endDate');
+          const today = calendarDateKey(now, timeZone);
+          if (endDate && (!isValidCalendarDateKey(endDate) || endDate > today)) {
+            sendJson(res, 400, { error: 'A valid past or current end date is required.' });
+            return;
+          }
           const overview = memoizeDashboardQuery(
             data,
-            `overview:${timeZone}:${Math.floor(now / 60_000)}`,
-            () => getDashboardOverview(data, now, timeZone)
+            `overview:${timeZone}:${endDate || today}:${Math.floor(now / 60_000)}`,
+            () => getDashboardOverview(data, now, timeZone, endDate)
           );
           sendJson(res, 200, overview);
         } catch (error) {
@@ -6347,11 +6518,20 @@ export function createAdminDashboardServer({
           sendJson(res, 400, { error: 'The requested timezone is invalid.' });
           return;
         }
+        const now = Date.now();
+        const endDate = requestUrl.searchParams.get('endDate');
+        if (endDate &&
+            (!isValidCalendarDateKey(endDate) || endDate > calendarDateKey(now, timeZone))) {
+          sendJson(res, 400, { error: 'A valid past or current activity end date is required.' });
+          return;
+        }
         const activity = getDashboardStudentActivity(
           data,
           requestUrl.searchParams.get('jid'),
           Number(daysValue),
-          timeZone
+          timeZone,
+          now,
+          endDate
         );
         if (!activity) {
           sendJson(res, 404, { error: 'Chat not found.' });

@@ -68,9 +68,13 @@ test('dashboard login locks out repeated failed password attempts', async () => 
 test('dashboard API and event stream require a valid password session', async () => {
   const directory = temporaryDirectory();
   const authFile = path.join(directory, 'data', 'admin_auth.json');
+  const viewerAuthFile = path.join(directory, 'data', 'admin_viewer_auth.json');
+  const viewerAuthManager = new DashboardAuth(viewerAuthFile, { cookieName: 'eshool_dashboard_viewer' });
   fs.mkdirSync(path.dirname(authFile), { recursive: true });
   const server = createAdminDashboardServer({
     authFile,
+    viewerAuthFile,
+    viewerAuthManager,
     readData: () => ({ history: {}, contacts: {}, progress: {}, lessons: {} }),
     blockedContactsFile: path.join(directory, 'data', 'blocked.json'),
     contactGenderFile: path.join(directory, 'data', 'genders.json'),
@@ -149,6 +153,86 @@ test('dashboard API and event stream require a valid password session', async ()
     await eventResponse.body.cancel();
 
     const cookieHeader = cookie.split(';', 1)[0];
+    const viewerSetupBody = JSON.stringify({
+      password: 'a-strong-viewer-password',
+      confirmPassword: 'a-strong-viewer-password'
+    });
+    const viewerSetupWithoutAdmin = await fetch(`${origin}/api/viewer/auth/setup`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: viewerSetupBody
+    });
+    assert.equal(viewerSetupWithoutAdmin.status, 401);
+
+    const remoteViewerSetup = await fetch(`${origin}/api/viewer/auth/setup`, {
+      method: 'POST',
+      headers: {
+        Origin: 'https://example.com',
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json'
+      },
+      body: viewerSetupBody
+    });
+    assert.equal(remoteViewerSetup.status, 403);
+
+    const viewerSetup = await fetch(`${origin}/api/viewer/auth/setup`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json'
+      },
+      body: viewerSetupBody
+    });
+    assert.equal(viewerSetup.status, 201);
+
+    const viewerStatusWithAdminSession = await fetch(`${origin}/api/viewer/auth/status`, {
+      headers: { Cookie: cookieHeader }
+    });
+    assert.deepEqual(await viewerStatusWithAdminSession.json(), {
+      setupRequired: false,
+      authenticated: false
+    });
+
+    const viewerLoginOrigin = `https://${new URL(origin).host}`;
+    const viewerLogin = await fetch(`${origin}/api/viewer/auth/login`, {
+      method: 'POST',
+      headers: { Origin: viewerLoginOrigin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'a-strong-viewer-password' })
+    });
+    assert.equal(viewerLogin.status, 200);
+    const viewerCookie = viewerLogin.headers.get('set-cookie');
+    assert.match(viewerCookie, /^eshool_dashboard_viewer=/);
+    assert.match(viewerCookie, /HttpOnly/);
+    assert.match(viewerCookie, /SameSite=Strict/);
+    assert.match(viewerCookie, /Secure/);
+
+    const viewerApiResponse = await fetch(apiUrl, {
+      headers: { Cookie: viewerCookie.split(';', 1)[0] }
+    });
+    assert.equal(viewerApiResponse.status, 200);
+
+    const viewerMutation = await fetch(`${origin}/api/admin/chat-read`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        Cookie: viewerCookie.split(';', 1)[0],
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ jid: '123@s.whatsapp.net' })
+    });
+    assert.equal(viewerMutation.status, 401);
+
+    const viewerPasswordIsNotAdminPassword = await fetch(`${origin}/api/admin/auth/login`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'a-strong-viewer-password' })
+    });
+    assert.equal(viewerPasswordIsNotAdminPassword.status, 401);
+    const viewerPage = await fetch(`${origin}/viewer`);
+    assert.equal(viewerPage.status, 200);
+    assert.match(await viewerPage.text(), /Read-only viewer/);
+
     const forgedMutation = await fetch(`${origin}/api/admin/chat-read`, {
       method: 'POST',
       headers: {
