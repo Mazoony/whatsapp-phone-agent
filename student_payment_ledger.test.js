@@ -91,6 +91,52 @@ test('payment claims remain pending until reviewed and a later period starts unp
   assert.equal(nextPeriod.cycle, 2);
 });
 
+test('payment information delivery is tracked and can be manually retried', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'student-payment-info-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const ledger = createStudentPaymentLedger(path.join(directory, 'ledger.json'));
+  const studentKey = 'telegram:-100123:44';
+  const enrolledAt = '2026-01-01T12:00:00.000Z';
+
+  assert.equal(ledger.getPaymentInformationDelivery(studentKey).status, 'not_sent');
+  const firstAttempt = ledger.beginPaymentInformationDelivery(studentKey, { enrolledAt });
+  assert.ok(firstAttempt);
+  assert.equal(
+    ledger.beginPaymentInformationDelivery(studentKey, { enrolledAt }),
+    null
+  );
+  assert.equal(ledger.getPaymentInformationDelivery(studentKey).status, 'sending');
+
+  assert.equal(ledger.completePaymentInformationDelivery(studentKey, {
+    attemptId: firstAttempt.attemptId,
+    sent: false,
+    error: 'Telegram unavailable'
+  }), true);
+  assert.equal(ledger.getPaymentInformationDelivery(studentKey).status, 'failed');
+  assert.equal(ledger.getPaymentInformationDelivery(studentKey).lastError, 'Telegram unavailable');
+  assert.equal(
+    ledger.beginPaymentInformationDelivery(studentKey, { enrolledAt }),
+    null
+  );
+
+  const manualAttempt = ledger.beginPaymentInformationDelivery(studentKey, {
+    enrolledAt,
+    force: true
+  });
+  assert.ok(manualAttempt);
+  assert.equal(ledger.completePaymentInformationDelivery(studentKey, {
+    attemptId: manualAttempt.attemptId,
+    sent: true,
+    sentAt: '2026-01-02T12:00:00.000Z'
+  }), true);
+  const delivery = ledger.getPaymentInformationDelivery(studentKey);
+  assert.equal(delivery.status, 'sent');
+  assert.equal(delivery.sentAt, '2026-01-02T12:00:00.000Z');
+  assert.ok(delivery.attemptedAt);
+  assert.equal(delivery.lastError, null);
+  assert.equal(delivery.inProgress, false);
+});
+
 test('payment ledger rejects invalid status, amount, currency, and enrollment dates', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'student-payment-invalid-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

@@ -22,7 +22,10 @@ import {
 } from './contact_sync.js';
 import { inferContactGender } from './contact_gender.js';
 import { CONTACT_GENDER_FILE, createContactGenderStore } from './contact_gender_store.js';
-import { getTelegramStudentGender } from './telegram_student_gender.js';
+import {
+  getTelegramStudentGender,
+  personalizeTelegramMessage
+} from './telegram_student_gender.js';
 import {
   createTelegramStudentGenderStore,
   TELEGRAM_STUDENT_GENDER_FILE
@@ -121,11 +124,19 @@ import {
   PAYMENT_STATUSES,
   STUDENT_PAYMENT_LEDGER_FILE
 } from './student_payment_ledger.js';
+import { STUDENT_PAYMENT_INFORMATION_MESSAGE } from './student_payment_information.js';
 import { TELEGRAM_AGENT_STATUS_FILE } from './telegram_agent_status.js';
 import {
   PAYMENT_RECEIPT_IMAGE_DIRECTORY,
-  readPaymentReceiptImage
+  readPaymentReceiptImage,
+  savePaymentReceiptImage,
+  validatePaymentReceiptUpload,
+  deletePaymentReceiptImage
 } from './payment_receipt_images.js';
+import {
+  createHistoricalPaymentReceiptStore,
+  HISTORICAL_PAYMENT_RECEIPTS_FILE
+} from './historical_payment_receipts.js';
 import {
   LESSON_MEDIA_DIR,
   MAX_LESSON_VIDEO_BYTES,
@@ -174,6 +185,7 @@ const MAX_PAGE_SIZE = 100;
 const MAX_SEARCH_LENGTH = 120;
 const MAX_CONVERSATION_MESSAGES = 100;
 const DEFAULT_CONTACT_PAGE_SIZE = 50;
+const MAX_HISTORICAL_PAYMENT_RECEIPT_BYTES = 10 * 1024 * 1024;
 const ACTIVITY_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function readJsonFile(filePath) {
@@ -2511,6 +2523,7 @@ export function createAdminDashboardServer({
   telegramDashboardChatRepliesFile = TELEGRAM_DASHBOARD_CHAT_REPLIES_FILE,
   telegramStudentGenderFile = TELEGRAM_STUDENT_GENDER_FILE,
   paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
+  historicalPaymentReceiptsFile = HISTORICAL_PAYMENT_RECEIPTS_FILE,
   telegramGroupId = process.env.TELEGRAM_GROUP_ID,
   telegramClassGroups = process.env.TELEGRAM_CLASS_GROUPS
     ? JSON.parse(process.env.TELEGRAM_CLASS_GROUPS)
@@ -2533,6 +2546,25 @@ export function createAdminDashboardServer({
   const telegramStudentGenders = createTelegramStudentGenderStore(telegramStudentGenderFile);
   const paymentLabels = createContactPaymentLabelsStore(paymentLabelsFile);
   const studentPaymentLedger = createStudentPaymentLedger(paymentLedgerFile);
+  const sendTelegramPaymentMessage = async (chatId, text) => {
+    if (telegramPaymentNotifier) {
+      await telegramPaymentNotifier(String(chatId), text);
+      return;
+    }
+    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not configured.');
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: String(chatId), text }),
+      signal: AbortSignal.timeout(10_000)
+    });
+    const result = await response.json();
+    if (!response.ok || result?.ok !== true) {
+      throw new Error(result?.description || 'Telegram rejected the message.');
+    }
+  };
+  const historicalPaymentReceipts = createHistoricalPaymentReceiptStore(historicalPaymentReceiptsFile);
   const scheduledLessons = createScheduledLessonStore({ filePath: scheduledLessonsFile });
   if (!telegramClassGroups || typeof telegramClassGroups !== 'object' ||
       Array.isArray(telegramClassGroups)) {
@@ -2903,6 +2935,7 @@ export function createAdminDashboardServer({
     telegramUserBroadcastFiles.requests,
     telegramUserBroadcastFiles.state,
     paymentLedgerFile,
+    historicalPaymentReceiptsFile,
     telegramAgentStatusFile,
     telegramLessonSkipRequestsFile,
   ].map(filePath => path.resolve(filePath)));
@@ -5022,20 +5055,33 @@ export function createAdminDashboardServer({
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/payment-ledger') {
       try {
         const progressSnapshot = getTelegramProgressSnapshot('UTC');
+        const telegramProgress = readJsonFileOr(telegramProgressFile, {});
         const students = progressSnapshot.students
           .filter(student => student.paymentKey && student.enrolledAt)
-          .map(student => ({
-            platform: 'Telegram',
-            studentKey: student.paymentKey,
-            name: student.name,
-            gradeName: student.gradeName,
-            enrolledAt: student.enrolledAt,
-            currentLesson: student.lessonTitle || '',
-            payment: studentPaymentLedger.getCurrent(
-              student.paymentKey,
-              student.enrolledAt
-            )
-          }));
+          .map(student => {
+            const progress = telegramProgress[student.paymentKey] || {};
+            return {
+              platform: 'Telegram',
+              studentKey: student.paymentKey,
+              name: student.name,
+              gradeName: student.gradeName,
+              enrolledAt: student.enrolledAt,
+              currentLesson: student.lessonTitle || '',
+              hasStartedLessons: Boolean(
+                progress.deliveredAt ||
+                progress.currentLessonId ||
+                (Array.isArray(progress.lessonHistory) && progress.lessonHistory.length > 0) ||
+                (Number.isSafeInteger(progress.currentLessonIndex) && progress.currentLessonIndex >= 0)
+              ),
+              privateChatStarted: Boolean(progress.telegramPrivateChatId),
+              paymentInformationDelivery:
+                studentPaymentLedger.getPaymentInformationDelivery(student.paymentKey),
+              payment: studentPaymentLedger.getCurrent(
+                student.paymentKey,
+                student.enrolledAt
+              )
+            };
+          });
         const studentsByKey = new Map(students.map(student => [student.studentKey, student]));
         const payments = Object.entries(studentPaymentLedger.list())
           .flatMap(([studentKey, record]) => Object.values(record.periods || {})
@@ -5050,9 +5096,11 @@ export function createAdminDashboardServer({
                 paidAt: payment.paidAt,
                 amount: payment.amount ?? null,
                 currency: payment.currency || 'SDG',
-                periodStart: payment.periodStart
+                periodStart: payment.periodStart,
+                source: payment.source || 'admin'
               };
             }))
+          .concat(historicalPaymentReceipts.list())
           .sort((left, right) => Date.parse(right.paidAt) - Date.parse(left.paidAt));
         sendJson(res, 200, { students, payments });
       } catch (error) {
@@ -5067,17 +5115,23 @@ export function createAdminDashboardServer({
     if (req.method === 'GET' && receiptImageMatch) {
       const receiptId = receiptImageMatch[1];
       try {
-        const hasLedgerReference = Object.values(studentPaymentLedger.list()).some(record =>
-          Object.values(record.periods || {}).some(payment =>
+        const ledgerReference = Object.values(studentPaymentLedger.list())
+          .flatMap(record => Object.values(record.periods || {}))
+          .find(payment =>
             payment.source === 'telegram-receipt' &&
-            payment.details?.receiptId === receiptId));
-        if (!hasLedgerReference) {
+            payment.details?.receiptId === receiptId);
+        const historicalReference = historicalPaymentReceipts.list()
+          .find(payment => payment.receiptId === receiptId);
+        const receiptReference = ledgerReference || historicalReference;
+        if (!receiptReference) {
           sendJson(res, 404, { error: 'Receipt image not found.' });
           return;
         }
-        const image = readPaymentReceiptImage(receiptId, paymentReceiptImageDirectory);
+        const mimeType = historicalReference?.mimeType || 'image/jpeg';
+        const image = readPaymentReceiptImage(receiptId, paymentReceiptImageDirectory, mimeType);
         res.writeHead(200, {
-          'Content-Type': 'image/jpeg',
+          'Content-Type': mimeType,
+          'Content-Disposition': 'inline',
           'Content-Length': image.length,
           'Cache-Control': 'private, no-store',
           'X-Content-Type-Options': 'nosniff',
@@ -5205,6 +5259,194 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' && requestUrl.pathname === '/api/admin/historical-payment-receipts') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Payment receipts can only be uploaded from this local dashboard.' });
+        return;
+      }
+      const contentLength = Number(req.headers['content-length']);
+      if (Number.isFinite(contentLength) && contentLength > MAX_HISTORICAL_PAYMENT_RECEIPT_BYTES) {
+        sendJson(res, 413, { error: 'Receipt files must be 10 MB or smaller.' });
+        return;
+      }
+      readBinaryRequestBody(req, MAX_HISTORICAL_PAYMENT_RECEIPT_BYTES).then(image => {
+        const studentKey = String(req.headers['x-payment-student-key'] || '').trim();
+        const paidAtValue = String(req.headers['x-payment-paid-at'] || '').trim();
+        const amountValue = String(req.headers['x-payment-amount'] || '').trim();
+        const amount = Number(amountValue);
+        const currency = String(req.headers['x-payment-currency'] || '').trim().toUpperCase();
+        const mimeType = String(req.headers['content-type'] || '')
+          .split(';', 1)[0].trim().toLowerCase();
+        const paidAtTimestamp = Date.parse(paidAtValue);
+        if (!studentKey || !Number.isFinite(paidAtTimestamp) ||
+            !/^\d+(?:\.\d+)?$/.test(amountValue) || !Number.isFinite(amount) || amount <= 0 ||
+            !/^[A-Z]{3}$/.test(currency)) {
+          sendJson(res, 400, { error: 'Student, payment date, positive amount, and three-letter currency are required.' });
+          return;
+        }
+        const paidAt = new Date(paidAtTimestamp).toISOString();
+        if (paidAtTimestamp > Date.now()) {
+          sendJson(res, 400, { error: 'Historical payment date cannot be in the future.' });
+          return;
+        }
+        const student = getTelegramProgressSnapshot('UTC').students.find(item =>
+          item.paymentKey === studentKey && item.enrolledAt);
+        if (!student) {
+          sendJson(res, 404, { error: 'Student was not found in the current progress list.' });
+          return;
+        }
+        const samePeriodPayment = Object.values(studentPaymentLedger.list()[studentKey]?.periods || {})
+          .some(payment =>
+            payment.status === 'paid' &&
+            typeof payment.paidAt === 'string' &&
+            payment.paidAt.slice(0, 10) === paidAt.slice(0, 10) &&
+            payment.amount === amount &&
+            (payment.currency || 'SDG').toUpperCase() === currency);
+        if (samePeriodPayment) {
+          sendJson(res, 409, {
+            error: 'A confirmed payment with the same student, date, amount, and currency already exists.'
+          });
+          return;
+        }
+
+        let receiptId = null;
+        try {
+          validatePaymentReceiptUpload(image, mimeType);
+          receiptId = savePaymentReceiptImage(image, paymentReceiptImageDirectory, mimeType);
+          const payment = historicalPaymentReceipts.add({
+            studentKey,
+            name: student.name,
+            gradeName: student.gradeName || '',
+            paidAt,
+            amount,
+            currency,
+            receiptId,
+            mimeType,
+            image
+          });
+          scheduleChange(path.basename(historicalPaymentReceiptsFile));
+          sendJson(res, 201, { payment });
+        } catch (error) {
+          if (receiptId) {
+            try {
+              deletePaymentReceiptImage(receiptId, paymentReceiptImageDirectory, mimeType);
+            } catch (cleanupError) {
+              console.error('[Admin Dashboard] Could not clean up an unused historical receipt:', cleanupError.message);
+            }
+          }
+          throw error;
+        }
+      }).catch(error => {
+        const status = /exceeds the \d+ MB size limit/.test(error.message)
+          ? 413
+          : /already been added|already recorded/.test(error.message)
+            ? 409
+            : /^(?:Receipt file data|This receipt file|The receipt content|Payment amount|Currency|A student|A receipt image|Payment date)/.test(error.message)
+              ? 400
+              : 500;
+        if (status >= 500) {
+          console.error('[Admin Dashboard] Could not record historical payment receipt:', error.message);
+        }
+        sendJson(res, status, {
+          error: status === 500
+            ? 'Could not save the historical payment receipt.'
+            : error.message
+        });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/payment-information') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Payment information can only be sent from this local dashboard.' });
+        return;
+      }
+      readRequestBody(req).then(async body => {
+        if (!body || typeof body.studentKey !== 'string' || !body.studentKey.trim()) {
+          sendJson(res, 400, { error: 'A student is required to send payment information.' });
+          return;
+        }
+        const student = getTelegramProgressSnapshot('UTC').students.find(item =>
+          item.paymentKey === body.studentKey);
+        if (!student) {
+          sendJson(res, 404, { error: 'Student was not found in the current progress list.' });
+          return;
+        }
+        const progress = readJsonFileOr(telegramProgressFile, {});
+        const studentProgress = progress[body.studentKey];
+        if (!studentProgress?.telegramPrivateChatId) {
+          sendJson(res, 409, { error: 'The student must start the Telegram private chat before receiving payment information.' });
+          return;
+        }
+        const hasStartedLessons = Boolean(
+          studentProgress.deliveredAt ||
+          studentProgress.currentLessonId ||
+          (Array.isArray(studentProgress.lessonHistory) &&
+            studentProgress.lessonHistory.length > 0) ||
+          (Number.isSafeInteger(studentProgress.currentLessonIndex) &&
+            studentProgress.currentLessonIndex >= 0)
+        );
+        if (!hasStartedLessons) {
+          sendJson(res, 409, { error: 'Payment information is available after the student starts lessons.' });
+          return;
+        }
+
+        const attempt = studentPaymentLedger.beginPaymentInformationDelivery(
+          body.studentKey,
+          { enrolledAt: student.enrolledAt, force: true }
+        );
+        if (!attempt) {
+          sendJson(res, 409, { error: 'Payment information is already being sent to this student.' });
+          return;
+        }
+        try {
+          const gender = getTelegramStudentGender(
+            studentProgress,
+            telegramStudentGenders.list()[body.studentKey]
+          ).value;
+          await sendTelegramPaymentMessage(
+            studentProgress.telegramPrivateChatId,
+            personalizeTelegramMessage(STUDENT_PAYMENT_INFORMATION_MESSAGE, gender)
+          );
+          studentPaymentLedger.completePaymentInformationDelivery(body.studentKey, {
+            attemptId: attempt.attemptId,
+            sent: true
+          });
+          scheduleChange(path.basename(paymentLedgerFile));
+          sendJson(res, 200, {
+            delivery: studentPaymentLedger.getPaymentInformationDelivery(body.studentKey)
+          });
+        } catch (error) {
+          try {
+            studentPaymentLedger.completePaymentInformationDelivery(body.studentKey, {
+              attemptId: attempt.attemptId,
+              sent: false,
+              error: error.message
+            });
+          } catch (recordError) {
+            console.error(
+              `[Admin Dashboard] Could not record failed payment information delivery for ${body.studentKey}:`,
+              recordError.message
+            );
+          }
+          scheduleChange(path.basename(paymentLedgerFile));
+          console.error(
+            `[Admin Dashboard] Could not send payment information to ${body.studentKey}:`,
+            error.message
+          );
+          sendJson(res, 502, {
+            error: 'Could not deliver payment information through Telegram.',
+            delivery: studentPaymentLedger.getPaymentInformationDelivery(body.studentKey)
+          });
+        }
+      }).catch(error => {
+        console.error('[Admin Dashboard] Could not send student payment information:', error.message);
+        sendJson(res, 500, { error: 'Could not send student payment information.' });
+      });
+      return;
+    }
+
     if (req.method === 'POST' && requestUrl.pathname === '/api/admin/payment-ledger') {
       if (!isSameOriginLoopbackRequest(req)) {
         sendJson(res, 403, { error: 'Payment records can only be changed from this local dashboard.' });
@@ -5243,22 +5485,7 @@ export function createAdminDashboardServer({
           } else {
             const text = `السلام عليكم ${student.name}،\n${formatStudentPaymentStatus(payment)}\nشكراً ليك، وربنا يوفقك في دراستك 📚`;
             try {
-              if (telegramPaymentNotifier) {
-                await telegramPaymentNotifier(String(privateChatId), text);
-              } else {
-                const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-                if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not configured.');
-                const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                  method: 'POST',
-                  headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ chat_id: String(privateChatId), text }),
-                  signal: AbortSignal.timeout(10_000)
-                });
-                const result = await response.json();
-                if (!response.ok || result?.ok !== true) {
-                  throw new Error(result?.description || 'Telegram rejected the message.');
-                }
-              }
+              await sendTelegramPaymentMessage(privateChatId, text);
               notification = { sent: true, reason: 'sent' };
             } catch (error) {
               console.error(

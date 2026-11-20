@@ -114,11 +114,10 @@
     .agent-media-meta { color: var(--muted); font-size: 10px; margin-top: 5px; overflow-wrap: anywhere; }
     .agent-media-progress { height: 7px; margin-top: 9px; border-radius: 10px; overflow: hidden; background: #e8efeb; }
     .agent-media-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--green); transition: width .25s ease; }
+    .telegram-media-item .agent-media-progress > span { transition: width .2s linear; }
     .agent-media-item.failed .agent-media-progress > span { background: #b94747; }
     .agent-media-item.failed .agent-media-status { color: #b94747; }
     .agent-media-item.sent .agent-media-status { color: #208453; }
-    .telegram-media-item.uploading .agent-media-progress > span { width: 35% !important; animation: telegram-upload-indeterminate 1.2s ease-in-out infinite alternate; }
-    @keyframes telegram-upload-indeterminate { from { transform: translateX(0); } to { transform: translateX(175%); } }
     .agent-media-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
     .agent-media-retry { border: 1px solid #b94747; border-radius: 7px; padding: 5px 9px; color: #a13535; background: #fff8f7; font: inherit; font-size: 10px; font-weight: 700; }
     .agent-media-retry:disabled { cursor: wait; opacity: .6; }
@@ -326,6 +325,15 @@
     .payment-summary-value { display: block; margin-top: 5px; font-size: 19px; font-weight: 760; }
     .payment-summary-rate { display: flex; align-items: center; gap: 6px; margin-top: 7px; color: var(--muted); font-size: 10px; }
     .payment-summary-rate input { width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font: inherit; }
+    .historical-payment-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: end; }
+    .historical-payment-form label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; font-weight: 650; }
+    .historical-payment-form input, .historical-payment-form select { width: 100%; min-width: 0; min-height: 36px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: white; font: inherit; font-size: 11px; }
+    .historical-payment-form .historical-payment-file, .historical-payment-form .historical-payment-submit { grid-column: span 2; }
+    .historical-payment-form .historical-payment-submit { justify-self: start; min-height: 36px; }
+    .historical-payment-note, .historical-payment-status { margin: 8px 0 0; color: var(--muted); font-size: 10px; }
+    .historical-payment-status.error { color: var(--red); }
+    .historical-payment-receipt { color: var(--green); font-size: 10px; font-weight: 650; }
+    @media (max-width: 650px) { .historical-payment-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .payment-rate-status { min-height: 14px; margin: 4px 0 0; color: var(--muted); font-size: 9px; }
     .payment-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
     .payment-calendar-weekday { padding: 6px 2px; color: var(--muted); text-align: center; font-size: 10px; font-weight: 700; }
@@ -460,30 +468,41 @@
     .presence-timeline li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 5px 2px; border-top: 1px solid #edf1ee; color: #53645a; font-size: 9px; }
     .presence-timeline .online-label { color: #16804b; font-weight: 700; }
     .activity-chart-title { margin: 12px 0 0; font-size: 10px; color: #52635a; font-weight: 700; }
-    .student-insight-chart-wrap { position: relative; min-height: 64px; margin-top: 7px; }
-    .student-insight-chart { display: grid; grid-template-columns: repeat(30, minmax(3px, 1fr)); align-items: end; gap: 3px; min-height: 64px; margin-top: 7px; }
+    .student-insight-chart-wrap { position: relative; min-height: 180px; margin-top: 12px; border-radius: 10px; background: linear-gradient(to bottom, transparent 24.5%, #edf2ef 25%, transparent 25.5%, transparent 49.5%, #edf2ef 50%, transparent 50.5%, transparent 74.5%, #edf2ef 75%, transparent 75.5%), #fbfcfb; }
+    .student-insight-chart { display: grid; grid-template-columns: repeat(30, minmax(3px, 1fr)); align-items: end; gap: 3px; min-height: 180px; padding: 12px 8px 28px; }
     .student-insight-chart-wrap .student-insight-chart { margin-top: 0; }
-    .student-insight-telegram-line { position: absolute; inset: 0; z-index: 2; width: 100%; height: 64px; overflow: visible; pointer-events: none; }
-    .student-insight-telegram-line polyline { fill: none; stroke: #8e55b9; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .student-insight-lines { position: absolute; left: 8px; right: 8px; top: 12px; z-index: 2; width: calc(100% - 16px); height: 140px; overflow: visible; pointer-events: none; }
+    .student-insight-lines polyline { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+    .student-insight-lines .active-line { stroke: #16804b; stroke-width: 4.5; }
+    .student-insight-lines .telegram-line { stroke: #8e55b9; }
     .telegram-join-chart { display: grid; grid-template-columns: repeat(7, minmax(18px, 1fr)); align-items: end; gap: 8px; min-height: 76px; margin-top: 8px; }
     .telegram-join-day { display: flex; min-width: 0; height: 70px; flex-direction: column; align-items: center; justify-content: end; gap: 4px; color: var(--muted); font-size: 9px; }
     .telegram-join-day i { display: block; width: min(100%, 20px); min-height: 2px; border-radius: 4px 4px 0 0; background: #23875a; }
-    .student-insight-day { display: flex; min-width: 0; height: 58px; align-items: end; justify-content: center; }
-    .student-insight-bar { display: block; width: min(100%, 12px); min-height: 2px; border-radius: 3px 3px 0 0; background: #23875a; }
-    .student-insight-bars { display: flex; width: 100%; height: 54px; align-items: end; justify-content: center; gap: 1px; }
-    .student-insight-bars .student-insight-bar { width: min(40%, 6px); }
+    .student-insight-day { display: flex; position: relative; min-width: 0; height: 140px; align-items: end; justify-content: center; }
+    .student-insight-day-label { position: absolute; right: 50%; bottom: -21px; transform: translateX(50%); color: #7b8981; font-size: 8px; white-space: nowrap; direction: ltr; }
+    .student-insight-bar { display: block; width: min(100%, 12px); min-height: 3px; border-radius: 4px 4px 1px 1px; background: #23875a; }
+    .student-insight-bars { display: flex; width: 100%; height: 140px; align-items: end; justify-content: center; gap: 2px; }
+    .student-insight-bars .student-insight-bar { width: min(42%, 7px); }
     .student-insight-stack { display: flex; width: 100%; max-width: 12px; height: 54px; flex-direction: column-reverse; justify-content: flex-start; }
     .student-insight-bar.incoming { background: #23875a; }
     .student-insight-bar.outgoing { background: #79a8cf; }
     .student-insight-bar.messages { background: #79a8cf; }
     .student-insight-bar.response { background: #d29a35; }
-    .student-insight-legend { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 5px; color: var(--muted); font-size: 9px; }
+    .student-insight-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; color: #647269; font-size: 10px; }
     .student-insight-legend span { display: inline-flex; align-items: center; gap: 4px; }
     .student-insight-legend i { width: 8px; height: 8px; border-radius: 2px; background: #23875a; }
     .student-insight-legend .outgoing-key { background: #79a8cf; }
+    .student-insight-legend .active-line-key { width: 14px; height: 0; border-top: 3px solid #16804b; border-radius: 0; background: transparent; }
+    .student-insight-legend .message-bar-key { background: #79a8cf; }
     .student-insight-legend .telegram-key { width: 13px; height: 0; border-top: 2px solid #8e55b9; border-radius: 0; background: transparent; }
     .student-insight-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; color: var(--muted); font-size: 10px; }
     .student-insight-summary strong { color: var(--ink); }
+    .engagement-metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 2px; }
+    .engagement-metric { min-width: 0; padding: 10px 11px; border: 1px solid #e4ebe6; border-radius: 9px; background: #f8faf8; }
+    .engagement-metric span, .engagement-metric small { display: block; color: #6d7c73; }
+    .engagement-metric span { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .engagement-metric strong { display: block; margin: 2px 0 0; color: var(--ink); font-size: 20px; line-height: 1.1; }
+    .engagement-metric small { margin-top: 3px; font-size: 9px; }
     .lesson-follow-through { margin-top: 10px; padding: 10px; border: 1px solid #e5ece7; border-radius: 8px; background: #fbfdfb; font-size: 10px; }
     .lesson-follow-through strong { color: var(--ink); }
     .roster-insights { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(240px, .8fr); gap: 13px; margin-top: 14px; }
@@ -1232,7 +1251,7 @@
             <h3>Student engagement · last 30 days</h3>
             <p class="activity-summary" id="progress-engagement-summary" aria-live="polite">Loading student engagement…</p>
             <div id="progress-engagement-chart"></div>
-            <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
+            <div class="student-insight-legend"><span><i class="active-line-key"></i>Active students</span><span><i class="message-bar-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
           </article>
           <article class="panel roster-insight-panel">
             <h3>Students who may need support</h3>
@@ -1502,12 +1521,39 @@
         <div class="section-heading">
           <div>
             <h2>Student payment ledger</h2>
-            <p>Each payment period lasts 30 days from the student's enrollment date. Claims and receipt scans stay pending until you confirm them. Confirmation updates the ledger; students can check their status with /payment, but are not automatically messaged.</p>
+            <p>Each payment period lasts 30 days from the student's enrollment date. Claims and receipt scans stay pending until you confirm them. The bot sends payment information after a student's first lesson; use the status below to check delivery or send it again.</p>
           </div>
           <div class="top-actions">
             <button class="pagination button" id="payment-ledger-refresh" type="button">Refresh</button>
           </div>
         </div>
+        <article class="panel payment-calendar-panel" style="margin-bottom:16px">
+          <div class="section-heading" style="margin-bottom:12px">
+            <div><h3 style="margin:0">Add a historical payment</h3><p style="margin:4px 0 0">Record an earlier payment with its receipt. It adds to that month’s total without changing the student’s current payment period.</p></div>
+          </div>
+          <form id="historical-payment-form" class="historical-payment-form">
+            <label>Student
+              <select id="historical-payment-student" required>
+                <option value="">Choose a student</option>
+              </select>
+            </label>
+            <label>Paid on
+              <input id="historical-payment-date" type="date" required>
+            </label>
+            <label>Amount
+              <input id="historical-payment-amount" type="number" min="0.01" step="any" inputmode="decimal" required>
+            </label>
+            <label>Currency
+              <input id="historical-payment-currency" type="text" maxlength="3" pattern="[A-Za-z]{3}" value="SDG" required>
+            </label>
+            <label class="historical-payment-file">Receipt (image or PDF, up to 10 MB)
+              <input id="historical-payment-receipt" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required>
+            </label>
+            <button class="primary-button historical-payment-submit" type="submit">Add to payment history</button>
+          </form>
+          <p class="historical-payment-note">Enter the amount shown on the receipt. Duplicate receipt files and identical entries are rejected to reduce double counting.</p>
+          <p class="historical-payment-status" id="historical-payment-status" aria-live="polite"></p>
+        </article>
         <article class="panel payment-calendar-panel" style="margin-bottom:16px">
           <div class="section-heading" style="margin-bottom:12px">
             <div><h3 style="margin:0">Telegram payment history</h3><p style="margin:4px 0 0">Browse confirmed payments by the month they were marked paid.</p></div>
@@ -1542,7 +1588,7 @@
             <div><h3 style="margin:0">Confirmed payments for selected month</h3></div>
           </div>
           <table>
-            <thead><tr><th>Student</th><th>Grade</th><th>Paid on</th><th>Amount</th></tr></thead>
+            <thead><tr><th>Student</th><th>Grade</th><th>Paid on</th><th>Amount</th><th>Receipt</th></tr></thead>
             <tbody id="telegram-payment-history-rows"><tr><td colspan="4" class="empty">Loading payment history…</td></tr></tbody>
           </table>
         </article>
@@ -1551,8 +1597,8 @@
         </div>
         <article class="panel table-wrap">
           <table>
-            <thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Payment period</th><th>Status</th><th>Amount</th><th>Evidence / reference</th><th>Actions</th></tr></thead>
-            <tbody id="payment-ledger-rows"><tr><td colspan="8" class="empty">Loading payment records…</td></tr></tbody>
+            <thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Payment period</th><th>Status</th><th>Amount</th><th>Evidence / reference</th><th>Payment info</th><th>Actions</th></tr></thead>
+            <tbody id="payment-ledger-rows"><tr><td colspan="9" class="empty">Loading payment records…</td></tr></tbody>
           </table>
         </article>
         <p class="activity-note">Only dashboard-confirmed payments are recorded as paid. Telegram status requests are answered privately; a group payment report receives a neutral acknowledgement.</p>
@@ -1609,7 +1655,7 @@
             <h3>Student engagement · last 30 days</h3>
             <p class="activity-summary" id="progress-engagement-summary-page" aria-live="polite">Loading student engagement…</p>
             <div id="progress-engagement-chart-page"></div>
-            <div class="student-insight-legend"><span><i></i>Active students</span><span><i class="outgoing-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
+            <div class="student-insight-legend"><span><i class="active-line-key"></i>Active students</span><span><i class="message-bar-key"></i>Student messages</span><span><i class="telegram-key"></i>Telegram active students · scaled separately</span></div>
           </article>
           <article class="panel roster-insight-panel">
             <h3>Students who may need support</h3>
@@ -2941,8 +2987,13 @@
           const update = JSON.parse(event.data);
           clearDashboardApiCache();
           const files = Array.isArray(update.files) ? update.files : [];
-          scheduleDashboardRefresh(files);
-          queueDashboardNotificationRefresh(files);
+          if (files.includes('telegram_agent_media_activity.json')) {
+            scheduleTelegramMediaActivityRefresh();
+          }
+          const dashboardFiles = files.filter(file =>
+            file !== 'telegram_agent_media_activity.json');
+          if (dashboardFiles.length) scheduleDashboardRefresh(dashboardFiles);
+          if (dashboardFiles.length) queueDashboardNotificationRefresh(dashboardFiles);
         } catch (error) {
           showError(`Could not process dashboard update: ${error.message}`);
         }
@@ -4239,24 +4290,39 @@
         Math.max(day.activeStudents, day.telegramActiveStudents || 0)));
       const maximumTelegram = Math.max(1, ...trend.map(day => day.telegramActiveStudents || 0));
       const maximumMessages = Math.max(1, ...trend.map(day => day.incomingMessages));
+      const activeLinePoints = trend.map((day, index) => {
+        const x = trend.length > 1 ? 10 + index * 580 / (trend.length - 1) : 300;
+        const y = 130 - day.activeStudents / maximumActive * 118;
+        return `${x},${y}`;
+      }).join(' ');
       const telegramLinePoints = trend.map((day, index) => {
-        const x = trend.length > 1 ? 5 + index * 290 / (trend.length - 1) : 150;
-        const y = 59 - (day.telegramActiveStudents || 0) / maximumTelegram * 50;
+        const x = trend.length > 1 ? 10 + index * 580 / (trend.length - 1) : 300;
+        const y = 130 - (day.telegramActiveStudents || 0) / maximumTelegram * 118;
         return `${x},${y}`;
       }).join(' ');
       const activeStudents = insights?.activeStudentsLast7Days || 0;
       const messagesLast7Days = trend.slice(-7).reduce((total, day) => total + day.incomingMessages, 0);
-      summary.textContent = `${activeStudents.toLocaleString()} students with saved progress active · ${messagesLast7Days.toLocaleString()} messages in the last 7 calendar days · 30-day daily trend (${timeZone}).`;
+      const peakActive = Math.max(0, ...trend.map(day => day.activeStudents));
+      summary.innerHTML = `
+        <div class="engagement-metric-grid">
+          <div class="engagement-metric"><span>Active students</span><strong>${activeStudents.toLocaleString()}</strong><small>last 7 days</small></div>
+          <div class="engagement-metric"><span>Student messages</span><strong>${messagesLast7Days.toLocaleString()}</strong><small>last 7 days</small></div>
+          <div class="engagement-metric"><span>Daily peak</span><strong>${peakActive.toLocaleString()}</strong><small>last 30 days</small></div>
+        </div>`;
       chart.innerHTML = trend.length ? `
         <div class="student-insight-chart-wrap" role="img" aria-label="Daily active tracked students and incoming student messages over the last 30 days. Telegram active students use a separate scale.">
           <div class="student-insight-chart">
-            ${trend.map(day => {
-              const activeHeight = day.activeStudents ? Math.max(2, day.activeStudents / maximumActive * 54) : 0;
-              const messageHeight = day.incomingMessages ? Math.max(2, day.incomingMessages / maximumMessages * 54) : 0;
-              return `<div class="student-insight-day" title="${escapeHtml(day.date)}: ${day.activeStudents} active students · ${day.incomingMessages} messages · ${day.telegramActiveStudents || 0} Telegram active"><span class="student-insight-bars"><i class="student-insight-bar" style="height:${activeHeight}px"></i><i class="student-insight-bar messages" style="height:${messageHeight}px"></i></span></div>`;
+            ${trend.map((day, index) => {
+              const messageHeight = day.incomingMessages ? Math.max(3, day.incomingMessages / maximumMessages * 118) : 0;
+              const shortDate = day.date.slice(5).replace('-', '/');
+              const showLabel = index === 0 || index === 7 || index === 14 || index === 21 || index === 29;
+              return `<div class="student-insight-day" title="${escapeHtml(day.date)}: ${day.activeStudents} active students · ${day.incomingMessages} messages · ${day.telegramActiveStudents || 0} Telegram active"><span class="student-insight-bars"><i class="student-insight-bar messages" style="height:${messageHeight}px"></i></span>${showLabel ? `<small class="student-insight-day-label">${escapeHtml(shortDate)}</small>` : ''}</div>`;
             }).join('')}
           </div>
-          <svg class="student-insight-telegram-line" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true"><polyline points="${telegramLinePoints}"></polyline></svg>
+          <svg class="student-insight-lines" viewBox="0 0 600 140" preserveAspectRatio="none" aria-hidden="true">
+            <polyline class="active-line" points="${activeLinePoints}"></polyline>
+            <polyline class="telegram-line" points="${telegramLinePoints}"></polyline>
+          </svg>
         </div>` : '<div class="empty">No tracked student engagement data.</div>';
       const followUps = insights?.followUpStudents || [];
       followUpSummary.textContent = `${followUps.length.toLocaleString()} students have a pending exercise and no recorded activity for at least 7 days. Open a student to check in personally; the inactivity filter below can find others.`;
@@ -6010,6 +6076,7 @@
           <div class="agent-queue-item ${row.active ? 'active' : ''}">
             <span class="agent-queue-position">#${row.position}</span>
             <div><div class="agent-queue-name">${escapeHtml(row.name)} · ${escapeHtml(row.chat)}</div>
+            ${row.active && row.detail ? `<div class="agent-queue-detail">${escapeHtml(row.detail)}</div>` : ''}
             <div class="agent-queue-detail">${escapeHtml(row.messageType)} · ${row.active
               ? `Started ${formatDate(row.startedAt || row.queuedAt)} · handling ${formatQueueDuration(row.startedAt || row.queuedAt)}`
               : `Received ${formatDate(row.queuedAt)} · waiting ${formatQueueDuration(row.queuedAt)}`}</div></div>
@@ -6079,7 +6146,7 @@
             : activity.status === 'retrying'
               ? `Retry queued · ${size}`
               : activity.status === 'uploading'
-                ? `Sending to Telegram · ${size}`
+                  ? `${percent === null ? 'Uploading' : `${percent}% uploaded`} · ${size}`
                 : `Queued · ${size}`;
         const studentName = activity.studentName || 'Telegram learner';
         const retryError = activity.retryError
@@ -6088,7 +6155,7 @@
         const canRetry = activity.status === 'failed' && activity.retryAvailable;
         return `<div class="agent-media-item telegram-media-item ${escapeHtml(activity.status)}">
           <div class="agent-media-top"><span>${escapeHtml(studentName)} · Video · ${escapeHtml(activity.description || 'Telegram lesson')}</span><span class="agent-media-status">${escapeHtml(statuses[activity.status] || activity.status)}</span></div>
-          <div class="agent-media-progress" role="progressbar" aria-label="${escapeHtml(studentName)} video delivery status" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div>
+          <div class="agent-media-progress" role="progressbar" aria-label="${escapeHtml(studentName)} video upload progress" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div>
           <div class="agent-media-meta"><span>Telegram chat ${escapeHtml(activity.recipientJid || 'unavailable')}</span><span>${escapeHtml(progressLabel)} · ${formatDate(activity.updatedAt)}</span></div>
           ${canRetry || retryError ? `<div class="agent-media-actions">${canRetry ? `<button class="agent-media-retry" type="button" data-telegram-retry-id="${escapeHtml(activity.id)}">Resend video</button>` : '<span></span>'}${retryError}</div>` : ''}
         </div>`;
@@ -6519,14 +6586,18 @@
             ? (payment.currency || 'SDG').toUpperCase()
             : 'SDG';
           const collected = hasRecordedAmount ? amount : PAYMENT_MONTHLY_AMOUNT_SDG;
+          const receipt = payment.receiptId
+            ? `<a class="historical-payment-receipt" href="/api/admin/payment-receipts/${encodeURIComponent(payment.receiptId)}" target="_blank" rel="noopener noreferrer">Open receipt</a>`
+            : '—';
           return `<tr>
             <td>${escapeHtml(payment.name || payment.studentKey || 'Student')}</td>
             <td>${escapeHtml(payment.gradeName || '—')}</td>
             <td>${escapeHtml(formatDate(payment.paidAt))}</td>
             <td>${formatter.format(collected)} ${escapeHtml(currency)}${hasRecordedAmount ? '' : '<br><small>Estimated · amount not recorded</small>'}</td>
+            <td>${receipt}</td>
           </tr>`;
         }).join('')
-        : '<tr><td colspan="4" class="empty">No confirmed payments for this month.</td></tr>';
+        : '<tr><td colspan="5" class="empty">No confirmed payments for this month.</td></tr>';
     }
 
     async function loadPaymentCalendar() {
@@ -6539,6 +6610,20 @@
       const { students, payments } = await api('/api/admin/payment-ledger');
       telegramPaymentHistory = payments;
       renderTelegramPaymentSummary();
+      const studentSelect = $('#historical-payment-student');
+      const selectedStudentKey = studentSelect.value;
+      studentSelect.innerHTML = `<option value="">Choose a student</option>${students.map(student =>
+        `<option value="${escapeHtml(student.studentKey)}">${escapeHtml(student.name)} · ${escapeHtml(student.gradeName)}</option>`
+      ).join('')}`;
+      if (students.some(student => student.studentKey === selectedStudentKey)) {
+        studentSelect.value = selectedStudentKey;
+      }
+      if (!$('#historical-payment-date').value) {
+        const today = new Date();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        $('#historical-payment-date').value = `${today.getFullYear()}-${month}-${day}`;
+      }
       const statusLabels = {
         unpaid: 'Unpaid',
         pending_review: 'Pending review',
@@ -6548,6 +6633,10 @@
       $('#payment-ledger-rows').innerHTML = students.length
         ? students.map(student => {
           const payment = student.payment;
+          const deliveryInfo = student.paymentInformationDelivery || {};
+          const canSendPaymentInfo = student.hasStartedLessons &&
+            student.privateChatStarted &&
+            !deliveryInfo.inProgress;
           const periodEnd = new Date(Date.parse(payment.periodEnd) - 1).toISOString();
           const details = payment.details || {};
           const evidence = [
@@ -6572,10 +6661,12 @@
             <td><span class="status ${escapeHtml(payment.status)}">${escapeHtml(statusLabels[payment.status] || payment.status)}</span>${payment.claimedAt ? `<small class="skip-lesson-status">Reported ${escapeHtml(formatDate(payment.claimedAt))}</small>` : ''}</td>
             <td><div class="payment-ledger-amount"><input type="number" min="0" step="any" inputmode="decimal" aria-label="Amount for ${escapeHtml(student.name)}" data-payment-amount value="${payment.amount ?? ''}" placeholder="Optional"><input type="text" maxlength="3" aria-label="Currency for ${escapeHtml(student.name)}" data-payment-currency value="${escapeHtml(payment.currency || 'SDG')}"></div></td>
             <td>${evidence || '—'}</td>
+            <td><div><span class="status ${deliveryInfo.sentAt ? 'paid' : deliveryInfo.status === 'sending' ? 'pending_review' : deliveryInfo.status === 'failed' ? 'rejected' : 'unpaid'}">${deliveryInfo.sentAt ? 'Received' : deliveryInfo.status === 'sending' ? 'Sending…' : deliveryInfo.status === 'failed' ? 'Not received · failed' : 'Not received'}</span>${deliveryInfo.sentAt ? `<small class="skip-lesson-status">Sent ${escapeHtml(formatDate(deliveryInfo.sentAt))}</small>` : deliveryInfo.lastError ? '<small class="skip-lesson-status">Last attempt failed</small>' : ''}</div></td>
+            <td><button class="pagination button" type="button" data-payment-info-send data-payment-info-sent="${Boolean(deliveryInfo.sentAt)}" ${canSendPaymentInfo ? '' : 'disabled'} title="${student.hasStartedLessons ? student.privateChatStarted ? '' : 'Student has not started the private chat' : 'Available after the first lesson'}">${deliveryInfo.inProgress ? 'Sending…' : deliveryInfo.sentAt ? 'Resend' : 'Send'}</button></td>
             <td><div class="payment-ledger-actions"><select aria-label="Payment status for ${escapeHtml(student.name)}" data-payment-status>${Object.entries(statusLabels).map(([value, label]) => `<option value="${value}" ${value === payment.status ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="pagination button" type="button" data-payment-save>Save</button></div></td>
           </tr>`;
         }).join('')
-        : '<tr><td colspan="8" class="empty">No students with lesson progress are available yet.</td></tr>';
+        : '<tr><td colspan="9" class="empty">No students with lesson progress are available yet.</td></tr>';
 
       $('#payment-ledger-rows').querySelectorAll('[data-payment-save]').forEach(button => {
         button.addEventListener('click', async () => {
@@ -6612,6 +6703,32 @@
             button.disabled = false;
             button.textContent = 'Save';
             showError(`Could not update this payment record: ${error.message}`);
+          }
+        });
+      });
+      $('#payment-ledger-rows').querySelectorAll('[data-payment-info-send]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const row = button.closest('tr');
+          const wasSent = button.dataset.paymentInfoSent === 'true';
+          if (wasSent && !await dashboardConfirm(
+            'This student already received the payment information. Send it again?',
+            { title: 'Resend payment information', confirmText: 'Resend' }
+          )) return;
+          button.disabled = true;
+          button.textContent = 'Sending…';
+          try {
+            await api('/api/admin/payment-information', {
+              method: 'POST',
+              body: JSON.stringify({ studentKey: row.dataset.paymentLedgerKey })
+            });
+            await loadPaymentLedger();
+          } catch (error) {
+            showError(`Could not send payment information: ${error.message}`);
+            try {
+              await loadPaymentLedger();
+            } catch (refreshError) {
+              showError(`Could not refresh payment information status: ${refreshError.message}`);
+            }
           }
         });
       });
@@ -7405,6 +7522,37 @@
         document.querySelector('#section-score-distribution').classList.contains('active');
     }
 
+    let telegramMediaRefreshTimer = null;
+    let telegramMediaRefreshInFlight = false;
+    let telegramMediaRefreshPending = false;
+    function scheduleTelegramMediaActivityRefresh() {
+      const overviewActive =
+        document.querySelector('#section-overview').classList.contains('active');
+      if (!overviewActive && !dashboardNotificationsEnabled) return;
+      telegramMediaRefreshPending = true;
+      if (telegramMediaRefreshTimer || telegramMediaRefreshInFlight) return;
+      telegramMediaRefreshTimer = setTimeout(async () => {
+        telegramMediaRefreshTimer = null;
+        const shouldRefreshPanel =
+          document.querySelector('#section-overview').classList.contains('active');
+        if (!telegramMediaRefreshPending ||
+            (!shouldRefreshPanel && !dashboardNotificationsEnabled)) return;
+        telegramMediaRefreshPending = false;
+        telegramMediaRefreshInFlight = true;
+        try {
+          if (shouldRefreshPanel) await loadTelegramAgentMediaActivity();
+          if (dashboardNotificationsEnabled) {
+            queueDashboardNotificationRefresh(['telegram_agent_media_activity.json']);
+          }
+        } catch (error) {
+          showError(`Could not refresh Telegram video activity: ${error.message}`);
+        } finally {
+          telegramMediaRefreshInFlight = false;
+          if (telegramMediaRefreshPending) scheduleTelegramMediaActivityRefresh();
+        }
+      }, 200);
+    }
+
     let scheduledDashboardRefresh = new Set();
     let dashboardRefreshTimer = null;
     function scheduleDashboardRefresh(files) {
@@ -7443,7 +7591,7 @@
             tasks.push(loadTelegramUpdateQueue());
           }
         }
-        if (has('student_payment_ledger.json') &&
+        if (has('student_payment_ledger.json', 'historical_payment_receipts.json') &&
             document.querySelector('#section-payment-ledger').classList.contains('active')) {
           tasks.push(loadPaymentLedger());
         }
@@ -7629,6 +7777,57 @@
     });
     $('#payment-ledger-refresh').addEventListener('click', () => {
       loadPaymentLedger().catch(error => showError(`Could not refresh payment ledger: ${error.message}`));
+    });
+    $('#historical-payment-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const submit = form.querySelector('[type="submit"]');
+      const status = $('#historical-payment-status');
+      const receipt = $('#historical-payment-receipt').files[0];
+      const studentKey = $('#historical-payment-student').value;
+      const amount = $('#historical-payment-amount').value;
+      const currency = $('#historical-payment-currency').value.trim().toUpperCase();
+      const dateValue = $('#historical-payment-date').value;
+      if (!receipt || !studentKey || !dateValue) return;
+
+      const paidAt = new Date(`${dateValue}T12:00:00`).toISOString();
+      status.classList.remove('error');
+      status.textContent = 'Saving historical payment…';
+      submit.disabled = true;
+      submit.textContent = 'Saving…';
+      try {
+        await api('/api/admin/historical-payment-receipts', {
+          method: 'POST',
+          body: receipt,
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': receipt.type,
+            'x-payment-student-key': studentKey,
+            'x-payment-paid-at': paidAt,
+            'x-payment-amount': amount,
+            'x-payment-currency': currency
+          }
+        });
+      } catch (error) {
+        status.classList.add('error');
+        status.textContent = `Could not add historical payment: ${error.message}`;
+        submit.disabled = false;
+        submit.textContent = 'Add to payment history';
+        return;
+      }
+
+      form.reset();
+      const today = new Date();
+      $('#historical-payment-date').value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      status.textContent = 'Historical payment saved and included in its month’s total.';
+      try {
+        await loadPaymentLedger();
+      } catch (error) {
+        showError(`Historical payment was saved, but payment history could not be refreshed: ${error.message}`);
+      } finally {
+        submit.disabled = false;
+        submit.textContent = 'Add to payment history';
+      }
     });
     $('#open-discount-offer').addEventListener('click', () => {
       openDiscountOfferDialog();

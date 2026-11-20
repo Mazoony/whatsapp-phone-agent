@@ -28,6 +28,8 @@ import {
 } from './admin_dashboard.js';
 import { createContactPaymentLabelsStore } from './contact_payment_labels.js';
 import { config } from './config.js';
+import { STUDENT_PAYMENT_INFORMATION_MESSAGE } from './student_payment_information.js';
+import { personalizeTelegramMessage } from './telegram_student_gender.js';
 import { WhatsAppPresenceManager } from './whatsapp_presence.js';
 import { createScheduledLessonStore } from './scheduled_lessons.js';
 import { LessonSkipQueue } from './lesson_skip_queue.js';
@@ -2378,6 +2380,7 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
   t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
   const paymentLedgerFile = path.join(temporaryDirectory, 'student_payment_ledger.json');
   const paymentReceiptImageDirectory = path.join(temporaryDirectory, 'payment_receipts');
+  const historicalPaymentReceiptsFile = path.join(temporaryDirectory, 'historical_payment_receipts.json');
   const enrolledAt = '2026-01-01T12:00:00.000Z';
   const studentKey = 'telegram:-100123:44';
   const telegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
@@ -2409,6 +2412,7 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     telegramProgressFile,
     paymentLedgerFile,
     paymentReceiptImageDirectory,
+    historicalPaymentReceiptsFile,
     telegramPaymentNotifier: async (chatId, text) => {
       paymentNotifications.push({ chatId, text });
     }
@@ -2424,6 +2428,23 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(initial.students.length, 1);
     assert.equal(initial.students[0].studentKey, studentKey);
     assert.equal(initial.students[0].payment.status, 'unpaid');
+    assert.equal(initial.students[0].paymentInformationDelivery.status, 'not_sent');
+    assert.equal(initial.students[0].hasStartedLessons, true);
+
+    const manualSendResponse = await fetch(`${origin}/api/admin/payment-information`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentKey })
+    });
+    assert.equal(manualSendResponse.status, 200);
+    assert.equal(paymentNotifications[0].chatId, '44');
+    assert.equal(
+      paymentNotifications[0].text,
+      personalizeTelegramMessage(STUDENT_PAYMENT_INFORMATION_MESSAGE, 'unknown')
+    );
+    const deliveredLedger = await (await fetch(ledgerUrl)).json();
+    assert.equal(deliveredLedger.students[0].paymentInformationDelivery.status, 'sent');
+    assert.ok(deliveredLedger.students[0].paymentInformationDelivery.sentAt);
 
     const deniedResponse = await fetch(ledgerUrl, {
       method: 'POST',
@@ -2448,9 +2469,9 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(reviewed.payment.amount, 17000);
     assert.equal(reviewed.payment.currency, 'SDG');
     assert.deepEqual(reviewed.notification, { sent: true, reason: 'sent' });
-    assert.equal(paymentNotifications.length, 1);
-    assert.equal(paymentNotifications[0].chatId, '44');
-    assert.match(paymentNotifications[0].text, /تم تأكيد دفعك/);
+    assert.equal(paymentNotifications.length, 2);
+    assert.equal(paymentNotifications[1].chatId, '44');
+    assert.match(paymentNotifications[1].text, /تم تأكيد دفعك/);
 
     const receiptId = 'c0a80123-4567-489a-8bcd-0123456789ab';
     const receiptImage = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
@@ -2471,6 +2492,57 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(paidHistory.payments[0].currency, 'SDG');
     assert.equal(paidHistory.payments[0].paidAt, reviewed.payment.paidAt);
 
+    const historicalReceipt = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const historicalPaymentDate = '2026-02-20T12:00:00.000Z';
+    const historicalUploadHeaders = {
+      Origin: origin,
+      'Content-Type': 'image/jpeg',
+      'x-payment-student-key': studentKey,
+      'x-payment-paid-at': historicalPaymentDate,
+      'x-payment-amount': '12500',
+      'x-payment-currency': 'SDG'
+    };
+    const historicalUploadResponse = await fetch(
+      `${origin}/api/admin/historical-payment-receipts`,
+      {
+        method: 'POST',
+        headers: historicalUploadHeaders,
+        body: historicalReceipt
+      }
+    );
+    assert.equal(historicalUploadResponse.status, 201);
+    const historicalUpload = await historicalUploadResponse.json();
+    assert.equal(historicalUpload.payment.studentKey, studentKey);
+    assert.equal(historicalUpload.payment.paidAt, historicalPaymentDate);
+    assert.equal(historicalUpload.payment.amount, 12500);
+    assert.equal(historicalUpload.payment.currency, 'SDG');
+    assert.equal(historicalUpload.payment.source, 'historical-receipt');
+
+    const historyWithHistorical = await (await fetch(ledgerUrl)).json();
+    assert.equal(historyWithHistorical.students[0].payment.status, 'paid');
+    assert.equal(historyWithHistorical.payments.length, 2);
+    const storedHistoricalPayment = historyWithHistorical.payments.find(payment =>
+      payment.source === 'historical-receipt');
+    assert.equal(storedHistoricalPayment.amount, 12500);
+    assert.equal(storedHistoricalPayment.receiptId, historicalUpload.payment.receiptId);
+
+    const historicalReceiptResponse = await fetch(
+      `${origin}/api/admin/payment-receipts/${historicalUpload.payment.receiptId}`
+    );
+    assert.equal(historicalReceiptResponse.status, 200);
+    assert.equal(historicalReceiptResponse.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(Buffer.from(await historicalReceiptResponse.arrayBuffer()), historicalReceipt);
+
+    const duplicateHistoricalUpload = await fetch(
+      `${origin}/api/admin/historical-payment-receipts`,
+      {
+        method: 'POST',
+        headers: historicalUploadHeaders,
+        body: historicalReceipt
+      }
+    );
+    assert.equal(duplicateHistoricalUpload.status, 409);
+
     const alreadyPaidResponse = await fetch(ledgerUrl, {
       method: 'POST',
       headers: { Origin: origin, 'Content-Type': 'application/json' },
@@ -2484,9 +2556,9 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(alreadyPaidResponse.status, 200);
     const alreadyPaid = await alreadyPaidResponse.json();
     assert.deepEqual(alreadyPaid.notification, { sent: true, reason: 'sent' });
-    assert.equal(paymentNotifications.length, 2);
-    assert.equal(paymentNotifications[1].chatId, '44');
-    assert.match(paymentNotifications[1].text, /تم تأكيد دفعك/);
+    assert.equal(paymentNotifications.length, 3);
+    assert.equal(paymentNotifications[2].chatId, '44');
+    assert.match(paymentNotifications[2].text, /تم تأكيد دفعك/);
 
     const receiptImageResponse = await fetch(
       `${origin}/api/admin/payment-receipts/${receiptId}`
@@ -3466,7 +3538,19 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
     }
   }));
   fs.writeFileSync(telegramUpdateQueueFile, JSON.stringify({
-    active: null,
+    active: {
+      update: {
+        update_id: 2,
+        message: {
+          text: '/lesson',
+          chat: { id: -100123, type: 'supergroup', title: 'Lessons' },
+          from: { id: 45, first_name: 'Sara' }
+        }
+      },
+      queuedAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      detail: 'Sending Grammar lesson 1: Welcome'
+    },
     waiting: [{
       update: {
         update_id: 1,
@@ -3541,6 +3625,7 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
     const queueResponse = await fetch(`${origin}/api/admin/telegram-chat-queue`);
     const queue = await queueResponse.json();
     assert.equal(queueResponse.status, 200);
+    assert.equal(queue.active.detail, 'Sending Grammar lesson 1: Welcome');
     assert.equal(queue.waiting[0].name, 'Ali');
     assert.equal(JSON.stringify(queue).includes('private student answer'), false);
     assert.deepEqual(queue.adminActions.map(action => ({
@@ -3806,11 +3891,16 @@ test('dashboard event stream pushes Telegram progress updates', async () => {
     temporaryDirectory,
     'telegram_dashboard_chat_replies.json'
   );
+  const telegramAgentMediaActivityFile = path.join(
+    temporaryDirectory,
+    'telegram_agent_media_activity.json'
+  );
   const server = createAdminDashboardServer({
     readData: () => sampleData,
     telegramProgressFile,
     telegramLessonSkipRequestsFile,
-    telegramDashboardChatRepliesFile
+    telegramDashboardChatRepliesFile,
+    telegramAgentMediaActivityFile
   });
   const controller = new AbortController();
   let reader;
@@ -3861,6 +3951,14 @@ test('dashboard event stream pushes Telegram progress updates', async () => {
     ]);
     assert.match(replyUpdate, /event: dashboard-update/);
     assert.match(replyUpdate, /telegram_dashboard_chat_replies\.json/);
+
+    fs.writeFileSync(telegramAgentMediaActivityFile, JSON.stringify({ activities: [] }));
+    const mediaUpdate = await Promise.race([
+      reader.read().then(result => decoder.decode(result.value)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for Telegram media update.')), 2_000))
+    ]);
+    assert.match(mediaUpdate, /event: dashboard-update/);
+    assert.match(mediaUpdate, /telegram_agent_media_activity\.json/);
   } finally {
     controller.abort();
     if (reader) await reader.cancel().catch(() => {});

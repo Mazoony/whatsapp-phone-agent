@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -7,6 +8,8 @@ export const STUDENT_PAYMENT_LEDGER_FILE = path.join(ROOT_DIR, 'data', 'student_
 export const PAYMENT_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 export const PAYMENT_STATUSES = ['unpaid', 'pending_review', 'paid', 'rejected'];
 const PAYMENT_RECEIPT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RENAME_RETRY_DELAYS_MS = [10, 25, 50, 100];
+const PAYMENT_INFORMATION_DELIVERY_LEASE_MS = 2 * 60 * 1000;
 
 function validTimestamp(value) {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return null;
@@ -29,6 +32,27 @@ function normalizeCurrency(value) {
     throw new Error('Currency must be a three-letter code such as SDG or USD.');
   }
   return currency;
+}
+
+function getPaymentInformationDelivery(record) {
+  const delivery = record?.paymentInformationDelivery || {};
+  const attemptedAt = Date.parse(delivery.attemptedAt || '');
+  const inProgress = delivery.inProgress &&
+    Number.isFinite(attemptedAt) &&
+    Date.now() - attemptedAt < PAYMENT_INFORMATION_DELIVERY_LEASE_MS;
+  return {
+    status: delivery.sentAt
+      ? 'sent'
+      : inProgress
+        ? 'sending'
+        : delivery.attemptedAt
+          ? 'failed'
+          : 'not_sent',
+    sentAt: delivery.sentAt || null,
+    attemptedAt: delivery.attemptedAt || null,
+    lastError: delivery.lastError || null,
+    inProgress: inProgress === true
+  };
 }
 
 export function getRollingPaymentPeriod(enrolledAt, now = Date.now()) {
@@ -139,7 +163,20 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
             !validTimestamp(period.periodEnd) ||
             !PAYMENT_STATUSES.includes(period.status) ||
             (period.amount != null && (!Number.isFinite(period.amount) || period.amount < 0)) ||
-            (period.currency != null && !/^[A-Z]{3}$/.test(period.currency))))) {
+            (period.currency != null && !/^[A-Z]{3}$/.test(period.currency))) ||
+          (record.paymentInformationDelivery != null &&
+            (typeof record.paymentInformationDelivery !== 'object' ||
+             Array.isArray(record.paymentInformationDelivery) ||
+             (record.paymentInformationDelivery.attemptedAt != null &&
+              !validTimestamp(record.paymentInformationDelivery.attemptedAt)) ||
+             (record.paymentInformationDelivery.sentAt != null &&
+              !validTimestamp(record.paymentInformationDelivery.sentAt)) ||
+             (record.paymentInformationDelivery.attemptId != null &&
+              typeof record.paymentInformationDelivery.attemptId !== 'string') ||
+             (record.paymentInformationDelivery.inProgress != null &&
+              typeof record.paymentInformationDelivery.inProgress !== 'boolean') ||
+             (record.paymentInformationDelivery.lastError != null &&
+              typeof record.paymentInformationDelivery.lastError !== 'string'))))) {
       throw new Error(`Invalid student payment ledger file: ${filePath}`);
     }
     return parsed;
@@ -147,10 +184,26 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
 
   function write(ledger) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const temporaryPath = `${filePath}.${process.pid}.tmp`;
+    const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       fs.writeFileSync(temporaryPath, JSON.stringify(ledger, null, 2), 'utf8');
-      fs.renameSync(temporaryPath, filePath);
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          fs.renameSync(temporaryPath, filePath);
+          break;
+        } catch (error) {
+          if (!['EPERM', 'EBUSY'].includes(error.code) ||
+              attempt >= RENAME_RETRY_DELAYS_MS.length) {
+            throw error;
+          }
+          Atomics.wait(
+            new Int32Array(new SharedArrayBuffer(4)),
+            0,
+            0,
+            RENAME_RETRY_DELAYS_MS[attempt]
+          );
+        }
+      }
     } catch (error) {
       try {
         fs.rmSync(temporaryPath, { force: true });
@@ -187,6 +240,90 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
   return {
     list() {
       return read();
+    },
+    getPaymentInformationDelivery(studentKey) {
+      if (typeof studentKey !== 'string' || !studentKey.trim()) {
+        throw new Error('A student identifier is required to read payment information delivery status.');
+      }
+      return getPaymentInformationDelivery(read()[studentKey]);
+    },
+    beginPaymentInformationDelivery(studentKey, {
+      enrolledAt,
+      force = false,
+      attemptedAt = new Date().toISOString()
+    } = {}) {
+      if (typeof studentKey !== 'string' || !studentKey.trim()) {
+        throw new Error('A student identifier is required to send payment information.');
+      }
+      const normalizedEnrolledAt = validTimestamp(enrolledAt);
+      if (!normalizedEnrolledAt) {
+        throw new Error('A valid enrollment date is required to send payment information.');
+      }
+      const normalizedAttemptedAt = validTimestamp(attemptedAt);
+      if (!normalizedAttemptedAt) {
+        throw new Error('A valid payment information delivery date is required.');
+      }
+      return withLock(() => {
+        const ledger = read();
+        const record = ledger[studentKey] || {
+          enrolledAt: normalizedEnrolledAt,
+          periods: {}
+        };
+        const previous = record.paymentInformationDelivery || {};
+        const previousAttemptTime = Date.parse(previous.attemptedAt || '');
+        const attemptIsActive = previous.inProgress &&
+          Number.isFinite(previousAttemptTime) &&
+          Date.now() - previousAttemptTime < PAYMENT_INFORMATION_DELIVERY_LEASE_MS;
+        if (attemptIsActive || (!force && previous.attemptedAt)) return null;
+
+        const attemptId = randomUUID();
+        record.paymentInformationDelivery = {
+          ...previous,
+          attemptedAt: normalizedAttemptedAt,
+          attemptId,
+          inProgress: true,
+          lastError: null
+        };
+        ledger[studentKey] = record;
+        write(ledger);
+        return { attemptId };
+      });
+    },
+    completePaymentInformationDelivery(studentKey, {
+      attemptId,
+      sent,
+      sentAt = new Date().toISOString(),
+      error = null
+    } = {}) {
+      if (typeof studentKey !== 'string' || !studentKey.trim() ||
+          typeof attemptId !== 'string' || !attemptId) {
+        throw new Error('A student and payment information delivery attempt are required.');
+      }
+      if (typeof sent !== 'boolean') {
+        throw new Error('Payment information delivery result must be a boolean.');
+      }
+      const normalizedSentAt = validTimestamp(sentAt);
+      if (!normalizedSentAt) {
+        throw new Error('A valid payment information delivery date is required.');
+      }
+      if (!sent && (typeof error !== 'string' || !error.trim())) {
+        throw new Error('A failure reason is required for an unsuccessful payment information delivery.');
+      }
+      return withLock(() => {
+        const ledger = read();
+        const record = ledger[studentKey];
+        const previous = record?.paymentInformationDelivery;
+        if (!previous || previous.attemptId !== attemptId) return false;
+        record.paymentInformationDelivery = {
+          ...previous,
+          ...(sent ? { sentAt: normalizedSentAt } : {}),
+          inProgress: false,
+          attemptId: null,
+          lastError: sent ? null : error.trim().slice(0, 500)
+        };
+        write(ledger);
+        return true;
+      });
     },
     getCurrent(studentKey, enrolledAt, now = Date.now()) {
       if (typeof studentKey !== 'string' || !studentKey.trim()) {

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import https from 'node:https';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -25,6 +26,7 @@ import {
   formatStudentPaymentStatus,
   STUDENT_PAYMENT_LEDGER_FILE
 } from './student_payment_ledger.js';
+import { STUDENT_PAYMENT_INFORMATION_MESSAGE } from './student_payment_information.js';
 import {
   deletePaymentReceiptImage,
   PAYMENT_RECEIPT_IMAGE_DIRECTORY,
@@ -72,23 +74,43 @@ const DEFAULT_PROGRESS_FILE = path.join(DATA_DIR, 'telegram_progress.json');
 const DEFAULT_OFFSET_FILE = path.join(DATA_DIR, 'telegram_update_offset.json');
 const TELEGRAM_MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const TELEGRAM_PAYMENT_REMINDER_LESSONS = 5;
-const TELEGRAM_PAYMENT_INSTRUCTIONS =
-  'رسوم الاشتراك الشهري 17 ألف جنيه سوداني، عن طريق بنكك.\n\nرقم الحساب: 2865022\nباسم: مازن محمد أحمد الصديق صالح\n\nبعد الدفع أرسل /paid عشان نراجع الإشعار.';
 const TELEGRAM_MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 const EXERCISE_SCORING_POLICY = 'first_attempt';
 const TELEGRAM_LESSON_REQUEST_COOLDOWN_MS = 2 * 60 * 1000;
+const TELEGRAM_TRACK_SELECTION_SETTLE_MS = 500;
 const TELEGRAM_CHAT_HISTORY_LIMIT = 200;
 const IGNORED_TELEGRAM_USER_IDS = new Set(['6413779313']);
 const LONG_POLL_SECONDS = 25;
 const NETWORK_TIMEOUT_MS = 35_000;
 const TELEGRAM_UPLOAD_TIMEOUT_MS = 180_000;
 const POLL_RETRY_DELAY_MS = 5_000;
+const RENAME_RETRY_DELAYS_MS = [10, 25, 50, 100];
 
 function saveJsonAtomically(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const temporaryPath = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), 'utf8');
-  fs.renameSync(temporaryPath, filePath);
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), 'utf8');
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        fs.renameSync(temporaryPath, filePath);
+        break;
+      } catch (error) {
+        if (!['EPERM', 'EBUSY'].includes(error.code) ||
+            attempt >= RENAME_RETRY_DELAYS_MS.length) {
+          throw error;
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, RENAME_RETRY_DELAYS_MS[attempt]);
+      }
+    }
+  } catch (error) {
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch (cleanupError) {
+      console.error('[Telegram] Could not clean temporary state file:', cleanupError.message);
+    }
+    throw error;
+  }
 }
 
 function getStudentMilestoneMessage(lessonsCompleted) {
@@ -442,7 +464,10 @@ export class TelegramBotApi {
     });
   }
 
-  sendVideo(chatId, video, caption, replyToMessageId) {
+  sendVideo(chatId, video, caption, replyToMessageId, onProgress) {
+    if (this.fetchImpl === globalThis.fetch) {
+      return this.requestVideoUpload(chatId, video, caption, replyToMessageId, onProgress);
+    }
     const form = new FormData();
     form.append('chat_id', String(chatId));
     form.append('video', new Blob([video], { type: 'video/mp4' }), 'lesson.mp4');
@@ -450,7 +475,105 @@ export class TelegramBotApi {
     if (replyToMessageId) {
       form.append('reply_parameters', JSON.stringify({ message_id: replyToMessageId }));
     }
-    return this.request('sendVideo', form, { upload: true });
+    return this.request('sendVideo', form, { upload: true }).then(result => {
+      onProgress?.(video.length, video.length);
+      return result;
+    });
+  }
+
+  async requestVideoUpload(chatId, video, caption, replyToMessageId, onProgress) {
+    const boundary = `----TelegramBoundary${randomUUID().replaceAll('-', '')}`;
+    const fields = [
+      ['chat_id', String(chatId)],
+      ['caption', caption || ''],
+      ...(replyToMessageId
+        ? [['reply_parameters', JSON.stringify({ message_id: replyToMessageId })]]
+        : [])
+    ];
+    const prefix = Buffer.concat([
+      ...fields.flatMap(([name, value]) => [
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`)
+      ]),
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="lesson.mp4"\r\nContent-Type: video/mp4\r\n\r\n`)
+    ]);
+    const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const contentLength = prefix.length + video.length + suffix.length;
+    const url = new URL(`https://api.telegram.org/bot${this.token}/sendVideo`);
+
+    let response;
+    try {
+      response = await new Promise((resolve, reject) => {
+        const request = https.request(url, {
+          method: 'POST',
+          headers: {
+            'content-type': `multipart/form-data; boundary=${boundary}`,
+            'content-length': contentLength
+          },
+          signal: AbortSignal.timeout(TELEGRAM_UPLOAD_TIMEOUT_MS)
+        }, resolve);
+        request.on('error', reject);
+
+        const chunks = [prefix];
+        const chunkSize = 64 * 1024;
+        for (let offset = 0; offset < video.length; offset += chunkSize) {
+          chunks.push(video.subarray(offset, Math.min(offset + chunkSize, video.length)));
+        }
+        chunks.push(suffix);
+        let videoBytesWritten = 0;
+        const reportProgress = loaded => {
+          try {
+            onProgress?.(loaded, video.length);
+          } catch (error) {
+            request.destroy(error);
+          }
+        };
+
+        const writeNext = index => {
+          if (index >= chunks.length) {
+            request.end();
+            return;
+          }
+          const chunk = chunks[index];
+          request.write(chunk, error => {
+            if (error) {
+              request.destroy(error);
+              return;
+            }
+            if (index > 0 && index < chunks.length - 1) {
+              videoBytesWritten += chunk.length;
+              reportProgress(videoBytesWritten);
+            }
+            if (request.destroyed) return;
+            writeNext(index + 1);
+          });
+        };
+        writeNext(0);
+      });
+    } catch (error) {
+      const reason = error?.cause?.code || error?.code || error?.name || 'network error';
+      throw new Error(`Telegram sendVideo request failed before a response was received (${reason}).`);
+    }
+
+    let payload;
+    try {
+      const responseBody = await new Promise((resolve, reject) => {
+        const chunks = [];
+        response.on('data', chunk => chunks.push(chunk));
+        response.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        response.on('error', reject);
+      });
+      payload = JSON.parse(responseBody);
+    } catch {
+      throw new Error('Telegram sendVideo returned an invalid response.');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300 || payload?.ok !== true) {
+      const reason = typeof payload?.description === 'string'
+        ? payload.description
+        : `HTTP ${response.statusCode}`;
+      throw new Error(`Telegram sendVideo failed: ${reason}`);
+    }
+    onProgress?.(video.length, video.length);
+    return payload.result;
   }
 }
 
@@ -558,16 +681,22 @@ export class TelegramLessonAgent {
     this.studentOperations = new Map();
   }
 
-  async handleUpdate(update) {
+  async handleUpdate(update, onProgress) {
+    const reportProgress = detail => {
+      if (typeof onProgress === 'function') onProgress(detail);
+    };
     const message = update?.message;
     if (!message) return;
+    const isGroupMemberAddition = Array.isArray(message.new_chat_members) &&
+      message.new_chat_members.length > 0;
     if (Number.isSafeInteger(message.from?.id) &&
-        IGNORED_TELEGRAM_USER_IDS.has(String(message.from.id))) {
+        IGNORED_TELEGRAM_USER_IDS.has(String(message.from.id)) &&
+        !isGroupMemberAddition) {
       this.logger.info(`[Telegram] Ignoring messages from configured admin user ${message.from.id}.`);
       return;
     }
     if (message.chat?.type === 'private') {
-      await this.handlePrivateUpdate(message);
+      await this.handlePrivateUpdate(message, reportProgress);
       return;
     }
     if (!isGroupChat(message.chat)) return;
@@ -592,7 +721,8 @@ export class TelegramLessonAgent {
       }
       return;
     }
-    if (Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0) {
+    if (isGroupMemberAddition) {
+      reportProgress('Recording group join');
       const eventDate = Number.isSafeInteger(message.date) && message.date > 0
         ? new Date(message.date * 1000)
         : null;
@@ -602,7 +732,8 @@ export class TelegramLessonAgent {
       let recorded = false;
       const studentsToWelcome = [];
       for (const user of message.new_chat_members) {
-        if (!Number.isSafeInteger(user?.id) || user.is_bot) continue;
+        if (!Number.isSafeInteger(user?.id) || user.is_bot ||
+            IGNORED_TELEGRAM_USER_IDS.has(String(user.id))) continue;
         const studentKey = getProgressKey(chatId, user.id);
         const previous = this.progress[studentKey] || {};
         if (!previous.telegramPrivateChatId && !previous.onboardingInstructionsSentAt) {
@@ -622,6 +753,7 @@ export class TelegramLessonAgent {
       }
       if (recorded) this.saveProgress();
       if (studentsToWelcome.length) {
+        reportProgress(`Onboarding ${studentsToWelcome.length} new student${studentsToWelcome.length === 1 ? '' : 's'}`);
         const instructions = getNewStudentInstructions(
           studentsToWelcome.map(({ user }) => user)
         );
@@ -722,7 +854,7 @@ export class TelegramLessonAgent {
 
     if (isTelegramPaymentQuestion(text)) {
       if (this.progress[studentKey]?.telegramPrivateChatId) {
-        await this.sendPrivateNotice(studentKey, TELEGRAM_PAYMENT_INSTRUCTIONS);
+        await this.sendPrivateNotice(studentKey, STUDENT_PAYMENT_INFORMATION_MESSAGE);
       } else {
         const instructions = getNewStudentInstructions([message.from]);
         await this.bot.sendMessage(
@@ -780,14 +912,15 @@ export class TelegramLessonAgent {
         const currentState = this.progress[studentKey];
         const privateChatId = currentState.telegramPrivateChatId;
         if (!privateChatId) {
-          await this.sendPrivateStartInstructions(chatId, studentKey, message);
+          await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
           return;
         }
         try {
           const delivered = await this.requestNextTelegramTrackLesson(
             studentKey,
             requestedTrack,
-            privateChatId
+            privateChatId,
+            reportProgress
           );
           if (delivered) {
             await this.bot.sendMessage(
@@ -800,7 +933,7 @@ export class TelegramLessonAgent {
           if (isPrivateChatUnavailable(error)) {
             delete currentState.telegramPrivateChatId;
             this.saveProgress();
-            await this.sendPrivateStartInstructions(chatId, studentKey, message);
+            await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
             return;
           }
           this.logger.error(
@@ -833,17 +966,18 @@ export class TelegramLessonAgent {
             ['awaiting_task', 'awaiting_reattempt', 'awaiting_content'].includes(currentState.status)) {
           await this.bot.sendMessage(
             chatId,
-            'إنت مسجل معانا وطلبك وصل قبل شوية. افتح الخاص مع @eSchoolsdBot واضغط Start لو لسه، وراجع آخر رسالة هناك. لو داير تعيد إرسال الحصة، أرسل /lesson بعد دقيقتين.',
+            'حسابك مسجل معانا وطلبك وصل قبل شوية. يرجى فتح الخاص مع @eSchoolsdBot واضغط Start لو لسه، وراجع آخر رسالة هناك.',
             message.message_id
           );
           return;
         }
         const privateChatId = currentState.telegramPrivateChatId;
         if (!privateChatId) {
+          reportProgress('Sending private-chat setup instructions');
           currentState.lastLessonRequestAt = new Date(now).toISOString();
           currentState.lastLessonRequestLessonId = currentState.currentLessonId || null;
           this.saveProgress();
-          await this.sendPrivateStartInstructions(chatId, studentKey, message);
+          await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
           return;
         }
         recordTelegramLessonAnnouncementOptIn(currentState);
@@ -851,7 +985,7 @@ export class TelegramLessonAgent {
         currentState.lastLessonRequestLessonId = currentState.currentLessonId || null;
         this.saveProgress();
         try {
-          await this.startOrResumeLesson(privateChatId, studentKey);
+          await this.startOrResumeLesson(privateChatId, studentKey, undefined, reportProgress);
           const deliveredState = this.progress[studentKey];
           deliveredState.lastLessonRequestAt = new Date().toISOString();
           deliveredState.lastLessonRequestLessonId = deliveredState.currentLessonId || null;
@@ -866,7 +1000,7 @@ export class TelegramLessonAgent {
           if (isPrivateChatUnavailable(error)) {
             delete this.progress[studentKey].telegramPrivateChatId;
             this.saveProgress();
-            await this.sendPrivateStartInstructions(chatId, studentKey, message);
+            await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
             return;
           }
           await this.sendPrivateNotice(
@@ -900,7 +1034,8 @@ export class TelegramLessonAgent {
     }
   }
 
-  async sendPrivateStartInstructions(chatId, studentKey, message) {
+  async sendPrivateStartInstructions(chatId, studentKey, message, reportProgress) {
+    reportProgress?.('Sending private-chat setup instructions');
     const instructions = getNewStudentInstructions([message.from]);
     await this.bot.sendMessage(
       chatId,
@@ -984,7 +1119,8 @@ export class TelegramLessonAgent {
     );
   }
 
-  async requestNextTelegramTrackLesson(studentKey, track, chatId) {
+  async requestNextTelegramTrackLesson(studentKey, track, chatId, reportProgress) {
+    reportProgress?.(`Checking ${track === 'literature' ? 'Literature' : 'Spine'} lessons`);
     const state = this.progress[studentKey];
     if (hasActiveTelegramTask(state)) {
       this.lessonManager.refreshLessonsConfig?.();
@@ -1037,10 +1173,14 @@ export class TelegramLessonAgent {
     }
 
     try {
+      const lesson = lessons[nextLessonIndex];
+      reportProgress?.(
+        `Sending ${track === 'literature' ? 'Literature' : 'Spine'} lesson ${nextLessonIndex + 1}: ${lesson.title || lesson.id}`
+      );
       await this.deliverTelegramTrackLesson(
         studentKey,
         track,
-        lessons[nextLessonIndex],
+        lesson,
         nextLessonIndex
       );
     } catch (error) {
@@ -1198,7 +1338,7 @@ export class TelegramLessonAgent {
     this.saveProgress();
   }
 
-  async handlePrivateUpdate(message) {
+  async handlePrivateUpdate(message, reportProgress) {
     const userId = message.from?.id;
     if (!Number.isSafeInteger(userId) || message.from.is_bot) return;
     const text = typeof message.text === 'string' ? message.text.trim() : '';
@@ -1209,7 +1349,7 @@ export class TelegramLessonAgent {
       return;
     }
     if (isTelegramPaymentQuestion(text)) {
-      await this.bot.sendMessage(String(message.chat.id), TELEGRAM_PAYMENT_INSTRUCTIONS);
+      await this.bot.sendMessage(String(message.chat.id), STUDENT_PAYMENT_INFORMATION_MESSAGE);
       return;
     }
     if (!found) {
@@ -1282,7 +1422,8 @@ export class TelegramLessonAgent {
         await this.requestNextTelegramTrackLesson(
           studentKey,
           requestedTrack,
-          String(message.chat.id)
+          String(message.chat.id),
+          reportProgress
         );
       });
       return;
@@ -1425,6 +1566,7 @@ export class TelegramLessonAgent {
           return;
         }
         try {
+          reportProgress?.(`Sending Grammar lesson ${requestedLessonNumber}: ${lesson.title || lesson.id}`);
           await this.deliverLesson(
             studentKey,
             currentState.grade || this.defaultGrade,
@@ -1456,7 +1598,8 @@ export class TelegramLessonAgent {
           await this.startOrResumeLesson(
             String(message.chat.id),
             studentKey,
-            message.message_id
+            message.message_id,
+            reportProgress
           );
         } catch (error) {
           this.logger.error(`[Telegram] Could not deliver a private lesson to ${studentKey}: ${error.message}`);
@@ -1914,7 +2057,7 @@ export class TelegramLessonAgent {
       : { status: 'awaiting_content' };
   }
 
-  async startOrResumeLesson(chatId, studentKey, messageId) {
+  async startOrResumeLesson(chatId, studentKey, messageId, reportProgress) {
     this.lessonManager.refreshLessonsConfig?.();
     const state = this.progress[studentKey];
     if (state && ['awaiting_task', 'awaiting_reattempt'].includes(state.status)) {
@@ -1925,6 +2068,7 @@ export class TelegramLessonAgent {
         state
       );
       if (isReadyLesson(lesson)) {
+        reportProgress?.(`Sending Grammar lesson ${lessonIndex + 1}: ${lesson.title || lesson.id}`);
         const taskVersion = getLessonTaskVersion(lesson);
         if (state.taskVersion !== taskVersion) {
           state.taskVersion = taskVersion;
@@ -1968,6 +2112,7 @@ export class TelegramLessonAgent {
     if (!isReadyLesson(lesson)) {
       throw new Error(`Lesson ${next.lessonIndex + 1} is missing its video, task, or answer key.`);
     }
+    reportProgress?.(`Sending Grammar lesson ${next.lessonIndex + 1}: ${lesson.title || lesson.id}`);
     await this.deliverLesson(studentKey, grade, next.lessonIndex, lesson, messageId);
   }
 
@@ -2013,7 +2158,7 @@ export class TelegramLessonAgent {
     if (state.lessonsCompleted === TELEGRAM_PAYMENT_REMINDER_LESSONS) {
       await this.bot.sendMessage(
         chatId,
-        `ما شاء الله، كملت 5 دروس بنجاح 😍 عشان تواصل معانا، ${TELEGRAM_PAYMENT_INSTRUCTIONS}`
+        `ما شاء الله، كملت 5 دروس بنجاح 😍 عشان تواصل معانا، ${STUDENT_PAYMENT_INFORMATION_MESSAGE}`
       );
     }
   }
@@ -2115,6 +2260,12 @@ export class TelegramLessonAgent {
     }
 
     const previous = this.progress[studentKey] || {};
+    const hadPreviousLessonDelivery = Boolean(
+      previous.deliveredAt ||
+      previous.currentLessonId ||
+      (Array.isArray(previous.lessonHistory) && previous.lessonHistory.length > 0) ||
+      (Number.isSafeInteger(previous.currentLessonIndex) && previous.currentLessonIndex >= 0)
+    );
     const lessonTaskProgress = previous.lessonTaskProgress &&
       typeof previous.lessonTaskProgress === 'object' &&
       !Array.isArray(previous.lessonTaskProgress)
@@ -2274,13 +2425,28 @@ export class TelegramLessonAgent {
     writeAgentMediaActivity(activity, this.mediaActivityFile);
     try {
       activity.status = 'uploading';
+      activity.loaded = 0;
+      activity.percent = 0;
       activity.updatedAt = new Date().toISOString();
       writeAgentMediaActivity(activity, this.mediaActivityFile);
+      let lastReportedPercent = 0;
       await this.bot.sendVideo(
         chatId,
         video,
         activity.caption,
-        replyToMessageId
+        replyToMessageId,
+        (loaded, total) => {
+          const percent = total > 0
+            ? Math.min(100, Math.floor((loaded / total) * 100))
+            : 0;
+          if (percent <= lastReportedPercent && loaded < total) return;
+          lastReportedPercent = percent;
+          activity.loaded = loaded;
+          activity.total = total;
+          activity.percent = percent;
+          activity.updatedAt = new Date().toISOString();
+          writeAgentMediaActivity(activity, this.mediaActivityFile);
+        }
       );
       activity.status = 'sent';
       activity.loaded = video.length;
@@ -2912,7 +3078,15 @@ export async function startTelegramPolling({
           continue;
         }
         try {
-          await agent.handleUpdate(entry.update);
+          if (updateQueue.isTrackSelection(entry)) {
+            await new Promise(resolve =>
+              setTimeout(resolve, TELEGRAM_TRACK_SELECTION_SETTLE_MS));
+            updateQueue.coalesceActiveTrackSelection(entry);
+          }
+          await agent.handleUpdate(
+            entry.update,
+            detail => updateQueue.updateActiveDetails(entry, detail)
+          );
         } catch (error) {
           logger.error(`[Telegram] Could not process update ${entry.update.update_id}: ${error.message}`);
         } finally {
