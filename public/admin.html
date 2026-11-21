@@ -149,6 +149,33 @@
     .agent-queue-control:disabled { cursor: wait; opacity: .6; }
     .agent-queue-paused { margin-top: 9px; padding: 8px 10px; border-radius: 7px; color: #8a5b12; background: #fff5df; font-size: 10px; }
     .agent-queue-list { display: grid; gap: 8px; margin-top: 12px; }
+    .agent-queue-workers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 7px; }
+    .agent-queue-worker { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .agent-queue-worker.active { border-color: #a8d7c1; background: #f5fbf7; }
+    .agent-queue-worker-identity { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+    .agent-queue-worker-label { color: var(--muted); font-size: 24px; font-weight: 700; overflow-wrap: anywhere; }
+    .agent-queue-worker-icon { display: block; font-size: 30px; line-height: 1; }
+    @keyframes telegram-teacher-working {
+      0%, 100% { transform: translate(0, 0) rotate(0); }
+      25% { transform: translate(1px, -2px) rotate(2deg); }
+      50% { transform: translate(-2px, 1px) rotate(-1deg); }
+      75% { transform: translate(2px, 1px) rotate(1deg); }
+    }
+    .agent-queue-worker.active .agent-queue-worker-icon {
+      animation: telegram-teacher-working 3s ease-in-out infinite;
+      transform-origin: center 70%;
+    }
+    .agent-queue-worker.active:nth-child(even) .agent-queue-worker-icon { animation-direction: reverse; }
+    .agent-queue-worker.active:nth-child(2) .agent-queue-worker-icon { animation-delay: -0.6s; }
+    .agent-queue-worker.active:nth-child(3) .agent-queue-worker-icon { animation-delay: -1.2s; }
+    .agent-queue-worker.active:nth-child(4) .agent-queue-worker-icon { animation-delay: -1.8s; }
+    .agent-queue-worker.active:nth-child(5) .agent-queue-worker-icon { animation-delay: -2.4s; }
+    .agent-queue-worker-status { margin-top: 5px; color: #208453; font-size: 10px; font-weight: 650; text-align: center; }
+    .agent-queue-worker .agent-queue-name { margin-top: 6px; white-space: normal; overflow-wrap: anywhere; }
+    .agent-queue-worker .agent-queue-detail { overflow-wrap: anywhere; }
+    .agent-queue-worker-idle .agent-queue-name { color: var(--muted); font-weight: 500; text-align: center; }
+    @media (max-width: 900px) { .agent-queue-workers { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 560px) { .agent-queue-workers { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .agent-queue-item { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; transition: transform .45s cubic-bezier(.2,.75,.25,1), opacity .25s ease; will-change: transform; }
     .agent-queue-item.admin-action { border-color: #d7c8eb; background: #fcfaff; }
     .agent-queue-subheading { margin: 14px 0 0; color: var(--ink); font-size: 11px; }
@@ -163,7 +190,7 @@
     .agent-queue-item.active { border-color: #a8d7c1; background: #f5fbf7; }
     .agent-queue-item.active .agent-queue-state { color: #208453; }
     .agent-queue-empty { padding: 14px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 11px; }
-    @media (prefers-reduced-motion: reduce) { .agent-queue-item { transition: none; } }
+    @media (prefers-reduced-motion: reduce) { .agent-queue-item { transition: none; } .agent-queue-worker-icon { animation: none !important; } }
     .agent-qr-wrap { display: grid; place-items: center; min-height: 210px; border: 1px dashed var(--line); border-radius: 10px; background: #fafcfb; }
     .agent-qr-wrap img { display: block; width: min(100%, 230px); height: auto; image-rendering: pixelated; }
     .agent-log { height: 250px; overflow: auto; margin: 0; padding: 12px; border-radius: 9px; background: #15251f; color: #d5e4dc; font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -504,6 +531,12 @@
     .telegram-join-chart { display: grid; grid-template-columns: repeat(7, minmax(18px, 1fr)); align-items: end; gap: 8px; min-height: 76px; margin-top: 8px; }
     .telegram-join-day { display: flex; min-width: 0; height: 70px; flex-direction: column; align-items: center; justify-content: end; gap: 4px; color: var(--muted); font-size: 9px; }
     .telegram-join-day i { display: block; width: min(100%, 20px); min-height: 2px; border-radius: 4px 4px 0 0; background: #23875a; }
+    .telegram-join-peaks { display: grid; grid-template-columns: repeat(7, minmax(80px, 1fr)); gap: 8px; margin-top: 12px; }
+    .telegram-join-peak { padding: 8px; border: 1px solid #e4ebe7; border-radius: 8px; background: #fbfdfc; text-align: center; }
+    .telegram-join-peak strong { display: block; color: var(--ink); font-size: 13px; }
+    .telegram-join-peak span { display: block; color: var(--muted); font-size: 10px; }
+    @media (max-width: 900px) { .telegram-join-peaks { grid-template-columns: repeat(4, minmax(80px, 1fr)); } }
+    @media (max-width: 560px) { .telegram-join-peaks { grid-template-columns: repeat(2, minmax(80px, 1fr)); } }
     .student-insight-day { display: flex; position: relative; min-width: 0; height: 140px; align-items: end; justify-content: center; }
     .student-insight-day-label { position: absolute; right: 50%; bottom: -21px; transform: translateX(50%); color: #7b8981; font-size: 8px; white-space: nowrap; direction: ltr; }
     .student-insight-bar { display: block; width: min(100%, 12px); min-height: 3px; border-radius: 4px 4px 1px 1px; background: #23875a; }
@@ -1168,9 +1201,11 @@
           <pre class="agent-log" id="telegram-agent-log" aria-live="polite">Waiting for Telegram agent output…</pre>
         </article>
         <article class="panel agent-queue-panel" id="telegram-chat-queue-panel">
-          <div class="agent-media-top"><h3>Live Telegram update queue</h3><div class="agent-queue-controls"><span class="agent-queue-state">Group joins prioritized · updates live</span><button class="agent-queue-control" id="telegram-queue-toggle" type="button" disabled>Pause handling</button></div></div>
+          <div class="agent-media-top"><h3>Live Telegram update queue</h3><div class="agent-queue-controls"><span class="agent-queue-state">Up to 5 in parallel · joins prioritized</span><button class="agent-queue-control" id="telegram-queue-refresh" type="button">Refresh</button><button class="agent-queue-control" id="telegram-queue-toggle" type="button" disabled>Pause handling</button></div></div>
           <div class="agent-queue-paused" id="telegram-queue-paused" hidden>Telegram update handling is paused. The bot will keep receiving updates; queued updates wait until handling resumes.</div>
-          <h4 class="agent-queue-subheading">Incoming Telegram updates</h4>
+          <h4 class="agent-queue-subheading">Teachers</h4>
+          <div class="agent-queue-workers" id="telegram-queue-workers" aria-live="polite"></div>
+          <h4 class="agent-queue-subheading">Waiting Telegram updates</h4>
           <div class="agent-queue-list" id="telegram-queue-list" aria-live="polite"><div class="agent-queue-empty">No Telegram updates are waiting.</div></div>
           <h4 class="agent-queue-subheading">Dashboard-assigned tasks</h4>
           <div class="agent-queue-list" id="telegram-admin-actions-list" aria-live="polite"><div class="agent-queue-empty">No dashboard tasks are waiting.</div></div>
@@ -1629,8 +1664,8 @@
         </div>
         <article class="panel table-wrap">
           <table>
-            <thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Payment period</th><th>Status</th><th>Amount</th><th>Evidence / reference</th><th>Payment info</th><th>Actions</th></tr></thead>
-            <tbody id="payment-ledger-rows"><tr><td colspan="9" class="empty">Loading payment records…</td></tr></tbody>
+            <thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Lesson</th><th>Payment period</th><th>Status</th><th>Amount</th><th>Evidence / reference</th><th>Payment info</th><th>Actions</th></tr></thead>
+            <tbody id="payment-ledger-rows"><tr><td colspan="10" class="empty">Loading payment records…</td></tr></tbody>
           </table>
         </article>
         <p class="activity-note">Only dashboard-confirmed payments are recorded as paid. Telegram status requests are answered privately; a group payment report receives a neutral acknowledgement.</p>
@@ -1681,6 +1716,8 @@
           <p class="activity-summary" id="telegram-enrollment-summary" aria-live="polite">Loading Telegram enrollment…</p>
           <div class="telegram-join-chart" id="telegram-join-chart" aria-label="Daily Telegram group member joins over the last seven days"></div>
           <div class="student-insight-legend"><span><i></i>Recorded group join date</span></div>
+          <h4 style="margin:14px 0 0">Peak join time by weekday</h4>
+          <div class="telegram-join-peaks" id="telegram-join-peaks" aria-live="polite">Loading peak join times…</div>
         </article>
         <div class="roster-insights">
           <article class="panel roster-insight-panel">
@@ -4726,6 +4763,17 @@
         }).format(new Date(`${day.date}T12:00:00Z`));
         return `<div class="telegram-join-day" title="${escapeHtml(day.date)}: ${day.students} joined"><span>${day.students}</span><i style="height:${height}px"></i><small>${escapeHtml(label)}</small></div>`;
       }).join('') : '<div class="empty">No Telegram enrollment dates recorded yet.</div>';
+      const peaks = enrollment?.joinPeaksByWeekday || [];
+      $('#telegram-join-peaks').innerHTML = peaks.length
+        ? peaks.map(peak => {
+          if (peak.peakHour == null) {
+            return `<div class="telegram-join-peak"><strong>${escapeHtml(peak.day)}</strong><span>No recorded joins</span></div>`;
+          }
+          const hourLabel = peak.peakHourLabel || `${String(peak.peakHour).padStart(2, '0')}:00`;
+          const joinsLabel = `${peak.peakJoins} ${peak.peakJoins === 1 ? 'join' : 'joins'}`;
+          return `<div class="telegram-join-peak" title="${escapeHtml(`${peak.day}: ${peak.peakJoins} joins at ${hourLabel}`)}"><strong>${escapeHtml(peak.day)}</strong><span>${escapeHtml(hourLabel)} · ${joinsLabel}</span></div>`;
+        }).join('')
+        : '<div class="empty">No weekday join data recorded yet.</div>';
       configureTimelineNavigation(
         $('#telegram-join-chart'),
         [$('#telegram-join-chart')],
@@ -6509,23 +6557,51 @@
       const queue = await api('/api/admin/telegram-chat-queue');
       const container = $('#telegram-queue-list');
       const adminActionsContainer = $('#telegram-admin-actions-list');
-      const rows = [
-        ...(queue.active ? [{ ...queue.active, active: true }] : []),
-        ...(queue.waiting || []).map(entry => ({ ...entry, active: false }))
+      const activeEntries = Array.isArray(queue.activeEntries)
+        ? queue.activeEntries
+        : queue.active ? [queue.active] : [];
+      const rows = queue.waiting || [];
+      const workers = [
+        { name: 'مستر مازن', icon: '👨‍🏫' },
+        { name: 'مستر جورج', icon: '👨‍🏫' },
+        { name: 'مستر كرم الله', icon: '👨‍🏫' },
+        { name: 'مس أميرة', icon: '👩‍🏫' },
+        { name: 'مس العافية', icon: '👩‍🏫' }
       ];
+      $('#telegram-queue-workers').innerHTML = Array.from({ length: 5 }, (_, index) => {
+        const entry = activeEntries[index];
+        const worker = workers[index];
+        const workerName = escapeHtml(worker.name);
+        const workerIcon = `<span class="agent-queue-worker-icon" aria-hidden="true">${worker.icon}</span>`;
+        const workerIdentity = `<div class="agent-queue-worker-identity">
+          ${workerIcon}
+          <div class="agent-queue-worker-label" dir="auto">${workerName}</div>
+        </div>`;
+        if (!entry) {
+          return `<div class="agent-queue-worker agent-queue-worker-idle">
+            ${workerIdentity}
+            <div class="agent-queue-name">Idle</div>
+          </div>`;
+        }
+        const timestamp = entry.startedAt || entry.queuedAt;
+        return `<div class="agent-queue-worker active">
+          ${workerIdentity}
+          <div class="agent-queue-worker-status">Handling</div>
+          <div class="agent-queue-name">${escapeHtml(entry.name)} · ${escapeHtml(entry.chat)}</div>
+          <div class="agent-queue-detail">${escapeHtml(entry.detail || 'Processing Telegram update')}</div>
+          <div class="agent-queue-detail">${escapeHtml(entry.messageType)} · Started ${formatDate(timestamp)} · handling ${formatQueueDuration(timestamp)}</div>
+        </div>`;
+      }).join('');
       const adminActions = queue.adminActions || [];
       if (!rows.length) {
         container.innerHTML = '<div class="agent-queue-empty">No Telegram updates are waiting.</div>';
       } else {
         container.innerHTML = rows.map(row => `
-          <div class="agent-queue-item ${row.active ? 'active' : ''}">
+          <div class="agent-queue-item">
             <span class="agent-queue-position">#${row.position}</span>
             <div><div class="agent-queue-name">${escapeHtml(row.name)} · ${escapeHtml(row.chat)}</div>
-            ${row.active && row.detail ? `<div class="agent-queue-detail">${escapeHtml(row.detail)}</div>` : ''}
-            <div class="agent-queue-detail">${escapeHtml(row.messageType)} · ${row.active
-              ? `Started ${formatDate(row.startedAt || row.queuedAt)} · handling ${formatQueueDuration(row.startedAt || row.queuedAt)}`
-              : `Received ${formatDate(row.queuedAt)} · waiting ${formatQueueDuration(row.queuedAt)}`}</div></div>
-            <span class="agent-queue-state">${row.active ? 'Handling now' : 'Waiting'}</span>
+            <div class="agent-queue-detail">${escapeHtml(row.messageType)} · Received ${formatDate(row.queuedAt)} · waiting ${formatQueueDuration(row.queuedAt)}</div></div>
+            <span class="agent-queue-state">Waiting</span>
           </div>`).join('');
       }
       if (!adminActions.length) {
@@ -7102,6 +7178,7 @@
             <td>${escapeHtml(student.platform)}</td>
             <td>${escapeHtml(student.name)}</td>
             <td>${escapeHtml(student.gradeName)}</td>
+            <td>${Number.isSafeInteger(student.currentLessonNumber) ? `Lesson ${escapeHtml(String(student.currentLessonNumber))}` : '—'}</td>
             <td>${escapeHtml(formatDate(payment.periodStart, false))} – ${escapeHtml(formatDate(periodEnd, false))}</td>
             <td><span class="status ${escapeHtml(payment.status)}">${escapeHtml(statusLabels[payment.status] || payment.status)}</span>${payment.claimedAt ? `<small class="skip-lesson-status">Reported ${escapeHtml(formatDate(payment.claimedAt))}</small>` : ''}</td>
             <td><div class="payment-ledger-amount"><input type="number" min="0" step="any" inputmode="decimal" aria-label="Amount for ${escapeHtml(student.name)}" data-payment-amount value="${payment.amount ?? ''}" placeholder="Optional"><input type="text" maxlength="3" aria-label="Currency for ${escapeHtml(student.name)}" data-payment-currency value="${escapeHtml(payment.currency || 'SDG')}"></div></td>
@@ -7111,7 +7188,7 @@
             <td><div class="payment-ledger-actions"><select aria-label="Payment status for ${escapeHtml(student.name)}" data-payment-status>${Object.entries(statusLabels).map(([value, label]) => `<option value="${value}" ${value === payment.status ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="pagination button" type="button" data-payment-save>Save</button></div></td>
           </tr>`;
         }).join('')
-        : '<tr><td colspan="9" class="empty">No students with lesson progress are available yet.</td></tr>';
+        : '<tr><td colspan="10" class="empty">No students with lesson progress are available yet.</td></tr>';
 
       $('#payment-ledger-rows').querySelectorAll('[data-payment-save]').forEach(button => {
         button.addEventListener('click', async () => {
@@ -9437,6 +9514,19 @@
         button.disabled = false;
         showError(`Could not ${paused ? 'pause' : 'resume'} Telegram handling: ${error.message}`);
         await loadTelegramUpdateQueue().catch(() => {});
+      }
+    });
+    $('#telegram-queue-refresh').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Refreshing…';
+      try {
+        await loadTelegramUpdateQueue();
+      } catch (error) {
+        showError(`Could not refresh Telegram update queue: ${error.message}`);
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Refresh';
       }
     });
     $('#agent-queue-list').addEventListener('click', async event => {

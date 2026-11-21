@@ -79,6 +79,19 @@ function isGroupJoin(entry) {
   return Array.isArray(members) && members.length > 0;
 }
 
+function getProcessingIdentities(entry) {
+  const message = entry.update?.message;
+  const members = message?.new_chat_members;
+  if (Array.isArray(members) && members.length > 0) {
+    const identities = members
+      .filter(user => Number.isSafeInteger(user?.id))
+      .map(user => `user:${user.id}`);
+    return identities.length ? identities : [`chat:${message.chat?.id ?? entry.update.update_id}`];
+  }
+  if (Number.isSafeInteger(message?.from?.id)) return [`user:${message.from.id}`];
+  return [`chat:${message?.chat?.id ?? entry.update.update_id}`];
+}
+
 function getTrackSelectionIdentity(update) {
   const message = update?.message;
   const command = /^\/(?:lesson|grammar|literature|spine)(?:@[a-z0-9_]+)?(?:\s|$)/i;
@@ -99,10 +112,16 @@ export function readTelegramUpdateQueue(
   if (!stored || !Array.isArray(stored.waiting)) {
     throw new Error(`Invalid Telegram update queue in ${queueFile}.`);
   }
+  const activeEntries = (Array.isArray(stored.active)
+    ? stored.active
+    : stored.active
+      ? [stored.active]
+      : []).map((entry, index) => describe(entry, index + 1, true));
   return {
-    active: stored.active ? describe(stored.active, 1, true) : null,
+    active: activeEntries[0] || null,
+    activeEntries,
     waiting: stored.waiting.map((entry, index) =>
-      describe(entry, index + (stored.active ? 2 : 1))),
+      describe(entry, index + activeEntries.length + 1)),
     paused: control.paused === true,
     updatedAt: stored.updatedAt || null
   };
@@ -131,9 +150,14 @@ export class TelegramUpdateQueue {
     if (!stored || !Array.isArray(stored.waiting)) {
       throw new Error(`Invalid Telegram update queue in ${queueFile}.`);
     }
-    this.active = null;
+    const recoveredActive = Array.isArray(stored.active)
+      ? stored.active
+      : stored.active
+        ? [stored.active]
+        : [];
+    this.active = [];
     this.waiting = [
-      ...(stored.active ? [{ ...stored.active, startedAt: undefined }] : []),
+      ...recoveredActive.map(({ startedAt, detail, ...entry }) => entry),
       ...stored.waiting
     ];
     this.paused = readJsonFile(controlFile, { paused: false }).paused === true;
@@ -144,7 +168,7 @@ export class TelegramUpdateQueue {
     if (!Number.isSafeInteger(update?.update_id)) {
       throw new TypeError('A Telegram update with a valid update_id is required.');
     }
-    if (this.active?.update?.update_id === update.update_id ||
+    if (this.active.some(entry => entry.update?.update_id === update.update_id) ||
         this.waiting.some(entry => entry.update?.update_id === update.update_id)) return;
     const trackSelectionIdentity = getTrackSelectionIdentity(update);
     if (trackSelectionIdentity) {
@@ -160,7 +184,7 @@ export class TelegramUpdateQueue {
   }
 
   coalesceActiveTrackSelection(entry) {
-    if (this.active !== entry) {
+    if (!this.active.includes(entry)) {
       throw new Error('Cannot coalesce a Telegram update that is not active.');
     }
     const identity = getTrackSelectionIdentity(entry.update);
@@ -183,7 +207,7 @@ export class TelegramUpdateQueue {
   }
 
   updateActiveDetails(entry, detail) {
-    if (this.active !== entry) {
+    if (!this.active.includes(entry)) {
       throw new Error('Cannot update details for a Telegram update that is not active.');
     }
     if (typeof detail !== 'string' || !detail.trim()) {
@@ -195,24 +219,37 @@ export class TelegramUpdateQueue {
 
   takeNext() {
     this.paused = readJsonFile(this.controlFile, { paused: false }).paused === true;
-    if (this.paused || this.active || this.waiting.length === 0) return null;
-    const nextGroupJoinIndex = this.waiting.findIndex(isGroupJoin);
-    this.active = this.waiting.splice(nextGroupJoinIndex < 0 ? 0 : nextGroupJoinIndex, 1)[0];
-    this.active.startedAt = new Date().toISOString();
-    this.active.detail = 'Processing Telegram update';
+    if (this.paused || this.waiting.length === 0) return null;
+    const activeIdentities = new Set(this.active.flatMap(getProcessingIdentities));
+    const isEligible = (entry, index) => {
+      const identities = getProcessingIdentities(entry);
+      if (identities.some(identity => activeIdentities.has(identity))) return false;
+      return !this.waiting.slice(0, index).some(previous =>
+        getProcessingIdentities(previous).some(identity => identities.includes(identity)));
+    };
+    const firstEligibleIndex = this.waiting.findIndex(isEligible);
+    if (firstEligibleIndex < 0) return null;
+    const nextGroupJoinIndex = this.waiting.findIndex((entry, index) =>
+      isGroupJoin(entry) && isEligible(entry, index));
+    const nextIndex = nextGroupJoinIndex >= 0 ? nextGroupJoinIndex : firstEligibleIndex;
+    const [entry] = this.waiting.splice(nextIndex, 1);
+    entry.startedAt = new Date().toISOString();
+    entry.detail = 'Processing Telegram update';
+    this.active.push(entry);
     this.persist();
-    return this.active;
+    return entry;
   }
 
   isIdle() {
-    return this.active === null && this.waiting.length === 0;
+    return this.active.length === 0 && this.waiting.length === 0;
   }
 
   finish(entry) {
-    if (this.active !== entry) {
+    const activeIndex = this.active.indexOf(entry);
+    if (activeIndex < 0) {
       throw new Error('Cannot finish a Telegram update that is not active.');
     }
-    this.active = null;
+    this.active.splice(activeIndex, 1);
     this.persist();
   }
 

@@ -14,7 +14,8 @@ import {
   consumeAgentMediaRetryRequests,
   TELEGRAM_AGENT_MEDIA_RETRY_REQUESTS_FILE
 } from './agent_media_retry.js';
-import { evaluateStudentTask } from './task_evaluator.js';
+import { getAnswerFreeHint } from './answer_feedback.js';
+import { evaluateStudentTask, parseAnswerKey } from './task_evaluator.js';
 import { lessonManager, resolveLessonVideoPath } from './lesson_manager.js';
 import {
   LessonSkipQueue,
@@ -78,6 +79,7 @@ const TELEGRAM_MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 const EXERCISE_SCORING_POLICY = 'first_attempt';
 const TELEGRAM_LESSON_REQUEST_COOLDOWN_MS = 2 * 60 * 1000;
 const TELEGRAM_TRACK_SELECTION_SETTLE_MS = 500;
+const TELEGRAM_UPDATE_CONCURRENCY = 5;
 const TELEGRAM_CHAT_HISTORY_LIMIT = 200;
 const IGNORED_TELEGRAM_USER_IDS = new Set(['6413779313']);
 const LONG_POLL_SECONDS = 25;
@@ -2137,11 +2139,13 @@ export class TelegramLessonAgent {
       [lessonId]: (Number.isSafeInteger(previousCount) ? previousCount : 0) + 1
     };
     state.lessonsCompleted = (state.lessonsCompleted || 0) + 1;
+    const completionAt = new Date().toISOString();
+    state.lastLessonCompletionAt = completionAt;
     const completionTimestamps = Array.isArray(state.lessonCompletionTimestamps)
       ? state.lessonCompletionTimestamps.filter(timestamp =>
           Number.isFinite(Date.parse(timestamp)))
       : [];
-    completionTimestamps.push(new Date().toISOString());
+    completionTimestamps.push(completionAt);
     state.lessonCompletionTimestamps = completionTimestamps.slice(-365);
   }
 
@@ -2833,19 +2837,25 @@ export class TelegramLessonAgent {
       .filter(number =>
         !taskProgress.correctQuestionNumbers.includes(number) &&
         !taskProgress.resolvedQuestionNumbers.includes(number));
+    const getTaskHint = (number, explanation) => {
+      const parsedAnswer = parseAnswerKey(lesson.answerKey[number - 1]);
+      const savedArabicExplanation = /[\u0600-\u06FF]/.test(parsedAnswer.explanation)
+        ? parsedAnswer.explanation
+        : '';
+      return getAnswerFreeHint(
+        [parsedAnswer.expectedAnswer, ...parsedAnswer.acceptedAnswers],
+        savedArabicExplanation || explanation,
+      );
+    };
     const correctionFeedback = correctedAfterRetry.size > 0
       ? [...correctedAfterRetry].map(number => {
-          const answer = lesson.answerKey[number - 1];
-          const [expectedAnswer, explanation] = answer.split(/\s+—\s+/, 2);
           const feedback = result.incorrectAnswers?.find(item =>
             item.questionNumber === number)?.explanation;
-          const conciseExplanation = typeof feedback === 'string' && feedback.trim()
-            ? feedback.trim()
-            : explanation || 'دي الصيغة الصحيحة حسب قاعدة الدرس.';
-          return `السؤال ${number}: الإجابة الصحيحة «${expectedAnswer.trim()}». ${conciseExplanation}`;
+          return `السؤال ${number}: لسه محتاج تصحيح بعد المحاولة التانية. ${getTaskHint(number, feedback)}`;
         }).join(' ')
       : '';
-    const spellingCorrectionFeedback = Array.isArray(result.correctedAnswers)
+    const spellingCorrectionFeedback = incorrectQuestionNumbers.length === 0 &&
+      Array.isArray(result.correctedAnswers)
       ? result.correctedAnswers
         .filter(correction =>
           Number.isInteger(correction.questionNumber) &&
@@ -2870,18 +2880,9 @@ export class TelegramLessonAgent {
               : '';
             return `السؤال ${number}${excerpt ? `: «${excerpt}${answer.length > 160 ? '…' : ''}»` : ''}`;
           }).join('، ')}. ${needsCorrection.map(number => {
-            const answerKey = String(lesson.answerKey[number - 1] || '');
-            const [expectedAnswer, answerKeyExplanation = ''] =
-              answerKey.split(/\s+—\s+/, 2);
             const explanation = result.incorrectAnswers?.find(item =>
               item.questionNumber === number)?.explanation;
-            const savedArabicExplanation = /[\u0600-\u06FF]/.test(answerKeyExplanation)
-              ? answerKeyExplanation.trim()
-              : '';
-            const ruleExplanation = savedArabicExplanation ||
-              (typeof explanation === 'string' ? explanation.trim() : '') ||
-              'راجع قاعدة الدرس وحاول تاني.';
-            return `السؤال ${number}: الإجابة الصحيحة «${expectedAnswer.trim()}». ${ruleExplanation}`;
+            return `السؤال ${number}: محتاج مراجعة. ${getTaskHint(number, explanation)}`;
           }).join(' ')}`
         : '';
       const uncertaintyFeedback = uncertainQuestionNumbers.size
@@ -2901,7 +2902,7 @@ export class TelegramLessonAgent {
     }
 
     const retryResolution = correctedAfterRetry.size > 0
-      ? `${correctionFeedback} وضحت ليك الإجابة بعد المحاولة التانية، ونواصل للحصة الجاية هسي. `
+      ? `${correctionFeedback} بنواصل للحصة الجاية هسي. `
       : '';
     const allCorrectMessage = correctedAfterRetry.size > 0
       ? retryResolution.trim()
@@ -2932,7 +2933,10 @@ export class TelegramLessonAgent {
         );
       }
     }
-    this.recordLessonCompletion(taskProgress, lesson.id);
+    this.recordLessonCompletion(state, lesson.id);
+    if (track !== 'grammar') {
+      this.recordLessonCompletion(taskProgress, lesson.id);
+    }
     if (track !== 'grammar') {
       taskProgress.status = 'completed';
       taskProgress.completedLessonIds = Array.isArray(taskProgress.completedLessonIds)
@@ -3069,9 +3073,9 @@ export async function startTelegramPolling({
   agent.processPendingMediaRetries?.().catch(error =>
     logger.error(`[Telegram] Media retry processing failed: ${error.message}`));
   let updateWorkerError = null;
-  const updateWorker = (async () => {
+  const updateWorkers = Array.from({ length: TELEGRAM_UPDATE_CONCURRENCY }, () => (async () => {
     try {
-      while (!signal?.aborted) {
+      while (!signal?.aborted && !updateWorkerError) {
         const entry = updateQueue.takeNext();
         if (!entry) {
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -3097,7 +3101,7 @@ export async function startTelegramPolling({
       updateWorkerError = error;
       logger.error(`[Telegram] Update queue worker failed: ${error.message}`);
     }
-  })();
+  })());
   let pollRequestInProgress = false;
   let latestPollWasEmpty = false;
   let idleRecoveryRunning = false;
@@ -3157,7 +3161,7 @@ export async function startTelegramPolling({
     clearInterval(motivationTimer);
     clearInterval(mediaRetryTimer);
     clearInterval(idleRecoveryTimer);
-    await updateWorker;
+    await Promise.all(updateWorkers);
     onStatus('disconnected');
   }
   logger.info(

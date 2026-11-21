@@ -250,6 +250,14 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
     historicalProgress.insights.telegramEnrollment.dailyJoins.at(-1).date,
     '2020-01-20'
   );
+  assert.equal(
+    historicalProgress.insights.telegramEnrollment.joinPeaksByWeekday.length,
+    7
+  );
+  assert.ok(historicalProgress.insights.telegramEnrollment.joinPeaksByWeekday
+    .every(day => Array.isArray(day.hours) && day.hours.length === 24));
+  assert.ok(historicalProgress.insights.telegramEnrollment.joinPeaksByWeekday
+    .every(day => day.peakHourLabel === null || /^\d{2}:00$/.test(day.peakHourLabel)));
 
   const replyResponse = await fetch(`${origin}/telegram-student-reply`, {
     method: 'POST',
@@ -739,6 +747,14 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
     'telegram:-1001:12': {
       name: 'No completions',
       lessonCompletionTimestamps: []
+    },
+    'telegram:-1001:13': {
+      name: 'Nested track student',
+      telegramLessonTracks: {
+        treasure_island: {
+          lessonCompletionTimestamps: [new Date(now).toISOString()]
+        }
+      }
     }
   }));
   const sentMessages = [];
@@ -761,7 +777,8 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   const preview = await previewResponse.json();
   assert.deepEqual(preview.students.map(student => [student.name, student.lessonsCompleted]), [
     ['Zeinab', 2],
-    ['Amina', 1]
+    ['Amina', 1],
+    ['Nested track student', 1]
   ]);
   assert.equal(preview.groupConfigured, true);
   assert.equal(preview.botConfigured, true);
@@ -777,7 +794,8 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   assert.equal(dailyPreview.period, 'daily');
   assert.deepEqual(dailyPreview.students.map(student => [student.name, student.lessonsCompleted]), [
     ['Zeinab', 2],
-    ['Amina', 1]
+    ['Amina', 1],
+    ['Nested track student', 1]
   ]);
   assert.match(dailyPreview.message, /لوحة إنجازات اليوم/);
   assert.doesNotMatch(dailyPreview.message, /No completions/);
@@ -790,7 +808,7 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   assert.equal(shareResponse.status, 200);
   const shared = await shareResponse.json();
   assert.equal(shared.sent, true);
-  assert.equal(shared.studentsCount, 2);
+  assert.equal(shared.studentsCount, 3);
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].chatId, '-1001');
   assert.equal(sentMessages[0].message, preview.message);
@@ -804,7 +822,7 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   const sharedDaily = await shareDailyResponse.json();
   assert.equal(sharedDaily.sent, true);
   assert.equal(sharedDaily.period, 'daily');
-  assert.equal(sharedDaily.studentsCount, 2);
+  assert.equal(sharedDaily.studentsCount, 3);
   assert.equal(sentMessages.length, 2);
   assert.equal(sentMessages[1].message, dailyPreview.message);
 
@@ -2551,6 +2569,7 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(initial.students[0].payment.status, 'unpaid');
     assert.equal(initial.students[0].paymentInformationDelivery.status, 'not_sent');
     assert.equal(initial.students[0].hasStartedLessons, true);
+    assert.equal(initial.students[0].currentLessonNumber, 1);
 
     const manualSendResponse = await fetch(`${origin}/api/admin/payment-information`, {
       method: 'POST',
@@ -3747,6 +3766,8 @@ test('Telegram queue and video panels expose pause, update state, and retry cont
     const queue = await queueResponse.json();
     assert.equal(queueResponse.status, 200);
     assert.equal(queue.active.detail, 'Sending Grammar lesson 1: Welcome');
+    assert.equal(queue.activeEntries.length, 1);
+    assert.equal(queue.activeEntries[0].id, queue.active.id);
     assert.equal(queue.waiting[0].name, 'Ali');
     assert.equal(JSON.stringify(queue).includes('private student answer'), false);
     assert.deepEqual(queue.adminActions.map(action => ({

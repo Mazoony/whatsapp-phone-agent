@@ -218,14 +218,24 @@ function getLessonLeaderboard(progress, now, period = 'weekly', timeZone = 'Afri
   const weekEnd = weekEndDate.toISOString().slice(0, 10);
   const periodStart = period === 'daily' ? today : weekStart;
   const students = Object.values(progress || {}).flatMap(student => {
-    const completions = Array.isArray(student.lessonCompletionTimestamps)
-      ? student.lessonCompletionTimestamps.filter(timestamp => {
-          const parsed = Date.parse(timestamp);
-          if (!Number.isFinite(parsed) || parsed > now) return false;
-          const date = calendarDateKey(parsed, timeZone);
-          return date >= periodStart && date <= today;
-        }).length
-      : 0;
+    const completionCandidates = [
+      ...(Array.isArray(student.lessonCompletionTimestamps)
+        ? student.lessonCompletionTimestamps
+        : []),
+      student.lastLessonCompletionAt,
+      student.lastTaskSubmission?.checkedAt,
+      ...Object.values(student.telegramLessonTracks || {}).flatMap(track =>
+        Array.isArray(track?.lessonCompletionTimestamps)
+          ? track.lessonCompletionTimestamps
+          : [])
+    ].filter(timestamp => typeof timestamp === 'string');
+    const completions = [...new Set(completionCandidates.map(timestamp => {
+      const parsed = Date.parse(timestamp);
+      return Number.isFinite(parsed) && parsed <= now ? new Date(parsed).toISOString() : null;
+    }).filter(Boolean))].filter(timestamp => {
+      const date = calendarDateKey(Date.parse(timestamp), timeZone);
+      return date >= periodStart && date <= today;
+    }).length;
     if (!completions) return [];
     return [{
       name: String(student.name || (student.telegramUsername ? `@${student.telegramUsername}` : 'Student'))
@@ -807,6 +817,19 @@ function lessonForStudent(student, lessons) {
   return lessons[student.grade]?.lessons?.[student.currentLessonIndex] || null;
 }
 
+function getCurrentLessonNumber(student, lessons) {
+  const gradeLessons = lessons?.[student?.grade]?.lessons;
+  if (Array.isArray(gradeLessons) && typeof student?.currentLessonId === 'string') {
+    const lessonPosition = gradeLessons.findIndex(lesson => lesson?.id === student.currentLessonId);
+    if (lessonPosition >= 0) return lessonPosition + 1;
+  }
+  if (Number.isSafeInteger(student?.currentLessonIndex) && student.currentLessonIndex >= 0) {
+    return student.currentLessonIndex + 1;
+  }
+  const lessonNumber = /^lesson_(\d+)$/.exec(student?.currentLessonId || '');
+  return lessonNumber ? Number(lessonNumber[1]) : null;
+}
+
 function getStudentLessonCompletion(student, platform) {
   const receivedLessonIds = new Set(
     (Array.isArray(student.lessonHistory) ? student.lessonHistory : [])
@@ -951,6 +974,53 @@ function telegramActivityTimestamps(student) {
   return Number.isFinite(fallback) ? [fallback] : [];
 }
 
+function getTelegramJoinPeaksByWeekday(telegramStudents, timeZone) {
+  let formatter;
+  try {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'long',
+      hour: '2-digit',
+      hourCycle: 'h23'
+    });
+  } catch {
+    throw new Error('The requested timezone is invalid.');
+  }
+  const counts = ACTIVITY_WEEKDAYS.map(day => ({
+    day,
+    hours: Array(24).fill(0)
+  }));
+  for (const student of telegramStudents) {
+    const joinedAt = Date.parse(student.joinedAt || '');
+    if (!Number.isFinite(joinedAt)) continue;
+    const parts = Object.fromEntries(
+      formatter.formatToParts(new Date(joinedAt)).map(part => [part.type, part.value])
+    );
+    const weekday = ACTIVITY_WEEKDAYS.indexOf(parts.weekday);
+    const hour = Number(parts.hour);
+    if (weekday >= 0 && hour >= 0 && hour <= 23) {
+      counts[weekday].hours[hour] += 1;
+    }
+  }
+  return counts.map(({ day, hours }) => {
+    let peakHour = null;
+    let peakJoins = 0;
+    hours.forEach((count, hour) => {
+      if (count > peakJoins) {
+        peakJoins = count;
+        peakHour = hour;
+      }
+    });
+    return {
+      day,
+      peakHour,
+      peakHourLabel: peakHour == null ? null : `${String(peakHour).padStart(2, '0')}:00`,
+      peakJoins,
+      hours
+    };
+  });
+}
+
 export function listDashboardStudentProgress(
   data,
   now = Date.now(),
@@ -1030,6 +1100,7 @@ export function listDashboardStudentProgress(
       enrolledAt: student.enrolledAt ||
         (student.deliveredAt ? new Date(student.deliveredAt).toISOString() : null),
       currentLessonId: student.currentLessonId || '',
+      currentLessonNumber: getCurrentLessonNumber(student, data.lessons),
       lessonTitle: lesson?.title || student.currentLessonId || '',
       canSkipToNextLesson: Boolean(nextLesson),
       nextLessonId: nextLesson?.lessonId || null,
@@ -1096,6 +1167,7 @@ export function listDashboardStudentProgress(
       paymentKey: key,
       enrolledAt: student.enrolledAt || student.joinedAt || student.deliveredAt || null,
       currentLessonId: student.currentLessonId || '',
+      currentLessonNumber: getCurrentLessonNumber(student, data.lessons),
       lessonTitle: lesson?.title || student.currentLessonId || '',
       canSkipToNextLesson: Boolean(nextLesson),
       nextLessonId: nextLesson?.lessonId || null,
@@ -1276,7 +1348,8 @@ export function listDashboardStudentProgress(
           students: telegramStudents.filter(student =>
             student.joinedAt && calendarDateKey(Date.parse(student.joinedAt), timeZone) === date
           ).length
-        }))
+        })),
+        joinPeaksByWeekday: getTelegramJoinPeaksByWeekday(telegramStudents, timeZone)
       }
     }
   };
@@ -5232,6 +5305,7 @@ export function createAdminDashboardServer({
               gradeName: student.gradeName,
               enrolledAt: student.enrolledAt,
               currentLesson: student.lessonTitle || '',
+              currentLessonNumber: student.currentLessonNumber,
               hasStartedLessons: Boolean(
                 progress.deliveredAt ||
                 progress.currentLessonId ||

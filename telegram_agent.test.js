@@ -1019,6 +1019,32 @@ test('Telegram accepts a typo-corrected answer and shows the right spelling priv
   assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
 });
 
+test('Telegram hides spelling corrections when a submission also has a mistake', async t => {
+  const { agent, sent } = createFixture(t);
+  const lesson = agent.lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
+  lesson.answerKey = ['answer one', 'answer two'];
+  lesson.taskMessage = '1. Question one\n2. Question two';
+  agent.evaluateTask = async () => ({
+    isTaskSubmission: true,
+    allCorrect: false,
+    answeredQuestionNumbers: [1, 2],
+    correctQuestionNumbers: [1],
+    uncertainQuestionNumbers: [],
+    incorrectAnswers: [{
+      questionNumber: 2,
+      studentAnswer: 'wrong answer',
+      explanation: 'Review the lesson rule.'
+    }],
+    correctedAnswers: [{ questionNumber: 1, correctSpelling: 'answer one' }]
+  });
+
+  await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  await agent.handleUpdate(privateUpdate({ text: 'answer one\nwrong answer' }));
+
+  assert.match(sent.at(-1).text, /السؤال 2/);
+  assert.doesNotMatch(sent.at(-1).text, /answer one|الكتابة الصحيحة/);
+});
+
 test('Telegram announces a group achievement without student opt-in', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
@@ -1922,7 +1948,7 @@ test('incorrect Telegram task answers require a reattempt without advancing', as
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
   assert.equal(agent.progress['telegram:-100123:44'].status, 'awaiting_reattempt');
   assert.match(sent.at(-1).text, /الإجابة المحتاجة تصحيح: السؤال 1: «wrong answer»/);
-  assert.match(sent.at(-1).text, /الإجابة الصحيحة «answer 1»/);
+  assert.doesNotMatch(sent.at(-1).text, /الإجابة الصحيحة|answer 1/);
   assert.match(sent.at(-1).text, /بعد الفاعل المفرد بنضيف s للفعل في المضارع البسيط/);
   assert.match(sent.at(-1).text, /الأسئلة المحتاجة تصحيح أو إجابة: 1/);
   assert.match(sent.at(-1).text, /ما في داعي لإعادة الإجابات الصحيحة|ما محتاج تعيد الإجابات الصحيحة/);
@@ -2051,7 +2077,7 @@ test('Telegram keeps uncertain answers pending without counting them as wrong', 
   assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
 });
 
-test('Telegram explains an answer after one failed correction and sends the next lesson', async t => {
+test('Telegram flags a failed correction without revealing the answer', async t => {
   const { agent, sent } = createFixture(t);
   const lesson = agent.lessonManager.lessonsConfig.grade_3_secondary.lessons[0];
   lesson.answerKey = ['goes — بعد he بنضيف s للفعل في المضارع البسيط.'];
@@ -2088,8 +2114,8 @@ test('Telegram explains an answer after one failed correction and sends the next
   assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
   assert.deepEqual(agent.progress['telegram:-100123:44'].resolvedQuestionNumbers, []);
   assert.deepEqual(agent.progress['telegram:-100123:44'].retryQuestionNumbers, []);
-  assert.match(sent.at(-3).text, /الإجابة الصحيحة «goes»/);
-  assert.match(sent.at(-3).text, /بعد he بنضيف s للفعل في المضارع البسيط/);
+  assert.doesNotMatch(sent.at(-3).text, /الإجابة الصحيحة|goes/);
+  assert.match(sent.at(-3).text, /لسه محتاج تصحيح بعد المحاولة التانية/);
   assert.equal(sent.at(-2).type, 'video');
   assert.equal(sent.at(-1).text, 'Answer question 2.');
 });
@@ -2128,7 +2154,8 @@ test('Telegram advances after a second wrong answer even when other questions ar
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_2');
   assert.equal(agent.progress['telegram:-100123:44'].lessonsCompleted, 1);
   assert.equal(agent.progress['telegram:-100123:44'].status, 'awaiting_task');
-  assert.match(sent.at(-3).text, /الإجابة الصحيحة «studies»/);
+  assert.doesNotMatch(sent.at(-3).text, /الإجابة الصحيحة|studies/);
+  assert.match(sent.at(-3).text, /لسه محتاج تصحيح بعد المحاولة التانية/);
   assert.match(sent.at(-3).text, /بعد المحاولة التانية/);
   assert.doesNotMatch(sent.at(-3).text, /الأسئلة المحتاجة تصحيح أو إجابة/);
   assert.equal(sent.at(-2).type, 'video');
@@ -2677,6 +2704,66 @@ test('Telegram polling persists the next offset after processing updates', async
   assert.throws(() => saveTelegramUpdateOffset(-1, offsetFile), /non-negative safe integer/);
 });
 
+test('Telegram polling handles up to five different students at once', async t => {
+  const directory = makeTemporaryDirectory();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const updateQueue = new TelegramUpdateQueue({
+    queueFile: path.join(directory, 'telegram_update_queue.json'),
+    controlFile: path.join(directory, 'telegram_agent_control.json')
+  });
+  const controller = new AbortController();
+  const started = [];
+  const activeByUser = new Map();
+  let activeCount = 0;
+  let maximumActiveCount = 0;
+  let completedCount = 0;
+  let pollCount = 0;
+
+  await startTelegramPolling({
+    api: {
+      getUpdates: async () => {
+        pollCount += 1;
+        if (pollCount === 1) {
+          return [
+            { update_id: 111, message: { chat: { id: -100123 }, from: { id: 44 } } },
+            { update_id: 112, message: { chat: { id: -100123 }, from: { id: 44 } } },
+            { update_id: 113, message: { chat: { id: -100123 }, from: { id: 45 } } },
+            { update_id: 114, message: { chat: { id: -100123 }, from: { id: 46 } } },
+            { update_id: 115, message: { chat: { id: -100123 }, from: { id: 47 } } },
+            { update_id: 116, message: { chat: { id: -100123 }, from: { id: 48 } } }
+          ];
+        }
+        for (let attempt = 0; attempt < 100 && completedCount < 6; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        controller.abort();
+        return [];
+      }
+    },
+    agent: {
+      handleUpdate: async update => {
+        const userId = update.message.from.id;
+        started.push(update.update_id);
+        activeCount += 1;
+        maximumActiveCount = Math.max(maximumActiveCount, activeCount);
+        activeByUser.set(userId, (activeByUser.get(userId) || 0) + 1);
+        assert.equal(activeByUser.get(userId), 1, 'a student must not have overlapping updates');
+        await new Promise(resolve => setTimeout(resolve, 40));
+        activeByUser.set(userId, activeByUser.get(userId) - 1);
+        activeCount -= 1;
+        completedCount += 1;
+      }
+    },
+    offsetFile: path.join(directory, 'offset.json'),
+    updateQueue,
+    signal: controller.signal,
+    logger: { info() {}, error() {} }
+  });
+
+  assert.equal(maximumActiveCount, 5);
+  assert.equal(started.indexOf(112) > started.indexOf(111), true);
+});
+
 test('Telegram grades unchecked submissions only after an empty poll becomes idle', async t => {
   const directory = makeTemporaryDirectory();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -2759,6 +2846,43 @@ test('Telegram update queue persists order, pause state, and safe dashboard deta
   assert.equal(Object.hasOwn(liveSnapshot.waiting[0], 'detail'), false);
   queue.finish(entry);
   assert.equal(readTelegramUpdateQueue(queueFile, controlFile).waiting.length, 1);
+});
+
+test('Telegram update queue runs different students concurrently but preserves each student order', t => {
+  const directory = makeTemporaryDirectory();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const queueFile = path.join(directory, 'telegram_update_queue.json');
+  const controlFile = path.join(directory, 'telegram_agent_control.json');
+  const queue = new TelegramUpdateQueue({ queueFile, controlFile });
+  const enqueue = (updateId, userId) => queue.enqueue({
+    update_id: updateId,
+    message: {
+      text: `message ${updateId}`,
+      chat: { id: -100123, type: 'supergroup' },
+      from: { id: userId, first_name: `Student ${userId}` }
+    }
+  });
+  enqueue(101, 44);
+  enqueue(102, 44);
+  enqueue(103, 45);
+  enqueue(104, 46);
+  enqueue(105, 47);
+  enqueue(106, 48);
+
+  const active = [];
+  for (let index = 0; index < 5; index += 1) {
+    active.push(queue.takeNext());
+  }
+  assert.deepEqual(active.map(entry => entry.update.update_id), [101, 103, 104, 105, 106]);
+  assert.equal(queue.takeNext(), null, 'the second update for student 44 waits for the first');
+  assert.deepEqual(readTelegramUpdateQueue(queueFile, controlFile).activeEntries
+    .map(entry => entry.id), ['101', '103', '104', '105', '106']);
+
+  queue.finish(active[0]);
+  assert.equal(queue.takeNext().update.update_id, 102);
+  for (const entry of active.slice(1)) queue.finish(entry);
+  const secondStudentUpdate = queue.active.find(entry => entry.update.update_id === 102);
+  queue.finish(secondStudentUpdate);
 });
 
 test('Telegram update queue retries transient rename permission errors', t => {

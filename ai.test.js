@@ -11,6 +11,7 @@ import {
   shouldUseEnglishLessonOnboarding,
   sanitizeClientResponseText
 } from './ai.js';
+import { getAnswerFreeHint } from './answer_feedback.js';
 import { evaluateStudentTask } from './task_evaluator.js';
 import { historyManager } from './history.js';
 
@@ -21,6 +22,18 @@ test('English lesson onboarding is only used before the first agent reply', () =
     { role: 'client', text: 'Hello' },
     { role: 'agent', text: 'May I send you a lesson now?' }
   ]), false);
+});
+
+test('answer feedback hints do not reveal expected or accepted answers', () => {
+  const fallback = 'Review the lesson rule and try again.';
+  assert.equal(
+    getAnswerFreeHint(['goes', 'go'], 'The expected answer is goes.', fallback),
+    fallback
+  );
+  assert.equal(
+    getAnswerFreeHint(['goes', 'go'], 'After he, add -s to the verb.', fallback),
+    'After he, add -s to the verb.'
+  );
 });
 
 test('new-student welcome prompts ask for grade or announce only an available sample', async () => {
@@ -434,7 +447,7 @@ test('task grading uses local Ollama and requests JSON when Gemini keys are unav
         studentAnswer: 'He go to school.',
         explanation: 'بعد he بنضيف s للفعل في المضارع البسيط.'
       }],
-      feedback: 'السؤال 1: الإجابة الصحيحة «goes». بعد he بنضيف s للفعل في المضارع البسيط.'
+      feedback: 'السؤال 1: إجابتك محتاجة مراجعة. بعد he بنضيف s للفعل في المضارع البسيط.'
     });
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);
@@ -592,7 +605,7 @@ test('task grading gives Sudanese Arabic feedback for English submissions', asyn
     }, 'The answer is wrong.');
     assert.equal(
       result.feedback,
-      'السؤال 1: الإجابة الصحيحة «goes». بعد he أو she بنضيف s للفعل في المضارع البسيط.'
+      'السؤال 1: إجابتك محتاجة مراجعة. بعد he أو she بنضيف s للفعل في المضارع البسيط.'
     );
   } finally {
     config.geminiApiKeys.splice(0, config.geminiApiKeys.length, ...previousKeys);

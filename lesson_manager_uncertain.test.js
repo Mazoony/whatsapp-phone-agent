@@ -125,7 +125,7 @@ test('WhatsApp sends a Sudanese Arabic rule explanation for an incorrect answer'
       null
     ), true);
 
-    assert.match(sentMessages[0].text, /الإجابة الصحيحة «went»/);
+    assert.doesNotMatch(sentMessages[0].text, /\bwent\b/);
     assert.match(sentMessages[0].text, /الفعل go شاذ، وتغييرهو في الماضي لازم نحفظو/);
     assert.equal(lessonManager.progress[jid].status, 'awaiting_reattempt');
   } finally {

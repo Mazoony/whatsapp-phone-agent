@@ -98,7 +98,8 @@ test('course records partial answers, requests missing questions, and advances a
     assert.deepEqual(tutor.getStudent(jid).incorrectQuestionIds, [1]);
     assert.equal(tutor.getStudent(jid).currentScore, 9);
     assert.deepEqual(tutor.getStudent(jid).conceptsNeedingRevision, ['present-s']);
-    assert.match(sent.at(-1).text, /correct answer is \*plays\*/);
+    assert.match(sent.at(-1).text, /1\. ❌ Needs review/);
+    assert.doesNotMatch(sent.at(-1).text, /\bplays\b/);
 
     await tutor.handleMessage(sock, jid, '1. plays');
     assert.equal(tutor.getStudent(jid).currentLessonId, 'present-es');

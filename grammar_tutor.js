@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getPhoneJid } from './phonebook.js';
 import { sendHumanizedMessage } from './humanization.js';
+import { getAnswerFreeHint } from './answer_feedback.js';
 
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const GRAMMAR_TUTOR_PROGRESS_FILE = path.join(ROOT_DIR, 'data', 'grammar_tutor_progress.json');
@@ -32,6 +33,14 @@ function lesson(id, title, explanation, examples, rows, nextLessonId) {
     })),
     next_lesson_id: nextLessonId
   };
+}
+
+function getExerciseHint(exercise) {
+  return getAnswerFreeHint(
+    exercise.accepted_answers,
+    exercise.explanation_for_answer,
+    'Review the lesson rule and try again.'
+  );
 }
 
 const definitions = [
@@ -630,10 +639,12 @@ export class GrammarTutor {
         !student.conceptsNeedingRevision.includes(student.currentLessonId)) {
       student.conceptsNeedingRevision.push(student.currentLessonId);
     }
-    let feedback = results.map(result => result.correct
-      ? `${result.number}. ✅ Correct.`
-      : `${result.number}. ❌ The correct answer is *${result.exercise.accepted_answers[0]}*. ${result.exercise.explanation_for_answer}`
-    ).join('\n');
+    const incorrectResults = results.filter(result => !result.correct);
+    let feedback = incorrectResults.length
+      ? incorrectResults.map(result =>
+          `${result.number}. ❌ Needs review. ${getExerciseHint(result.exercise)}`
+        ).join('\n')
+      : results.map(result => `${result.number}. ✅ Correct.`).join('\n');
     const unansweredIds = current.exercises
       .map(item => Number(item.question_id))
       .filter(number => !student.answers[number]);
@@ -656,7 +667,7 @@ export class GrammarTutor {
         .filter(number => !reviewedIncorrectIds.has(number))
         .map(number => {
           const exercise = current.exercises[number - 1];
-          return `${number}. ❌ The correct answer is *${exercise.accepted_answers[0]}*. ${exercise.explanation_for_answer}`;
+          return `${number}. ❌ Needs review. ${getExerciseHint(exercise)}`;
         });
       if (previousMistakes.length) feedback += `\n${previousMistakes.join('\n')}`;
       feedback += `\n\n*Score: ${score}/10.* Please retry the incorrect questions: ${student.incorrectQuestionIds.join(', ')}. Send corrected answers with their question numbers.`;
