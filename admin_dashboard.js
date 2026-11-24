@@ -1190,6 +1190,14 @@ export function listDashboardStudentProgress(
       paymentKey: key,
       enrolledAt: student.enrolledAt || student.joinedAt || student.deliveredAt || null,
       lessonStartedAt: getLessonPaymentStartAt(student),
+      groupMembershipStatus: ['member', 'left', 'kicked', 'removed']
+        .includes(student.groupMembershipStatus)
+        ? student.groupMembershipStatus
+        : null,
+      groupLeftAt: typeof student.groupLeftAt === 'string' &&
+          Number.isFinite(Date.parse(student.groupLeftAt))
+        ? student.groupLeftAt
+        : null,
       currentLessonId: student.currentLessonId || '',
       currentLessonNumber: getCurrentLessonNumber(student, data.lessons),
       lessonTitle: lesson?.title || student.currentLessonId || '',
@@ -2923,6 +2931,16 @@ export function createAdminDashboardServer({
       trendEndDate,
       enrollmentEndDate
     );
+    const paymentStatusByStudent = new Map(
+      studentPaymentLedger.getCurrentForStudents(
+        progress.students
+          .filter(student => student.lessonStartedAt)
+          .map(student => ({
+            studentKey: student.paymentKey,
+            enrolledAt: student.lessonStartedAt
+          }))
+      ).map(current => [current.studentKey, current.payment?.status])
+    );
     const blockedPrivateChatIds = getTelegramBlockedPrivateChatIds(
       telegramBlockedRecipientsFile
     );
@@ -2979,6 +2997,7 @@ export function createAdminDashboardServer({
         );
         return {
           ...student,
+          paymentVerified: paymentStatusByStudent.get(student.paymentKey) === 'paid',
           telegramBotBlocked,
           canReplyPrivately: student.canReplyPrivately && !telegramBotBlocked,
           canSkipToNextLesson: student.canSkipToNextLesson && !telegramBotBlocked,
@@ -3122,6 +3141,7 @@ export function createAdminDashboardServer({
     telegramUserBroadcastFiles.state,
     paymentLedgerFile,
     historicalPaymentReceiptsFile,
+    paymentLabelsFile,
     telegramAgentStatusFile,
     telegramLessonSkipRequestsFile,
   ].map(filePath => path.resolve(filePath)));
@@ -3266,6 +3286,10 @@ export function createAdminDashboardServer({
     try {
       const watcher = fs.watch(directory, (_eventType, changedName) => {
         if (changedName === null) {
+          if (fileNames.has(path.basename(paymentLabelsFile))) {
+            lastBaseData = null;
+            cachedDashboardData = null;
+          }
           for (const fileName of fileNames) {
             scheduleChange(fileName);
             if (studentWorkbook && STUDENT_WORKBOOK_SOURCE_FILES.has(fileName)) {
@@ -3280,6 +3304,10 @@ export function createAdminDashboardServer({
         }
         const fileName = changedName.toString();
         if (fileNames.has(fileName)) {
+          if (fileName === path.basename(paymentLabelsFile)) {
+            lastBaseData = null;
+            cachedDashboardData = null;
+          }
           scheduleChange(fileName);
           if (studentWorkbook && STUDENT_WORKBOOK_SOURCE_FILES.has(fileName)) {
             if (workbookRefreshTimer) clearTimeout(workbookRefreshTimer);
@@ -4353,6 +4381,9 @@ export function createAdminDashboardServer({
         const [jid, contact] = matchingContact;
         const phoneJid = getPhoneJid(jid, contact?.phoneJid, contact?.jid);
         const label = paymentLabels.setManualStatus(phoneNumber, phoneJid || jid, body.status);
+        lastBaseData = null;
+        cachedDashboardData = null;
+        scheduleChange(path.basename(paymentLabelsFile));
         sendJson(res, 200, { phoneNumber, label });
       }).catch(error => {
         sendJson(res, 400, { error: error.message });
@@ -6384,13 +6415,14 @@ export function createAdminDashboardServer({
         if (!body || typeof body.jid !== 'string' || !body.jid || body.jid.length > 200 ||
             typeof body.currentLessonId !== 'string' ||
             typeof body.lessonId !== 'string' || !body.lessonId) {
-          sendJson(res, 400, { error: 'A Telegram student, current lesson ID, and destination lesson ID are required.' });
+          sendJson(res, 400, { error: 'A Telegram student, current lesson value, and destination lesson ID are required.' });
           return;
         }
 
         const telegramProgress = readJsonFileOr(telegramProgressFile, {});
         const student = telegramProgress[body.jid];
-        if (!student || student.currentLessonId !== body.currentLessonId) {
+        const currentLessonId = student?.currentLessonId || '';
+        if (!student || currentLessonId !== body.currentLessonId) {
           sendJson(res, 409, { error: 'The student progress changed. Refresh the progress table and try again.' });
           return;
         }
@@ -6428,7 +6460,7 @@ export function createAdminDashboardServer({
           chatId: String(student.telegramChatId),
           userId: String(student.telegramUserId),
           gradeKey: student.grade,
-          currentLessonId: student.currentLessonId || '',
+          currentLessonId,
           nextLessonId: selectedLesson.id,
           lessonIndex: selectedLesson.lessonIndex,
           nextLessonTitle: selectedLesson.title,

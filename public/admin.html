@@ -46,6 +46,15 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+    @media (prefers-reduced-motion: no-preference) {
+      ::view-transition-group(root) { animation-duration: 700ms; }
+      ::view-transition-old(root) { animation: none; }
+      ::view-transition-new(root) { animation: theme-reveal 700ms cubic-bezier(.2, .8, .2, 1) both; }
+      @keyframes theme-reveal {
+        from { clip-path: circle(0 at var(--theme-reveal-x) var(--theme-reveal-y)); }
+        to { clip-path: circle(150vmax at var(--theme-reveal-x) var(--theme-reveal-y)); }
+      }
+    }
     button, input { font: inherit; }
     button { cursor: pointer; }
     body.auth-locked .layout { display: none; }
@@ -81,9 +90,11 @@
     .brand small { color: #b4d0c3; font-size: 11px; }
     .nav-label { padding: 0 10px; color: #91b5a4; font-size: 10px; font-weight: 800; letter-spacing: 1.3px; text-transform: uppercase; }
     nav { display: grid; gap: 7px; }
-    .nav-item { border: 0; width: 100%; color: #d5e4dc; background: transparent; border-radius: 9px; padding: 11px 12px; display: flex; align-items: center; gap: 11px; text-align: left; }
+    .nav-item { position: relative; border: 0; width: 100%; color: #d5e4dc; background: transparent; border-radius: 9px; padding: 11px 12px; display: flex; align-items: center; gap: 11px; text-align: left; }
     .nav-item.active, .nav-item:hover { color: white; background: #285345; }
     .nav-icon { width: 19px; text-align: center; opacity: .9; }
+    .nav-update-badge { display: none; min-width: 18px; height: 18px; margin-left: auto; padding: 0 5px; align-items: center; justify-content: center; border-radius: 999px; background: #e5484d; color: #fff; font-size: 10px; font-weight: 800; line-height: 1; }
+    .nav-update-badge.visible { display: inline-flex; }
     .side-note { margin-top: auto; border: 1px solid #376354; background: #20483b; color: #c7ded2; border-radius: 12px; padding: 13px; font-size: 11px; }
     .side-note b { display: block; color: white; margin-bottom: 5px; }
     .sidebar-toggle { width: 100%; min-height: 38px; margin-top: 2px; border: 1px solid #376354; border-radius: 9px; background: #20483b; color: #d5e4dc; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 750; }
@@ -99,6 +110,7 @@
     body.sidebar-collapsed nav { gap: 7px; }
     body.sidebar-collapsed .nav-item { justify-content: center; padding: 11px 0; }
     body.sidebar-collapsed .nav-icon { width: auto; font-size: 17px; }
+    body.sidebar-collapsed .nav-update-badge { position: absolute; top: 3px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 9px; }
     body.sidebar-collapsed .sidebar-toggle { padding-inline: 0; }
     body.sidebar-collapsed .sidebar-toggle-icon { transform: rotate(180deg); }
     main { grid-column: 2; min-width: 0; padding: 30px clamp(18px, 4vw, 54px) 54px; max-width: 1600px; width: 100%; margin: 0 auto; }
@@ -215,7 +227,7 @@
     .agent-queue-item.active { border-color: #a8d7c1; background: #f5fbf7; }
     .agent-queue-item.active .agent-queue-state { color: #208453; }
     .agent-queue-empty { padding: 14px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 11px; }
-    @media (prefers-reduced-motion: reduce) { .agent-queue-item { transition: none; } .agent-queue-worker-icon { animation: none !important; } }
+    @media (prefers-reduced-motion: reduce) { .agent-queue-item { transition: none; } .agent-queue-worker-icon, .agent-status-dot.connected::before, .agent-status-dot.connected::after { animation: none !important; } }
     .agent-qr-wrap { display: grid; place-items: center; min-height: 210px; border: 1px dashed var(--line); border-radius: 10px; background: #fafcfb; }
     .agent-qr-wrap img { display: block; width: min(100%, 230px); height: auto; image-rendering: pixelated; }
     .agent-log { height: 250px; overflow: auto; margin: 0; padding: 12px; border-radius: 9px; background: #15251f; color: #d5e4dc; font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -226,8 +238,11 @@
     .agent-conversation .message { max-width: min(85%, 680px); }
     .agent-conversation .message-label { display: block; color: #65766c; font-size: 9px; font-weight: 700; margin-bottom: 4px; }
     .agent-conversation-empty { color: var(--muted); font-size: 11px; margin: auto; text-align: center; }
-    .agent-status-dot { width: 9px; height: 9px; border-radius: 50%; background: #9ba8a1; }
-    .agent-status-dot.connected { background: #2eaa71; box-shadow: 0 0 0 3px #2eaa711c; }
+    .agent-status-dot { position: relative; flex: 0 0 9px; width: 9px; height: 9px; border-radius: 50%; background: #9ba8a1; }
+    .agent-status-dot.connected { color: var(--green); background: var(--green); box-shadow: 0 0 0 3px #2eaa711c; }
+    .agent-status-dot.connected::before, .agent-status-dot.connected::after { position: absolute; inset: 0; border: 1px solid currentColor; border-radius: 50%; content: ""; opacity: 0; pointer-events: none; animation: agent-connection-ripple 2.2s ease-out infinite; }
+    .agent-status-dot.connected::after { animation-delay: -1.1s; }
+    @keyframes agent-connection-ripple { 0% { transform: scale(.8); opacity: .7; } 100% { transform: scale(4); opacity: 0; } }
     .agent-status-dot.connecting { background: #d4932d; }
     .agent-status-dot.disconnecting { background: #d4932d; }
     .agent-status-dot.disconnected { background: #b94747; }
@@ -516,15 +531,17 @@
     .chat-list { border-right: 1px solid var(--line); max-height: 620px; overflow: auto; }
     .chat-item { width: 100%; text-align: left; border: 0; border-bottom: 1px solid #eff2f0; background: white; padding: 13px 15px; display: block; }
     .chat-item:hover, .chat-item.selected { background: #f2f8f4; }
-    .chat-name-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .chat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
+    .chat-name-row { display: flex; justify-content: flex-start; align-items: center; gap: 8px; }
+    .chat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
     .chat-item.unread .chat-name { color: #12563f; font-weight: 800; }
     .badge.unread { background: #fff1d8; color: #925a05; }
-    .chat-time { white-space: nowrap; font-size: 9px; color: #93a098; }
+    .chat-time { flex: 0 0 auto; margin-left: auto; white-space: nowrap; font-size: 9px; color: #93a098; }
     .chat-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; margin-top: 5px; }
     .badge { display: inline-flex; background: var(--green-soft); color: var(--green); border-radius: 20px; padding: 2px 7px; font-size: 9px; margin-top: 6px; }
     .badge.gender { background: #eef0fb; color: #4f568e; }
     .badge.paid { background: #eaf6ed; color: #286442; }
+    .payment-verified-icon { display: inline-flex; flex: 0 0 15px; width: 15px; height: 15px; margin-left: 4px; color: var(--green); vertical-align: middle; }
+    .payment-verified-icon svg { display: block; width: 100%; height: 100%; }
     .conversation { min-width: 0; display: flex; flex-direction: column; }
     .conversation-head { padding: 14px 17px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; align-items: center; min-height: 58px; }
     .conversation-head strong { font-size: 12px; }
@@ -864,6 +881,10 @@
     .payment-ledger-amount input:first-child { width: 90px; }
     .payment-ledger-amount input:last-child { width: 60px; }
     .payment-ledger-actions select { flex: 1; }
+    .payment-ledger-filter { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; padding: 14px 14px 10px; }
+    .payment-ledger-filter label { display: grid; width: min(360px, 100%); gap: 5px; color: var(--muted); font-size: 10px; font-weight: 650; }
+    .payment-ledger-filter input { width: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; color: var(--ink); background: white; font: inherit; font-size: 11px; }
+    .payment-ledger-filter-count { color: var(--muted); font-size: 10px; white-space: nowrap; }
     .payment-ledger-action { display: inline-flex; min-height: 32px; min-width: 68px; align-items: center; justify-content: center; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; font: inherit; font-size: 10px; font-weight: 750; white-space: nowrap; transition: background .15s, border-color .15s, box-shadow .15s, color .15s; }
     .payment-ledger-action:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
     .dashboard-cache-status { color: var(--muted); font-size: 10px; white-space: nowrap; }
@@ -1081,6 +1102,7 @@
       body.sidebar-collapsed .brand-copy, body.sidebar-collapsed .nav-text { display: block; }
       .nav-label, .side-note, .sidebar-toggle, body.sidebar-collapsed .sidebar-toggle { display: none; } nav { display: flex; gap: 4px; }
       .nav-item { width: auto; padding: 8px 9px; font-size: 11px; gap: 5px; }
+      body.sidebar-collapsed .nav-update-badge { top: 0; right: 0; }
       main { grid-column: 1; padding: 19px 13px 34px; }
       .topbar { margin-bottom: 18px; } .local-tag { font-size: 0; padding: 9px; } .local-dot { width: 8px; height: 8px; }
       .chat-layout { grid-template-columns: 1fr; }
@@ -1562,12 +1584,12 @@
       <div class="nav-label">Telegram learning</div>
       <nav aria-label="Dashboard sections">
         <button class="nav-item active" data-section="overview" title="Overview"><span class="nav-icon">▦</span><span class="nav-text">Overview</span></button>
-        <button class="nav-item" data-section="progress" title="Student progress"><span class="nav-icon">◷</span><span class="nav-text">Student progress</span></button>
-        <button class="nav-item" data-section="score-distribution" title="Score distribution"><span class="nav-icon">%</span><span class="nav-text">Score distribution</span></button>
-        <button class="nav-item" data-section="student-chat" title="Students chat"><span class="nav-icon">☷</span><span class="nav-text">Students chat</span></button>
+        <button class="nav-item" data-section="progress" title="Student progress"><span class="nav-icon">◷</span><span class="nav-text">Student progress</span><span class="nav-update-badge" data-update-badge="progress" aria-hidden="true"></span></button>
+        <button class="nav-item" data-section="score-distribution" title="Score distribution"><span class="nav-icon">%</span><span class="nav-text">Score distribution</span><span class="nav-update-badge" data-update-badge="score-distribution" aria-hidden="true"></span></button>
+        <button class="nav-item" data-section="student-chat" title="Students chat"><span class="nav-icon">☷</span><span class="nav-text">Students chat</span><span class="nav-update-badge" data-update-badge="student-chat" aria-hidden="true"></span></button>
         <button class="nav-item" data-section="telegram-broadcast" title="Telegram announcements"><span class="nav-icon">✉</span><span class="nav-text">Telegram announcements</span></button>
         <button class="nav-item" data-section="curriculum" title="Lessons &amp; curriculum"><span class="nav-icon">📚</span><span class="nav-text">Lessons &amp; curriculum</span></button>
-        <button class="nav-item" data-section="payment-ledger" title="Payment ledger"><span class="nav-icon">$</span><span class="nav-text">Payment ledger</span></button>
+        <button class="nav-item" data-section="payment-ledger" title="Payment ledger"><span class="nav-icon">$</span><span class="nav-text">Payment ledger</span><span class="nav-update-badge" data-update-badge="payment-ledger" aria-hidden="true"></span></button>
       </nav>
       <div class="side-note"><b>Telegram learning</b>Manage Telegram learners, lesson progress, announcements, and curriculum here.</div>
       <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-expanded="true" aria-controls="dashboard-sidebar" title="Collapse sidebar">
@@ -2140,6 +2162,12 @@
           <div><h3 style="margin:0">Current payment status</h3><p style="margin:4px 0 0">Review or update each student's current 30-day payment period.</p></div>
         </div>
         <article class="panel table-wrap">
+          <div class="payment-ledger-filter">
+            <label for="payment-ledger-search">Find a student
+              <input id="payment-ledger-search" type="search" placeholder="Search name, grade, or ID…" autocomplete="off">
+            </label>
+            <span class="payment-ledger-filter-count" id="payment-ledger-filter-count" aria-live="polite">Loading payment records…</span>
+          </div>
           <table>
             <thead><tr><th>Platform</th><th>Student</th><th>Grade</th><th>Lesson</th><th>Payment period</th><th>Status</th><th>Amount</th><th>Evidence / reference</th><th>Payment info</th><th>Actions</th></tr></thead>
             <tbody id="payment-ledger-rows"><tr><td colspan="10" class="empty">Loading payment records…</td></tr></tbody>
@@ -2237,6 +2265,14 @@
                 <option value="other">Other</option>
               </select>
             </label>
+            <label for="progress-membership-filter">Group membership
+              <select id="progress-membership-filter">
+                <option value="">All membership states</option>
+                <option value="member">In group</option>
+                <option value="left">Left group</option>
+                <option value="removed">Removed from group</option>
+              </select>
+            </label>
             <label for="progress-inactivity-filter">Student activity
               <select id="progress-inactivity-filter">
                 <option value="">Any activity</option>
@@ -2247,7 +2283,7 @@
             </label>
             <span class="progress-filter-count" id="progress-filter-count" aria-live="polite">Loading students…</span>
           </div>
-          <table class="progress-table"><thead><tr><th>Platform</th><th>Student</th><th>Presence</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed / received</th><th>Exercise score</th><th>Last delivery</th><th>Actions</th></tr></thead><tbody id="progress-rows"><tr><td colspan="14" class="empty">Loading…</td></tr></tbody></table>
+          <table class="progress-table"><thead><tr><th>Platform</th><th>Student</th><th>Presence / group</th><th>Grade</th><th>Current lesson</th><th>Status</th><th>Group joined</th><th>Last student activity</th><th>Submissions / messages</th><th>Active days (30d)</th><th>Lessons passed / received</th><th>Exercise score</th><th>Last delivery</th><th>Actions</th></tr></thead><tbody id="progress-rows"><tr><td colspan="14" class="empty">Loading…</td></tr></tbody></table>
         </div>
       </section>
 
@@ -2817,11 +2853,38 @@
     applyDashboardTheme(document.documentElement.dataset.theme);
     themeToggle.addEventListener('click', () => {
       const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-      applyDashboardTheme(theme);
+      const applyAndSaveTheme = () => {
+        applyDashboardTheme(theme);
+        try {
+          localStorage.setItem(DASHBOARD_THEME_STORAGE_KEY, theme);
+        } catch (error) {
+          console.warn('[Dashboard] Could not save theme:', error.message);
+        }
+      };
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches ||
+          typeof document.startViewTransition !== 'function') {
+        applyAndSaveTheme();
+        return;
+      }
+      const toggleBounds = themeToggle.getBoundingClientRect();
+      document.documentElement.style.setProperty(
+        '--theme-reveal-x',
+        `${toggleBounds.left + toggleBounds.width / 2}px`
+      );
+      document.documentElement.style.setProperty(
+        '--theme-reveal-y',
+        `${toggleBounds.top + toggleBounds.height / 2}px`
+      );
       try {
-        localStorage.setItem(DASHBOARD_THEME_STORAGE_KEY, theme);
+        const transition = document.startViewTransition(applyAndSaveTheme);
+        transition.finished.catch(error => {
+          if (error.name !== 'AbortError') {
+            console.warn('[Dashboard] Theme transition did not finish:', error.message);
+          }
+        });
       } catch (error) {
-        console.warn('[Dashboard] Could not save theme:', error.message);
+        console.warn('[Dashboard] Could not start theme transition:', error.message);
+        applyAndSaveTheme();
       }
     });
     let offset = 0;
@@ -2903,8 +2966,18 @@
     const DASHBOARD_CACHE_MAX_ENTRY_CHARS = 2_000_000;
     const DASHBOARD_CACHE_MAX_TOTAL_CHARS = 2_300_000;
     const DASHBOARD_CACHE_MAX_ENTRIES = 24;
+    const SIDEBAR_UPDATE_READ_STORAGE_KEY = 'eshool-dashboard-sidebar-updates-read:v1';
     const dashboardApiRequests = new Map();
     let dashboardCacheGeneration = 0;
+    let sidebarUpdateReadState = null;
+    let sidebarUpdateBaselinePending = { progress: false, payments: false };
+    let sidebarUpdateRefreshPromise = Promise.resolve();
+    const sidebarUpdateEvents = {
+      progress: new Map(),
+      'score-distribution': new Map(),
+      'student-chat': new Map(),
+      'payment-ledger': new Map()
+    };
     let dashboardDialogResolver = null;
     let dashboardDialogQueue = Promise.resolve();
     let progressProfileStudent = null;
@@ -3732,6 +3805,8 @@
         }
       }
       refreshAll();
+      refreshSidebarUpdateBadges().catch(error =>
+        showError(`Could not load sidebar update counts: ${error.message}`));
       loadTelegramStats().catch(error =>
         showError(`Could not load Telegram statistics: ${error.message}`));
       dashboardEvents = new EventSource('/api/admin/events');
@@ -4181,6 +4256,230 @@
       return String(value).replace(/[&<>"']/g, character => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       })[character]);
+    }
+
+    let verifiedPaymentStudentKeys = null;
+    let verifiedPaymentStudentKeysRequest = null;
+
+    function updateVerifiedPaymentStudentKeys(students) {
+      if (!Array.isArray(students)) {
+        throw new Error('The server did not return payment ledger students.');
+      }
+      verifiedPaymentStudentKeys = new Set(students
+        .filter(student =>
+          student.payment?.status === 'paid' && typeof student.studentKey === 'string')
+        .map(student => student.studentKey));
+      return verifiedPaymentStudentKeys;
+    }
+
+    async function loadVerifiedPaymentStudentKeys() {
+      if (verifiedPaymentStudentKeys) return verifiedPaymentStudentKeys;
+      if (!verifiedPaymentStudentKeysRequest) {
+        verifiedPaymentStudentKeysRequest = api('/api/admin/payment-ledger', {
+          skipDashboardCache: true
+        }).then(data => updateVerifiedPaymentStudentKeys(data.students))
+          .finally(() => {
+            verifiedPaymentStudentKeysRequest = null;
+          });
+      }
+      return verifiedPaymentStudentKeysRequest;
+    }
+
+    function readSidebarUpdateReadState() {
+      if (sidebarUpdateReadState) return sidebarUpdateReadState;
+      try {
+        const serialized = localStorage.getItem(SIDEBAR_UPDATE_READ_STORAGE_KEY);
+        const saved = JSON.parse(serialized || '{}');
+        sidebarUpdateBaselinePending = {
+          progress: saved.initialized?.progress !== true,
+          payments: saved.initialized?.payments !== true
+        };
+        sidebarUpdateReadState = Object.fromEntries(
+          Object.keys(sidebarUpdateEvents).map(section => [
+            section,
+            new Set(Array.isArray(saved[section])
+              ? saved[section].filter(id => typeof id === 'string')
+              : [])
+          ])
+        );
+      } catch (error) {
+        console.warn('[Dashboard Updates] Could not read sidebar update state:', error.message);
+        sidebarUpdateBaselinePending = { progress: true, payments: true };
+        sidebarUpdateReadState = Object.fromEntries(
+          Object.keys(sidebarUpdateEvents).map(section => [section, new Set()])
+        );
+      }
+      return sidebarUpdateReadState;
+    }
+
+    function saveSidebarUpdateReadState() {
+      try {
+        const readState = readSidebarUpdateReadState();
+        localStorage.setItem(SIDEBAR_UPDATE_READ_STORAGE_KEY, JSON.stringify({
+          ...Object.fromEntries(Object.entries(readState).map(
+            ([section, ids]) => [section, [...ids]]
+          )),
+          initialized: {
+            progress: !sidebarUpdateBaselinePending.progress,
+            payments: !sidebarUpdateBaselinePending.payments
+          }
+        }));
+      } catch (error) {
+        console.warn('[Dashboard Updates] Could not save sidebar update state:', error.message);
+        showError(`Could not save which dashboard updates you have read: ${error.message}`);
+      }
+    }
+
+    function renderSidebarUpdateBadges() {
+      const readState = readSidebarUpdateReadState();
+      for (const [section, events] of Object.entries(sidebarUpdateEvents)) {
+        const unreadCount = [...events.keys()].filter(id => !readState[section].has(id)).length;
+        const badge = document.querySelector(`[data-update-badge="${section}"]`);
+        const button = document.querySelector(`.nav-item[data-section="${section}"]`);
+        if (!badge || !button) continue;
+        badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+        badge.classList.toggle('visible', unreadCount > 0);
+        if (unreadCount) {
+          button.setAttribute('aria-label', `${button.title}, ${unreadCount} unread updates`);
+        } else {
+          button.removeAttribute('aria-label');
+        }
+      }
+    }
+
+    function markSidebarUpdatesRead(section) {
+      const sections = section === 'progress'
+        ? ['progress']
+        : section === 'score-distribution' || section === 'student-chat' ||
+            section === 'payment-ledger'
+          ? [section]
+          : [];
+      if (!sections.length) return;
+      const readState = readSidebarUpdateReadState();
+      for (const name of sections) {
+        for (const id of sidebarUpdateEvents[name].keys()) readState[name].add(id);
+      }
+      saveSidebarUpdateReadState();
+      renderSidebarUpdateBadges();
+    }
+
+    function updateSidebarUpdateEvents({ progress, payments }) {
+      if (progress && !Array.isArray(progress.students)) {
+        throw new Error('The server did not return student activity for sidebar updates.');
+      }
+      if (payments && !Array.isArray(payments.students)) {
+        throw new Error('The server did not return payment activity for sidebar updates.');
+      }
+      const submissions = new Map();
+      const messages = new Map();
+      const joins = new Map();
+      for (const student of progress?.students || []) {
+        const submissionAt = student.lastTaskSubmissionAt;
+        if (submissionAt && Number.isFinite(Date.parse(submissionAt))) {
+          submissions.set(`${student.jid}:submission:${submissionAt}`, Date.parse(submissionAt));
+        }
+        const messageAt = student.lastStudentMessage?.receivedAt;
+        if (messageAt && Number.isFinite(Date.parse(messageAt))) {
+          messages.set(`${student.jid}:message:${messageAt}`, Date.parse(messageAt));
+        }
+        const joinedAt = student.platform === 'Telegram' ? student.joinedAt : null;
+        if (joinedAt && Number.isFinite(Date.parse(joinedAt))) {
+          joins.set(`${student.jid}:join:${joinedAt}`, Date.parse(joinedAt));
+        }
+      }
+      if (progress) {
+        sidebarUpdateEvents.progress = new Map([...submissions, ...joins]);
+        sidebarUpdateEvents['score-distribution'] = submissions;
+        sidebarUpdateEvents['student-chat'] = messages;
+      }
+      if (payments) {
+        sidebarUpdateEvents['payment-ledger'] = new Map((payments.students || [])
+          .filter(student => student.payment?.claimedAt &&
+            Number.isFinite(Date.parse(student.payment.claimedAt)))
+          .map(student => [
+            `${student.studentKey}:payment-claim:${student.payment.periodStart || ''}:${student.payment.claimedAt}`,
+            Date.parse(student.payment.claimedAt)
+          ]));
+      }
+      const readState = readSidebarUpdateReadState();
+      const pruneReadState = section => {
+        const currentIds = sidebarUpdateEvents[section];
+        for (const id of readState[section]) {
+          if (!currentIds.has(id)) readState[section].delete(id);
+        }
+      };
+      if (progress) {
+        for (const section of ['progress', 'score-distribution', 'student-chat']) {
+          pruneReadState(section);
+        }
+      }
+      if (payments) pruneReadState('payment-ledger');
+      if (progress && sidebarUpdateBaselinePending.progress) {
+        for (const section of ['progress', 'score-distribution', 'student-chat']) {
+          for (const id of sidebarUpdateEvents[section].keys()) readState[section].add(id);
+        }
+        sidebarUpdateBaselinePending.progress = false;
+        saveSidebarUpdateReadState();
+      }
+      if (payments && sidebarUpdateBaselinePending.payments) {
+        for (const id of sidebarUpdateEvents['payment-ledger'].keys()) {
+          readState['payment-ledger'].add(id);
+        }
+        sidebarUpdateBaselinePending.payments = false;
+        saveSidebarUpdateReadState();
+      }
+      const activeSection = document.querySelector('.nav-item.active')?.dataset.section;
+      markSidebarUpdatesRead(activeSection);
+      renderSidebarUpdateBadges();
+    }
+
+    function refreshSidebarUpdateBadges({ progress = true, payments = true } = {}) {
+      const refresh = async () => {
+        const [progressResult, paymentsResult] = await Promise.allSettled([
+          progress
+            ? api('/api/admin/telegram-progress?timeZone=UTC', { skipDashboardCache: true })
+            : null,
+          payments
+            ? api('/api/admin/payment-ledger', { skipDashboardCache: true })
+            : null
+        ]);
+        const progressData = progress && progressResult.status === 'fulfilled'
+          ? progressResult.value
+          : null;
+        const paymentsData = payments && paymentsResult.status === 'fulfilled'
+          ? paymentsResult.value
+          : null;
+        updateSidebarUpdateEvents({ progress: progressData, payments: paymentsData });
+        const failures = [
+          progress && progressResult.status === 'rejected' ? progressResult.reason : null,
+          payments && paymentsResult.status === 'rejected' ? paymentsResult.reason : null
+        ].filter(Boolean);
+        if (failures.length) {
+          throw new Error(failures.map(error => error.message).join(' · '));
+        }
+      };
+      const request = sidebarUpdateRefreshPromise.catch(() => {}).then(refresh);
+      sidebarUpdateRefreshPromise = request;
+      return request;
+    }
+
+    window.addEventListener('storage', event => {
+      if (event.key !== SIDEBAR_UPDATE_READ_STORAGE_KEY) return;
+      sidebarUpdateReadState = null;
+      renderSidebarUpdateBadges();
+    });
+
+    function renderVerifiedPaymentBadge(isVerified) {
+      return isVerified
+        ? '<span class="payment-verified-icon" role="img" aria-label="Payment verified" title="Payment verified by the dashboard"><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="9" fill="currentColor"></circle><path d="m5.5 10.2 3 3 6-6.2" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></span>'
+        : '';
+    }
+
+    function renderContactPaymentBadge(payment) {
+      if (payment?.label !== 'paid') return '';
+      return payment.source === 'manual'
+        ? renderVerifiedPaymentBadge(true)
+        : '<span class="badge paid" title="Student-reported payment; not verified">Paid · student-reported</span>';
     }
 
     function setBar(name, value, total) {
@@ -5049,12 +5348,11 @@
         : 'Showing chats active within the last 24 hours.';
       $('#chat-list').innerHTML = data.chats.length ? data.chats.map(chat => `
         <button class="chat-item ${chat.jid === selectedJid ? 'selected' : ''} ${chat.unread ? 'unread' : ''}" data-open-chat="${escapeHtml(chat.jid)}">
-          <span class="chat-name-row"><span class="chat-name">${escapeHtml(chat.name)}</span><span class="chat-time">${formatDate(handledChatsOnly ? chat.lastHandledAt : chat.lastActivity)}</span></span>
+          <span class="chat-name-row"><span class="chat-name">${escapeHtml(chat.name)}</span>${renderContactPaymentBadge(chat.paid)}<span class="chat-time">${formatDate(handledChatsOnly ? chat.lastHandledAt : chat.lastActivity)}</span></span>
           <span class="chat-preview">${escapeHtml(chat.lastMessage)}</span>
           ${presenceMarkup(chat.presence, { alwaysShow: true })}
           ${chat.unread ? '<span class="badge unread">Unread</span>' : ''}
           ${chat.gender?.value !== 'unknown' ? `<span class="badge gender">${chat.gender.value === 'female' ? 'Female' : 'Male'}${chat.gender.source === 'manual' ? ' · manual' : ' · inferred'}</span>` : ''}
-          ${chat.paid ? `<span class="badge paid">Paid · ${chat.paid.source === 'manual' ? 'manual' : 'student-reported'}</span>` : ''}
           ${handledChatsOnly ? '<span class="badge">Agent replied</span>' : ''}
           ${chat.progress ? `<span class="badge">${escapeHtml(chat.progress.gradeName)} · ${escapeHtml(chat.progress.status)}</span>` : ''}
         </button>`).join('') : '<div class="empty">No matching chats.</div>';
@@ -5093,10 +5391,7 @@
       const genderLabel = conversation.gender?.value === 'unknown'
         ? 'Gender not identified'
         : `${conversation.gender.value === 'female' ? 'Female' : 'Male'}${conversation.gender.source === 'manual' ? ' · manually set' : ' · inferred'}`;
-      const paymentLabel = conversation.paid
-        ? `<span class="badge paid">Paid · ${conversation.paid.source === 'manual' ? 'manual' : 'student-reported'}</span>`
-        : '';
-      $('#conversation-head').innerHTML = `<div><strong>${escapeHtml(conversation.name)}</strong><small>${conversation.totalMessages} saved messages · ${conversation.isEs ? 'Es contact' : 'Contact'} · ${escapeHtml(genderLabel)}</small><span id="conversation-presence">${presenceMarkup(conversation.presence, { alwaysShow: true })}</span></div><div>${paymentLabel}${conversation.progress ? `<span class="status ${escapeHtml(conversation.progress.status)}">${escapeHtml(conversation.progress.status)}</span>` : ''}</div>`;
+      $('#conversation-head').innerHTML = `<div><strong>${escapeHtml(conversation.name)}${renderContactPaymentBadge(conversation.paid)}</strong><small>${conversation.totalMessages} saved messages · ${conversation.isEs ? 'Es contact' : 'Contact'} · ${escapeHtml(genderLabel)}</small><span id="conversation-presence">${presenceMarkup(conversation.presence, { alwaysShow: true })}</span></div><div>${conversation.progress ? `<span class="status ${escapeHtml(conversation.progress.status)}">${escapeHtml(conversation.progress.status)}</span>` : ''}</div>`;
       $('#messages').innerHTML = conversation.messages.length ? conversation.messages.map(message => `
         <article class="message ${message.role === 'agent' ? 'agent' : 'client'}">${escapeHtml(message.text)}<time>${formatDate(message.timestamp)}</time></article>`).join('') : '<div class="empty">No messages in this chat.</div>';
       $('#messages').scrollTop = $('#messages').scrollHeight;
@@ -5405,8 +5700,10 @@
       const followUps = insights?.followUpStudents || [];
       followUpSummary.textContent = `${followUps.length.toLocaleString()} students have a pending exercise and no recorded activity for at least 7 days. Open a student to check in personally; the inactivity filter below can find others.`;
       followUpList.innerHTML = followUps.length ? followUps.slice(0, 10).map(student => {
+        const progressStudent = progressStudents.find(item =>
+          item.platform === student.platform && item.jid === student.jid);
         const content = `
-          <span><strong>${escapeHtml(student.name)}</strong><br><small>${escapeHtml(student.platform || 'WhatsApp')} · ${escapeHtml(student.gradeName)} · ${escapeHtml(student.lessonTitle || 'Lesson pending')}</small></span>
+          <span><strong>${escapeHtml(student.name)}${renderVerifiedPaymentBadge(progressStudent?.paymentVerified)}</strong><br><small>${escapeHtml(student.platform || 'WhatsApp')} · ${escapeHtml(student.gradeName)} · ${escapeHtml(student.lessonTitle || 'Lesson pending')}</small></span>
           <span><span class="status ${escapeHtml(student.status)}">${student.status === 'awaiting_reattempt' ? 'Reattempt' : 'Awaiting exercise'}</span><br><small>${student.daysSinceActivity}d since activity</small></span>`;
         return student.platform === 'Telegram'
           ? `<button class="roster-follow-up-item" type="button" data-open-progress="${escapeHtml(student.jid)}">${content}</button>`
@@ -5685,6 +5982,7 @@
         '#progress-search',
         '#progress-grade-filter',
         '#progress-status-filter',
+        '#progress-membership-filter',
         '#progress-inactivity-filter'
       ]) {
         $(selector).addEventListener('input', applyProgressFilters);
@@ -5730,6 +6028,7 @@
       const query = $('#progress-search').value.trim().toLocaleLowerCase();
       const grade = $('#progress-grade-filter').value;
       const status = $('#progress-status-filter').value;
+      const membership = $('#progress-membership-filter').value;
       const inactivity = $('#progress-inactivity-filter').value;
       const now = Date.now();
       const rows = [...$('#progress-rows').querySelectorAll('[data-progress-student]')];
@@ -5739,6 +6038,7 @@
         const matches = (!query || row.dataset.search.includes(query)) &&
           (!grade || row.dataset.grade === grade) &&
           (!status || row.dataset.status === status) &&
+          (!membership || row.dataset.membership === membership) &&
           (inactivity === '' ||
             (inactivity === 'none' && activity === null) ||
             (inactivity !== 'none' && activity !== null &&
@@ -5766,6 +6066,7 @@
         '#progress-search',
         '#progress-grade-filter',
         '#progress-status-filter',
+        '#progress-membership-filter',
         '#progress-inactivity-filter'
       ]) $(selector).value = '';
       activateSection('progress', { refreshProgress: false });
@@ -5783,6 +6084,16 @@
       }).catch(error => showError(`Could not open this student's progress: ${error.message}`));
     }
 
+    function getGroupMembershipLabel(student) {
+      if (student.platform !== 'Telegram') return '—';
+      return {
+        member: 'In group',
+        left: 'Left group',
+        kicked: 'Removed from group',
+        removed: 'Removed from group'
+      }[student.groupMembershipStatus] || 'Not recorded';
+    }
+
     function openProgressProfile(student) {
       progressProfileStudent = student;
       const dialog = $('#student-profile-dialog');
@@ -5794,7 +6105,8 @@
       };
       const field = (label, value) =>
         `<div class="student-profile-field"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value || '—')}</strong></div>`;
-      $('#student-profile-name').textContent = student.name || 'Student profile';
+      $('#student-profile-name').innerHTML =
+        `${escapeHtml(student.name || 'Student profile')}${renderVerifiedPaymentBadge(student.paymentVerified)}`;
       $('#student-profile-subtitle').textContent =
         `${student.platform || 'Student'} · ${student.gradeName || 'Grade not set'}`;
       $('#student-profile-addressing-section').hidden = student.platform !== 'Telegram';
@@ -5805,6 +6117,8 @@
         field('Current lesson', student.lessonTitle),
         field('Progress status', statusLabels[student.status] || student.status),
         field('Group joined', student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'),
+        field('Group membership', getGroupMembershipLabel(student)),
+        field('Left group', student.platform === 'Telegram' ? formatDate(student.groupLeftAt) : '—'),
         field('Last student activity', formatDate(student.lastStudentActivityAt)),
         field('Messages / submissions', Number(student.totalIncomingMessages || 0).toLocaleString()),
         field('Last 7 days / 30 days',
@@ -6107,7 +6421,7 @@
           return `<details class="student-answer-item">
             <summary>
               <span class="student-answer-heading">
-                <strong class="student-answer-name">${escapeHtml(student.name || 'Telegram student')}</strong>
+                <strong class="student-answer-name">${escapeHtml(student.name || 'Telegram student')}</strong>${renderVerifiedPaymentBadge(student.paymentVerified)}
                 <span class="student-answer-kind">${response.isTaskSubmission ? 'Task answer' : 'Student message'}</span>
               </span>
               <span class="student-answer-summary-meta">
@@ -6277,7 +6591,7 @@
               data-telegram-chat-student="${escapeHtml(student.jid)}">
             <span class="student-chat-list-avatar" aria-hidden="true">T</span>
             <span class="student-chat-list-copy">
-              <span class="student-chat-list-heading"><strong>${escapeHtml(name)}</strong>${student.unread ? '<span class="student-chat-unread-badge">Unread</span>' : ''}${timeLabel ? `<time class="student-chat-list-time" datetime="${escapeHtml(student.lastStudentMessage.receivedAt)}" title="${escapeHtml(formatDate(student.lastStudentMessage.receivedAt))}">${escapeHtml(timeLabel)}</time>` : ''}</span>
+              <span class="student-chat-list-heading"><strong>${escapeHtml(name)}</strong>${renderVerifiedPaymentBadge(student.paymentVerified)}${student.unread ? '<span class="student-chat-unread-badge">Unread</span>' : ''}${timeLabel ? `<time class="student-chat-list-time" datetime="${escapeHtml(student.lastStudentMessage.receivedAt)}" title="${escapeHtml(formatDate(student.lastStudentMessage.receivedAt))}">${escapeHtml(timeLabel)}</time>` : ''}</span>
               <span class="student-chat-list-presence ${online ? 'online' : ''}" title="${TELEGRAM_PRESENCE_TOOLTIP}"><i aria-hidden="true"></i>${online ? 'Online' : 'Offline'}</span>
               <small>${escapeHtml(preview)}</small>
             </span>
@@ -6293,7 +6607,8 @@
       lastTelegramStudentChatKey = '';
       lastTelegramStudentChatSnapshot = '';
       $('#telegram-student-chat-panel').classList.toggle('has-selection', showConversation);
-      $('#telegram-student-chat-title').textContent = getChatStudentName(student);
+      $('#telegram-student-chat-title').innerHTML =
+        `${escapeHtml(getChatStudentName(student))}${renderVerifiedPaymentBadge(student.paymentVerified)}`;
       $('#telegram-student-chat-avatar').textContent = 'T';
       updateTelegramStudentPresence(student);
       $('#telegram-student-chat-status').textContent = '';
@@ -6481,7 +6796,7 @@
               student.gradeName || student.grade || '',
               messageStatus
             ].filter(Boolean).join(' · ');
-            return `<li><span>${escapeHtml(student.name || 'Unnamed student')}</span><small>${escapeHtml(details)}</small></li>`;
+            return `<li><span>${escapeHtml(student.name || 'Unnamed student')}${renderVerifiedPaymentBadge(student.paymentVerified)}</span><small>${escapeHtml(details)}</small></li>`;
           }).join('')
           : '<li class="score-distribution-empty">No students in this range.</li>';
         const sendButton = scoreRange
@@ -6661,7 +6976,7 @@
             : student.gender?.value === 'male'
               ? 'Masculine'
               : 'Masculine (gender unknown)';
-          return `<li><span>${escapeHtml(student.name || 'Unnamed student')}</span><small>${student.exerciseScorePercent}% · ${student.scoreCorrectQuestions}/${student.scoreTotalQuestions} · ${gender}</small></li>`;
+          return `<li><span>${escapeHtml(student.name || 'Unnamed student')}${renderVerifiedPaymentBadge(student.paymentVerified)}</span><small>${student.exerciseScorePercent}% · ${student.scoreCorrectQuestions}/${student.scoreTotalQuestions} · ${gender}</small></li>`;
         }).join('')
         : '<li class="score-distribution-empty">No reachable students in this range.</li>';
       $('#score-message-unavailable-details').hidden =
@@ -6673,7 +6988,7 @@
           const reason = student.platform === 'Telegram'
             ? 'No private chat with the bot'
             : 'WhatsApp student; this sends only through Telegram';
-          return `<li><span>${escapeHtml(student.name || 'Unnamed student')}</span><small>${escapeHtml(reason)}</small></li>`;
+          return `<li><span>${escapeHtml(student.name || 'Unnamed student')}${renderVerifiedPaymentBadge(student.paymentVerified)}</span><small>${escapeHtml(reason)}</small></li>`;
         }).join('')
         : '<li class="score-distribution-empty">None.</li>';
       $('#score-message-unavailable-details').open =
@@ -6697,16 +7012,32 @@
         trendEndDate,
         enrollmentEndDate
       })}`;
-      const { students, insights } = await api(progressPath, {
-        onCacheRefresh: () => {
-          if (trendEndDate !== progressTrendWindowEndDate ||
-              enrollmentEndDate !== telegramEnrollmentWindowEndDate ||
-              !isProgressSectionActive() ||
-              document.querySelector('#progress-rows [data-send-lesson-picker].is-open')) return;
-          return loadProgress().catch(error =>
-            showError(`Could not refresh student progress and statistics: ${error.message}`));
-        }
-      });
+      const [progressResult, paymentKeysResult] = await Promise.allSettled([
+        api(progressPath, {
+          onCacheRefresh: () => {
+            if (trendEndDate !== progressTrendWindowEndDate ||
+                enrollmentEndDate !== telegramEnrollmentWindowEndDate ||
+                !isProgressSectionActive() ||
+                document.querySelector('#progress-rows [data-send-lesson-picker].is-open')) return;
+            return loadProgress().catch(error =>
+              showError(`Could not refresh student progress and statistics: ${error.message}`));
+          }
+        }),
+        loadVerifiedPaymentStudentKeys()
+      ]);
+      if (progressResult.status === 'rejected') throw progressResult.reason;
+      const { students: progressResults, insights } = progressResult.value;
+      const paidStudentKeys = paymentKeysResult.status === 'fulfilled'
+        ? paymentKeysResult.value
+        : new Set();
+      if (paymentKeysResult.status === 'rejected') {
+        showError(`Could not load payment verification status: ${paymentKeysResult.reason.message}`);
+      }
+      const students = progressResults.map(student => ({
+        ...student,
+        paymentVerified: student.paymentVerified === true ||
+          paidStudentKeys.has(student.paymentKey || student.jid)
+      }));
       if (document.querySelector('#progress-rows [data-send-lesson-picker].is-open')) return;
       if (trendEndDate !== progressTrendWindowEndDate ||
           enrollmentEndDate !== telegramEnrollmentWindowEndDate) return;
@@ -6832,7 +7163,13 @@
           : student.lastStudentActivityAt
             ? Date.parse(student.lastStudentActivityAt)
             : null;
-        const searchText = `${student.name} ${student.gradeName} ${student.lessonTitle || ''} ${student.platform}`
+        const membershipState = student.platform === 'Telegram'
+          ? ['member', 'left', 'kicked', 'removed'].includes(student.groupMembershipStatus)
+            ? student.groupMembershipStatus === 'kicked' ? 'removed' : student.groupMembershipStatus
+            : ''
+          : '';
+        const membershipLabel = getGroupMembershipLabel(student);
+        const searchText = `${student.name} ${student.gradeName} ${student.lessonTitle || ''} ${student.platform} ${membershipLabel}`
           .toLocaleLowerCase();
         const presence = student.platform === 'Telegram'
           ? ['online', 'offline'].includes(student.telegramPresence)
@@ -6845,10 +7182,13 @@
         const presenceTitle = student.telegramPresenceUpdatedAt
           ? `Last checked ${formatDate(student.telegramPresenceUpdatedAt)}`
           : 'Telegram has not provided a current presence status.';
-        const presenceCell = presence || telegramBotBlocked
+        const membershipBadge = membershipState
+          ? `<span class="status${membershipState === 'member' ? ' completed' : membershipState === 'removed' ? ' rejected' : ''}"${student.groupLeftAt ? ` title="Left group ${escapeHtml(formatDate(student.groupLeftAt))}"` : ''}>${escapeHtml(membershipLabel)}</span>`
+          : '';
+        const presenceCell = student.platform === 'Telegram' || telegramBotBlocked
           ? `<div class="telegram-progress-presence">${presence
             ? `<span class="telegram-presence ${presence}" title="${escapeHtml(presenceTitle)}">${presenceLabel}</span>`
-            : ''}${telegramBotBlocked
+            : ''}${membershipBadge}${telegramBotBlocked
               ? '<span class="status rejected" title="Telegram reported that this student blocked the bot. Private messages are disabled.">Bot blocked</span>'
               : ''}</div>`
           : '—';
@@ -6858,7 +7198,7 @@
         const exerciseScoreLabel = Number.isFinite(student.exerciseScorePercent)
           ? `${student.exerciseScorePercent}% · ${student.scoreCorrectQuestions} / ${student.scoreTotalQuestions}`
           : 'Not recorded';
-        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td title="Lessons passed out of lessons received">${lessonCompletionLabel}</td><td title="Correct answers across delivered exercises; corrected answers also count">${exerciseScoreLabel}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || (requiresPrivateStart || telegramBotBlocked ? '' : '—')}${privateStartNotice}</div></td></tr>`;
+        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-membership="${membershipState}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button>${renderVerifiedPaymentBadge(student.paymentVerified)}</td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td title="Lessons passed out of lessons received">${lessonCompletionLabel}</td><td title="Correct answers across delivered exercises; corrected answers also count">${exerciseScoreLabel}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || (requiresPrivateStart || telegramBotBlocked ? '' : '—')}${privateStartNotice}</div></td></tr>`;
       }).join('') : '<tr><td colspan="14" class="empty">No student progress recorded yet.</td></tr>';
       applyProgressFilters();
       $('#progress-rows').querySelectorAll('[data-send-lesson-picker]').forEach(picker => {
@@ -7700,7 +8040,7 @@
           if (payment.bank) metaParts.push(payment.bank);
           if (payment.transactionId) metaParts.push(`Ref: ${payment.transactionId}`);
           const metaInfo = metaParts.length ? ` · ${escapeHtml(metaParts.join(' · '))}` : '';
-          return `<article class="payment-calendar-entry"><div><strong>${escapeHtml(payment.studentName || payment.phoneNumber)}${scanBadge}</strong><small>${escapeHtml(payment.phoneNumber)} · Marked paid ${escapeHtml(formatDate(payment.paidAt))}${metaInfo}</small></div><small>${coverageStatus} ${escapeHtml(formatDate(coverageEnd, false))}</small></article>`;
+          return `<article class="payment-calendar-entry"><div><strong>${escapeHtml(payment.studentName || payment.phoneNumber)}${renderVerifiedPaymentBadge(true)}${scanBadge}</strong><small>${escapeHtml(payment.phoneNumber)} · Marked paid ${escapeHtml(formatDate(payment.paidAt))}${metaInfo}</small></div><small>${coverageStatus} ${escapeHtml(formatDate(coverageEnd, false))}</small></article>`;
         }).join('')
         : '<div class="payment-calendar-empty">No students were marked paid on this date.</div>';
     }
@@ -7812,7 +8152,7 @@
             ? `<a class="historical-payment-receipt" href="/api/admin/payment-receipts/${encodeURIComponent(payment.receiptId)}" target="_blank" rel="noopener noreferrer">Open receipt</a>`
             : '—';
           return `<tr>
-            <td>${escapeHtml(payment.name || payment.studentKey || 'Student')}</td>
+            <td>${escapeHtml(payment.name || payment.studentKey || 'Student')}${renderVerifiedPaymentBadge(true)}</td>
             <td>${escapeHtml(payment.gradeName || '—')}</td>
             <td>${escapeHtml(formatDate(payment.paidAt))}</td>
             <td>${formatter.format(collected)} ${escapeHtml(currency)}${hasRecordedAmount ? '' : '<br><small>Estimated · amount not recorded</small>'}</td>
@@ -7841,6 +8181,30 @@
         });
     }
 
+    function applyPaymentLedgerSearch() {
+      const body = $('#payment-ledger-rows');
+      const rows = [...body.querySelectorAll('tr[data-payment-ledger-key]')];
+      const query = $('#payment-ledger-search').value.trim().toLocaleLowerCase();
+      let visible = 0;
+      for (const row of rows) {
+        const matches = !query || row.dataset.paymentLedgerSearch.includes(query);
+        row.hidden = !matches;
+        if (matches) visible += 1;
+      }
+
+      $('#payment-ledger-filter-count').textContent = rows.length
+        ? `Showing ${visible.toLocaleString()} of ${rows.length.toLocaleString()} students`
+        : 'No students with lesson progress yet';
+      let emptyRow = $('#payment-ledger-search-empty');
+      if (!emptyRow && rows.length) {
+        emptyRow = document.createElement('tr');
+        emptyRow.id = 'payment-ledger-search-empty';
+        emptyRow.innerHTML = '<td colspan="10" class="empty">No students match this search.</td>';
+        body.append(emptyRow);
+      }
+      if (emptyRow) emptyRow.hidden = visible !== 0 || rows.length === 0;
+    }
+
     async function loadPaymentLedger({ forceRefresh = false } = {}) {
       if (!forceRefresh && paymentLedgerHasUnsavedChanges()) return;
       let ledgerData;
@@ -7867,6 +8231,7 @@
         throw error;
       }
       const { students, payments } = ledgerData;
+      updateVerifiedPaymentStudentKeys(students);
       telegramPaymentHistory = payments;
       renderTelegramPaymentSummary();
       const studentSelect = $('#historical-payment-student');
@@ -7912,9 +8277,12 @@
               : ''
           ].filter(Boolean).map(item =>
             item.startsWith('<a ') ? item : escapeHtml(item)).join(' · ');
-          return `<tr data-payment-ledger-key="${escapeHtml(student.studentKey)}">
+          const searchText =
+            `${student.name || 'Student'} ${student.studentKey} ${student.platform} ${student.gradeName}`
+              .toLocaleLowerCase();
+          return `<tr data-payment-ledger-key="${escapeHtml(student.studentKey)}" data-payment-ledger-search="${escapeHtml(searchText)}">
             <td>${escapeHtml(student.platform)}</td>
-            <td>${escapeHtml(student.name)}</td>
+            <td>${escapeHtml(student.name)}${renderVerifiedPaymentBadge(payment.status === 'paid')}</td>
             <td>${escapeHtml(student.gradeName)}</td>
             <td>${Number.isSafeInteger(student.currentLessonNumber) ? `Lesson ${escapeHtml(String(student.currentLessonNumber))}` : '—'}</td>
             <td>${escapeHtml(formatDate(payment.periodStart, false))} – ${escapeHtml(formatDate(periodEnd, false))}</td>
@@ -7929,6 +8297,7 @@
         : '<tr><td colspan="10" class="empty">No students with lesson progress are available yet.</td></tr>';
       $('#telegram-payment-history-rows').dataset.loaded = 'true';
       $('#payment-ledger-rows').dataset.loaded = 'true';
+      applyPaymentLedgerSearch();
 
       $('#payment-ledger-rows').querySelectorAll('[data-payment-save]').forEach(button => {
         button.addEventListener('click', async () => {
@@ -8638,7 +9007,7 @@
             : broadcastRecipientType === 'es' && contact.canMessage
               ? `<input type="checkbox" data-broadcast-jid="${escapeHtml(contact.jid)}" aria-label="Select ${escapeHtml(contact.name)}" ${selectedJids.has(contact.jid) ? 'checked' : ''} ${!selectedJids.has(contact.jid) && selectedJids.size >= 5000 ? 'disabled' : ''}>`
               : '<span class="not-eligible" title="Requires an incoming chat and no opt-out">—</span>'}</td>
-          <td><button class="contact-name-button" type="button" data-student-activity="${escapeHtml(contact.jid)}" data-student-name="${escapeHtml(contact.name)}">${escapeHtml(contact.name)}</button>${contact.paid ? `<span class="badge paid" title="Payment status is not independently verified">Paid · ${contact.paid.source === 'manual' ? 'manual' : 'student-reported'}</span>` : ''}${contact.unread ? '<span class="badge unread">Unread</span>' : ''}<small class="date-chat-preview">${contact.lastActivityAt ? `${contact.activitySource === 'whatsapp' ? 'WhatsApp activity' : 'Last activity'}: ${formatDate(contact.lastActivityAt)}` : 'Activity: Unavailable'}${contactActivityDate && contact.lastIncomingAt ? ` · message: ${formatDate(contact.lastIncomingAt)}${contact.lastIncomingMessage ? ` · ${escapeHtml(contact.lastIncomingMessage)}` : ''}` : ''}</small></td><td dir="ltr">${escapeHtml(contact.phoneNumber)}</td>
+          <td><button class="contact-name-button" type="button" data-student-activity="${escapeHtml(contact.jid)}" data-student-name="${escapeHtml(contact.name)}">${escapeHtml(contact.name)}</button>${renderContactPaymentBadge(contact.paid)}${contact.unread ? '<span class="badge unread">Unread</span>' : ''}<small class="date-chat-preview">${contact.lastActivityAt ? `${contact.activitySource === 'whatsapp' ? 'WhatsApp activity' : 'Last activity'}: ${formatDate(contact.lastActivityAt)}` : 'Activity: Unavailable'}${contactActivityDate && contact.lastIncomingAt ? ` · message: ${formatDate(contact.lastIncomingAt)}${contact.lastIncomingMessage ? ` · ${escapeHtml(contact.lastIncomingMessage)}` : ''}` : ''}</small></td><td dir="ltr">${escapeHtml(contact.phoneNumber)}</td>
           <td><select class="contact-gender" data-contact-gender="${escapeHtml(contact.phoneNumber)}" data-saved-gender="${contact.gender.source === 'manual' ? escapeHtml(contact.gender.value) : 'auto'}" aria-label="Gender for ${escapeHtml(contact.name)}">
             <option value="auto" ${contact.gender.source !== 'manual' ? 'selected' : ''}>Auto: ${contact.gender.value === 'unknown' ? 'Not identified' : `${contact.gender.value === 'female' ? 'Female' : 'Male'} (inferred)`}</option>
             <option value="female" ${contact.gender.source === 'manual' && contact.gender.value === 'female' ? 'selected' : ''}>Female · manual</option>
@@ -8826,6 +9195,13 @@
         scheduledDashboardRefresh = new Set();
         const tasks = [];
         const has = (...names) => names.some(name => changedFiles.has(name));
+        if (has('student_payment_ledger.json')) verifiedPaymentStudentKeys = null;
+        if (has('telegram_progress.json', 'student_payment_ledger.json')) {
+          tasks.push(refreshSidebarUpdateBadges({
+            progress: has('telegram_progress.json'),
+            payments: has('student_payment_ledger.json')
+          }));
+        }
 
         if (has('telegram_progress.json', 'lessons.json')) {
           tasks.push(loadOverview());
@@ -8856,6 +9232,19 @@
         if (has('student_payment_ledger.json', 'historical_payment_receipts.json') &&
             document.querySelector('#section-payment-ledger').classList.contains('active')) {
           tasks.push(loadPaymentLedger());
+        }
+        if (has('student_payment_ledger.json') &&
+            (isProgressSectionActive() ||
+              document.querySelector('#section-student-chat').classList.contains('active'))) {
+          tasks.push(loadProgress());
+        }
+        if (has('contact_payment_labels.json')) {
+          if (document.querySelector('#section-chats').classList.contains('active')) {
+            tasks.push(loadChats());
+          }
+          if (document.querySelector('#section-es-contacts').classList.contains('active')) {
+            tasks.push(loadEsContacts());
+          }
         }
         if (has('telegram_agent_status.json')) tasks.push(loadTelegramAgentStatus());
         if (has('telegram_agent.log')) tasks.push(loadTelegramAgentLogs());
@@ -8888,6 +9277,7 @@
     }
 
     function activateSection(name, { refreshProgress = true } = {}) {
+      markSidebarUpdatesRead(name);
       document.querySelectorAll('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.section === name));
       const sectionName = name === 'agent' ? 'chats' : name;
       document.querySelectorAll('.section').forEach(section => section.classList.toggle('active', section.id === `section-${sectionName}`));
@@ -9041,6 +9431,7 @@
       loadPaymentLedger({ forceRefresh: true })
         .catch(error => showError(`Could not refresh payment ledger: ${error.message}`));
     });
+    $('#payment-ledger-search').addEventListener('input', applyPaymentLedgerSearch);
     $('#historical-payment-form').addEventListener('submit', async event => {
       event.preventDefault();
       const form = event.currentTarget;

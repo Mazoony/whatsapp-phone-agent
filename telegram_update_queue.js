@@ -8,6 +8,11 @@ export const TELEGRAM_UPDATE_QUEUE_FILE = path.join(DATA_DIR, 'telegram_update_q
 export const TELEGRAM_AGENT_CONTROL_FILE = path.join(DATA_DIR, 'telegram_agent_control.json');
 const RENAME_RETRY_DELAYS_MS = [10, 25, 50, 100];
 
+function isActiveMember(member) {
+  return ['creator', 'administrator', 'member'].includes(member?.status) ||
+    (member?.status === 'restricted' && member.is_member === true);
+}
+
 function readJsonFile(filePath, fallback) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -45,12 +50,24 @@ function writeJsonAtomically(filePath, value) {
 
 function describe(entry, position, active = false) {
   const message = entry.update?.message || {};
-  const user = message.from || {};
-  const chat = message.chat || {};
+  const memberUpdate = entry.update?.chat_member;
+  const member = memberUpdate?.new_chat_member;
+  const user = member?.user || message.from || {};
+  const chat = memberUpdate?.chat || message.chat || {};
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() ||
     (user.username ? `@${user.username}` : `Telegram user ${user.id || ''}`);
-  const messageType = Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0
-    ? 'Group join'
+  const membershipJoin = isActiveMember(member) && !isActiveMember(memberUpdate?.old_chat_member);
+  const newMemberStatus = member?.status;
+  const membershipDeparture = ['left', 'kicked'].includes(newMemberStatus) ||
+    (newMemberStatus === 'restricted' && member?.is_member === false);
+  const messageType = memberUpdate
+    ? membershipJoin
+      ? 'Group join'
+      : membershipDeparture
+        ? 'Group departure'
+        : 'Membership update'
+    : Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0
+      ? 'Group join'
     : typeof message.text === 'string'
       ? 'Text'
     : message.photo?.length
@@ -75,11 +92,18 @@ function describe(entry, position, active = false) {
 }
 
 function isGroupJoin(entry) {
+  const memberUpdate = entry.update?.chat_member;
+  if (memberUpdate?.new_chat_member) {
+    return isActiveMember(memberUpdate.new_chat_member) &&
+      !isActiveMember(memberUpdate.old_chat_member);
+  }
   const members = entry.update?.message?.new_chat_members;
   return Array.isArray(members) && members.length > 0;
 }
 
 function getProcessingIdentities(entry) {
+  const memberUser = entry.update?.chat_member?.new_chat_member?.user;
+  if (Number.isSafeInteger(memberUser?.id)) return [`user:${memberUser.id}`];
   const message = entry.update?.message;
   const members = message?.new_chat_members;
   if (Array.isArray(members) && members.length > 0) {

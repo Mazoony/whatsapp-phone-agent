@@ -273,7 +273,7 @@ test('Telegram /lesson sends the next grammar lesson privately and confirms in t
   const { agent, paymentLedger, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson@eSchoolsdBot', messageId: 17 }));
   assert.deepEqual(sent.map(message => message.type), ['video', 'text', 'text']);
-  assert.equal(sent[0].chatId, '44');
+  assert.equal(sent.at(-2).chatId, '44');
   assert.equal(sent[0].video.toString(), 'lesson_1');
   assert.equal(sent[1].chatId, '44');
   assert.equal(sent[1].text, 'Answer question 1.');
@@ -408,15 +408,18 @@ test('Telegram exposes separate literature and spine lesson tracks without chang
   assert.equal(agent.progress[studentKey].status, 'awaiting_task');
 
   await agent.handleUpdate(privateUpdate({ text: '/lesson' }));
-  assert.equal(sent.at(-2).video.toString(), 'lesson_1');
-  assert.equal(sent.at(-1).text, 'Answer question 1.');
+  assert.match(sent.at(-1).text, /\/repeat/);
+  assert.equal(sent.filter(message => message.type === 'video').length, 2);
   assert.equal(agent.progress[studentKey].activeTelegramTrack, 'grammar');
   assert.equal(agent.progress[studentKey].telegramLessonTracks.literature.activeLessonId, 'chapter_1');
   assert.equal(agent.progress[studentKey].telegramLessonTracks.literature.status, 'awaiting_task');
   await agent.handleUpdate(privateUpdate({ text: '/literature' }));
+  assert.match(sent.at(-1).text, /منتظر إجابتك/);
+  assert.equal(sent.filter(message => message.type === 'video').length, 2);
+  assert.equal(agent.progress[studentKey].activeTelegramTrack, 'literature');
+  await agent.handleUpdate(privateUpdate({ text: '/repeat' }));
   assert.equal(sent.at(-2).video.toString(), 'literature');
   assert.equal(sent.at(-1).text, literatureLesson.taskMessage);
-  assert.equal(agent.progress[studentKey].activeTelegramTrack, 'literature');
 
   await agent.handleUpdate(privateUpdate({ text: 'correct answer' }));
   assert.equal(agent.progress[studentKey].telegramLessonTracks.literature.activeLessonId, 'chapter_2');
@@ -430,9 +433,10 @@ test('Telegram exposes separate literature and spine lesson tracks without chang
   assert.equal(agent.progress[studentKey].telegramLessonTracks.literature.status, 'awaiting_task');
   assert.equal(agent.progress[studentKey].activeTelegramTrack, 'spine');
 
+  const videoCountBeforeSwitchBack = sent.filter(message => message.type === 'video').length;
   await agent.handleUpdate(privateUpdate({ text: '/literature' }));
-  assert.equal(sent.at(-2).video.toString(), 'literature 2');
-  assert.equal(sent.at(-1).text, secondLiteratureLesson.taskMessage);
+  assert.equal(sent.filter(message => message.type === 'video').length, videoCountBeforeSwitchBack);
+  assert.match(sent.at(-1).text, /منتظر إجابتك/);
   assert.equal(agent.progress[studentKey].telegramLessonTracks.literature.status, 'awaiting_task');
   assert.equal(agent.progress[studentKey].telegramLessonTracks.spine.activeLessonId, 'spine_1');
 
@@ -444,11 +448,14 @@ test('Telegram exposes separate literature and spine lesson tracks without chang
   assert.equal(agent.progress[studentKey].currentLessonId, grammarLessonId);
   assert.equal(agent.progress[studentKey].activeTelegramTrack, null);
 
+  const videoCountBeforeSpineResume = sent.filter(message => message.type === 'video').length;
   await agent.handleUpdate(privateUpdate({ text: '/spine' }));
-  assert.equal(sent.at(-2).type, 'video');
+  assert.equal(sent.filter(message => message.type === 'video').length, videoCountBeforeSpineResume);
+  assert.match(sent.at(-1).text, /منتظر إجابتك/);
+  assert.equal(agent.progress[studentKey].activeTelegramTrack, 'spine');
+  await agent.handleUpdate(privateUpdate({ text: '/repeat' }));
   assert.equal(sent.at(-2).video.toString(), 'spine');
   assert.equal(sent.at(-1).text, spineLesson.taskMessage);
-  assert.equal(agent.progress[studentKey].activeTelegramTrack, 'spine');
   await agent.handleUpdate(privateUpdate({ text: 'correct answer' }));
   assert.equal(agent.progress[studentKey].telegramLessonTracks.spine.activeLessonId, 'spine_2');
   assert.equal(sent.at(-2).video.toString(), 'spine 2');
@@ -722,7 +729,7 @@ test('Telegram ignores standalone acknowledgments instead of replying or grading
   assert.equal(progress.submissionsReceived || 0, 0);
 });
 
-test('Telegram suppresses rapid repeated group lesson requests but allows a later resend', async t => {
+test('Telegram does not resend a pending Grammar lesson unless /repeat is requested', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson', messageId: 17 }));
   assert.equal(sent.filter(message => message.type === 'video').length, 1);
@@ -740,8 +747,14 @@ test('Telegram suppresses rapid repeated group lesson requests but allows a late
     new Date(Date.now() - 3 * 60 * 1000).toISOString();
   agent.saveProgress();
   await agent.handleUpdate(groupUpdate({ text: '/lesson', messageId: 19 }));
+  assert.equal(sent.filter(message => message.type === 'video').length, 1);
+  assert.match(sent.at(-2).text, /منتظر إجابتك/);
+  assert.match(sent.at(-1).text, /منتظر في الخاص/);
+
+  await agent.handleUpdate(groupUpdate({ text: '/repeat', messageId: 20 }));
   assert.equal(sent.filter(message => message.type === 'video').length, 2);
-  assert.equal(sent.at(-1).chatId, '-100123');
+  assert.equal(sent.at(-3).video.toString(), 'lesson_1');
+  assert.equal(sent.at(-1).text, 'تمام، أعدت إرسال الدرس في الخاص.');
 });
 
 test('Telegram /help explains lesson and payment commands in the group', async t => {
@@ -1316,6 +1329,106 @@ test('Telegram enrolls and welcomes students added by an administrator', async t
   assert.ok(student.onboardingInstructionsSentAt);
 });
 
+test('Telegram records group departures and rejoins without resetting lesson progress', async t => {
+  const { agent } = createFixture(t);
+  const studentKey = 'telegram:-100123:44';
+  const joinedAt = '2026-10-10T12:00:00.000Z';
+  agent.progress[studentKey] = {
+    grade: 'grade_3_secondary',
+    status: 'awaiting_task',
+    telegramChatId: '-100123',
+    telegramUserId: 44,
+    telegramPrivateChatId: '44',
+    groupJoinedAt: joinedAt,
+    currentLessonId: 'lesson_2',
+    submissionsReceived: 3
+  };
+  const departureAtSeconds = 1_797_000_100;
+  const member = {
+    user: { id: 44, first_name: 'Maha', username: 'maha_ahmed' },
+    status: 'left'
+  };
+
+  await agent.handleUpdate({
+    update_id: 95,
+    chat_member: {
+      chat: { id: -100123, type: 'supergroup' },
+      from: { id: 6413779313 },
+      date: departureAtSeconds,
+      old_chat_member: { ...member, status: 'member' },
+      new_chat_member: member
+    }
+  });
+
+  let student = agent.progress[studentKey];
+  const departureAt = new Date(departureAtSeconds * 1000).toISOString();
+  assert.equal(student.groupMembershipStatus, 'left');
+  assert.equal(student.groupMembershipUpdatedAt, departureAt);
+  assert.equal(student.groupLeftAt, departureAt);
+  assert.equal(student.groupJoinedAt, joinedAt);
+  assert.equal(student.status, 'awaiting_task');
+  assert.equal(student.currentLessonId, 'lesson_2');
+  assert.equal(student.submissionsReceived, 3);
+
+  const rejoinedAtSeconds = departureAtSeconds + 500;
+  await agent.handleUpdate({
+    update_id: 96,
+    chat_member: {
+      chat: { id: -100123, type: 'supergroup' },
+      from: { id: 6413779313 },
+      date: rejoinedAtSeconds,
+      old_chat_member: { ...member, status: 'left' },
+      new_chat_member: { ...member, status: 'member' }
+    }
+  });
+
+  student = agent.progress[studentKey];
+  assert.equal(student.groupMembershipStatus, 'member');
+  assert.equal(student.groupMembershipUpdatedAt,
+    new Date(rejoinedAtSeconds * 1000).toISOString());
+  assert.equal(student.groupLeftAt, undefined);
+  assert.equal(student.groupJoinedAt, joinedAt);
+  assert.equal(student.status, 'awaiting_task');
+  assert.equal(student.currentLessonId, 'lesson_2');
+
+  await agent.handleUpdate({
+    update_id: 97,
+    chat_member: {
+      chat: { id: -100999, type: 'supergroup' },
+      date: departureAtSeconds,
+      old_chat_member: { ...member, status: 'member' },
+      new_chat_member: member
+    }
+  });
+  await agent.handleUpdate({
+    update_id: 98,
+    chat_member: {
+      chat: { id: -100123, type: 'supergroup' },
+      date: departureAtSeconds,
+      old_chat_member: { ...member, status: 'member' },
+      new_chat_member: {
+        user: { id: 6413779313, first_name: 'Admin' },
+        status: 'left'
+      }
+    }
+  });
+  await agent.handleUpdate({
+    update_id: 99,
+    chat_member: {
+      chat: { id: -100123, type: 'supergroup' },
+      date: departureAtSeconds,
+      old_chat_member: { ...member, status: 'member' },
+      new_chat_member: {
+        user: { id: 99, first_name: 'Bot', is_bot: true },
+        status: 'left'
+      }
+    }
+  });
+  assert.equal(agent.progress['telegram:-100999:44'], undefined);
+  assert.equal(agent.progress['telegram:-100123:6413779313'], undefined);
+  assert.equal(agent.progress['telegram:-100123:99'], undefined);
+});
+
 test('Telegram directs unregistered private contacts to the lessons group without mentioning payment', async t => {
   const { agent, sent } = createFixture(t);
 
@@ -1367,7 +1480,7 @@ test('Telegram /start asks registered students to choose a lesson track without 
 
   await agent.handleUpdate(privateUpdate({ text: '/start', messageId: 18 }));
 
-  assert.equal(sent[0].chatId, '44');
+  assert.equal(sent.at(-2).chatId, '44');
   assert.match(sent[0].text, /المسار/);
   assert.match(sent[0].text, /\/spine/);
   assert.match(sent[0].text, /\/grammar/);
@@ -1516,23 +1629,28 @@ test('admin lesson delivery fails without uploading when the student has no priv
   assert.match(lessonSkipQueue.read().find(item => item.id === request.id).error, /No private Telegram chat/);
 });
 
-test('Telegram /lesson in private resends the active video and task privately', async t => {
+test('Telegram /lesson does not resend a pending task but /repeat does', async t => {
   const { agent, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
   sent.length = 0;
 
   await agent.handleUpdate(privateUpdate({ text: '/lesson', messageId: 18 }));
 
-  assert.deepEqual(sent.map(message => message.type), ['video', 'text']);
+  assert.deepEqual(sent.map(message => message.type), ['text']);
+  assert.match(sent[0].text, /\/repeat/);
+  assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, 'lesson_1');
+
+  await agent.handleUpdate(privateUpdate({ text: '/repeat', messageId: 19 }));
+  assert.deepEqual(sent.slice(-2).map(message => message.type), ['video', 'text']);
   assert.equal(sent[0].chatId, '44');
-  assert.equal(sent[0].video.toString(), 'lesson_1');
-  assert.equal(sent[0].replyToMessageId, 18);
-  assert.equal(sent[1].chatId, '44');
-  assert.equal(sent[1].text, 'Answer question 1.');
-  assert.equal(sent[1].replyToMessageId, 18);
+  assert.equal(sent.at(-2).video.toString(), 'lesson_1');
+  assert.equal(sent.at(-2).replyToMessageId, 19);
+  assert.equal(sent.at(-1).chatId, '44');
+  assert.equal(sent.at(-1).text, 'Answer question 1.');
+  assert.equal(sent.at(-1).replyToMessageId, 19);
   assert.deepEqual(
     agent.progress['telegram:-100123:44'].telegramChatHistory.map(message => message.role),
-    ['student', 'bot', 'bot', 'student', 'bot', 'bot']
+    ['student', 'bot', 'bot', 'student', 'bot', 'student', 'bot', 'bot']
   );
   assert.equal(
     agent.progress['telegram:-100123:44'].telegramChatHistory[3].text,
@@ -1879,6 +1997,43 @@ test('admin can send any configured Telegram lesson and make it active for the s
     message.type === 'video' ? 'video' : message.text), ['video', 'Answer question 3.']);
   assert.ok(sent.slice(-2).every(message => message.chatId === '44'));
   assert.equal(lessonSkipQueue.read().find(item => item.id === request.id).status, 'sent');
+});
+
+test('admin can send a first Telegram lesson before the student has a current lesson', async t => {
+  const { agent, lessonSkipQueue, sent } = createFixture(t);
+  await agent.handleUpdate(groupUpdate({ text: '/lesson', messageId: 10 }));
+  const studentKey = 'telegram:-100123:44';
+  const state = agent.progress[studentKey];
+  delete state.currentLessonId;
+  delete state.currentLessonIndex;
+  state.status = 'awaiting_content';
+  state.activeTelegramTrack = null;
+  agent.saveProgress();
+
+  const request = lessonSkipQueue.enqueue({
+    requestType: 'send_lesson',
+    platform: 'Telegram',
+    studentKey,
+    chatId: '-100123',
+    userId: '44',
+    gradeKey: 'grade_3_secondary',
+    currentLessonId: '',
+    nextLessonId: 'lesson_1',
+    lessonIndex: 0,
+    nextLessonTitle: 'Lesson 1',
+    track: 'grammar',
+    collectionId: null
+  });
+  await agent.processPendingLessonSkips();
+
+  assert.deepEqual(sent.slice(-2).map(message =>
+    message.type === 'video' ? 'video' : message.text), [
+    'video',
+    'Answer question 1.'
+  ]);
+  assert.equal(agent.progress[studentKey].currentLessonId, 'lesson_1');
+  assert.equal(lessonSkipQueue.read().find(item =>
+    item.id === request.request.id).status, 'sent');
 });
 
 test('admin can send Literature and SPINE lessons from their Telegram tracks', async t => {
@@ -2674,7 +2829,7 @@ test('Telegram Bot API sends JSON requests and multipart lesson videos', async (
   assert.deepEqual(JSON.parse(requests[0].options.body), {
     offset: 9,
     timeout: 25,
-    allowed_updates: ['message']
+    allowed_updates: ['message', 'chat_member']
   });
   assert.deepEqual(JSON.parse(requests[1].options.body), {
     chat_id: '-100123',
@@ -2958,6 +3113,41 @@ test('Telegram update queue runs different students concurrently but preserves e
   for (const entry of active.slice(1)) queue.finish(entry);
   const secondStudentUpdate = queue.active.find(entry => entry.update.update_id === 102);
   queue.finish(secondStudentUpdate);
+});
+
+test('Telegram membership updates share a student queue identity with their messages', t => {
+  const directory = makeTemporaryDirectory();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const queueFile = path.join(directory, 'telegram_update_queue.json');
+  const controlFile = path.join(directory, 'telegram_agent_control.json');
+  const queue = new TelegramUpdateQueue({ queueFile, controlFile });
+  const user = { id: 44, first_name: 'Maha' };
+  queue.enqueue({
+    update_id: 70,
+    chat_member: {
+      chat: { id: -100123, type: 'supergroup', title: 'Lessons' },
+      old_chat_member: { user, status: 'member' },
+      new_chat_member: { user, status: 'left' }
+    }
+  });
+  queue.enqueue({
+    update_id: 71,
+    message: {
+      chat: { id: -100123, type: 'supergroup', title: 'Lessons' },
+      from: user,
+      text: 'student message'
+    }
+  });
+
+  const snapshot = readTelegramUpdateQueue(queueFile, controlFile);
+  assert.equal(snapshot.waiting[0].name, 'Maha');
+  assert.equal(snapshot.waiting[0].chat, 'Lessons');
+  assert.equal(snapshot.waiting[0].messageType, 'Group departure');
+  const departure = queue.takeNext();
+  assert.equal(departure.update.update_id, 70);
+  assert.equal(queue.takeNext(), null);
+  queue.finish(departure);
+  assert.equal(queue.takeNext().update.update_id, 71);
 });
 
 test('Telegram update queue retries transient rename permission errors', t => {

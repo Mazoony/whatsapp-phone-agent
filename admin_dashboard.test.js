@@ -1377,6 +1377,33 @@ test('dashboard queues validated lesson skips for both platforms and exposes que
   const conflictingSkip = await postSkip('Telegram', 'telegram:-100123:44');
   assert.equal(conflictingSkip.status, 409);
 
+  const firstLessonStudentKey = 'telegram:-100123:45';
+  data.telegramProgress[firstLessonStudentKey] = {
+    name: 'New Telegram learner',
+    grade: 'grade_3_secondary',
+    status: 'awaiting_content',
+    telegramChatId: '-100123',
+    telegramUserId: 45,
+    telegramPrivateChatId: '45'
+  };
+  fs.writeFileSync(telegramProgressFile, JSON.stringify(data.telegramProgress));
+  const firstLessonResponse = await fetch(`${origin}/api/admin/progress/send-lesson`, {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jid: firstLessonStudentKey,
+      currentLessonId: '',
+      lessonId: 'lesson_1',
+      track: 'grammar',
+      collectionId: null
+    })
+  });
+  assert.equal(firstLessonResponse.status, 202);
+  const firstLessonRequest = JSON.parse(fs.readFileSync(telegramQueueFile, 'utf8'))
+    .find(request => request.studentKey === firstLessonStudentKey);
+  assert.equal(firstLessonRequest.currentLessonId, '');
+  assert.equal(firstLessonRequest.nextLessonId, 'lesson_1');
+
   data.progress['1001@s.whatsapp.net'].currentLessonId = 'lesson_2';
   data.progress['1001@s.whatsapp.net'].currentLessonIndex = 1;
   const stale = await postSkip('WhatsApp', '1001@s.whatsapp.net');
@@ -1505,6 +1532,7 @@ test('overview and student progress report Telegram learner joins and lesson act
         status: 'awaiting_task',
         joinedAt: new Date(now).toISOString(),
         groupJoinedAt: new Date(now).toISOString(),
+        groupMembershipStatus: 'member',
         deliveredAt: new Date(now).toISOString(),
         lastActivityAt: new Date(now).toISOString(),
         submissionsReceived: 2,
@@ -1521,6 +1549,8 @@ test('overview and student progress report Telegram learner joins and lesson act
         currentLessonId: 'lesson_1',
         status: 'awaiting_reattempt',
         groupJoinedAt: new Date(now - day).toISOString(),
+        groupMembershipStatus: 'left',
+        groupLeftAt: new Date(now - day / 2).toISOString(),
         deliveredAt: new Date(now - day).toISOString(),
         submissionsReceived: 1,
       }
@@ -1546,6 +1576,8 @@ test('overview and student progress report Telegram learner joins and lesson act
   assert.equal(amina.incomingMessagesLast7Days, 2);
   assert.equal(amina.activeDaysLast30Days, 2);
   assert.equal(amina.lessonsCompleted, 1);
+  assert.equal(amina.groupMembershipStatus, 'member');
+  assert.equal(amina.groupLeftAt, null);
   assert.equal(progress.insights.engagementTrend.at(-1).telegramActiveStudents, 1);
   assert.equal(progress.insights.engagementTrend.at(-2).telegramActiveStudents, 2);
   assert.equal(progress.insights.telegramEnrollment.joinedToday, 1);
@@ -1553,6 +1585,8 @@ test('overview and student progress report Telegram learner joins and lesson act
   assert.equal(progress.insights.engagementTrend.at(-1).activeStudents, 1);
   const musa = telegram.find(student => student.name === 'Musa Telegram');
   assert.equal(musa.joinedAt, new Date(now - day).toISOString());
+  assert.equal(musa.groupMembershipStatus, 'left');
+  assert.equal(musa.groupLeftAt, new Date(now - day / 2).toISOString());
   assert.equal(musa.incomingMessagesLast7Days, 1);
 });
 
@@ -2654,6 +2688,17 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(initial.students[0].payment.status, 'unpaid');
     assert.equal(initial.students[0].paymentInformationDelivery.status, 'not_sent');
     assert.equal(initial.students[0].currentLessonNumber, 1);
+    const initialProgress = await (await fetch(
+      `${origin}/api/admin/telegram-progress?timeZone=UTC`
+    )).json();
+    assert.equal(
+      initialProgress.students.find(student => student.jid === studentKey).paymentVerified,
+      false
+    );
+    assert.equal(
+      initialProgress.students.find(student => student.jid === unstartedStudentKey).paymentVerified,
+      false
+    );
     assert.equal(
       initial.students[0].payment.periodStart,
       getRollingPaymentPeriod(lessonStartedAt).periodStart
@@ -2699,6 +2744,17 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     assert.equal(reviewed.payment.status, 'paid');
     assert.equal(reviewed.payment.amount, 17000);
     assert.equal(reviewed.payment.currency, 'SDG');
+    const verifiedProgress = await (await fetch(
+      `${origin}/api/admin/telegram-progress?timeZone=UTC`
+    )).json();
+    assert.equal(
+      verifiedProgress.students.find(student => student.jid === studentKey).paymentVerified,
+      true
+    );
+    assert.equal(
+      verifiedProgress.students.find(student => student.jid === unstartedStudentKey).paymentVerified,
+      false
+    );
     assert.deepEqual(reviewed.notification, { sent: true, reason: 'sent' });
     assert.equal(paymentNotifications.length, 2);
     assert.equal(paymentNotifications[1].chatId, '44');

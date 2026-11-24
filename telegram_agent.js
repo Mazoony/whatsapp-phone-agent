@@ -149,6 +149,14 @@ function isLessonRequest(text) {
     /^(?:ال)?(?:حصة|حصه|درس)(?:ي)?\s+(?:وين|وينها)$/u.test(normalized);
 }
 
+function isRepeatLessonCommand(text) {
+  return /^\/repeat(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
+}
+
+function isExplicitGrammarLessonCommand(text) {
+  return /^\/(?:lesson|grammar)(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
+}
+
 function getTelegramTrackCommand(text) {
   const command = /^\/(lesson|grammar|literature|spine)(?:@[a-z0-9_]+)?(?:\s|$)/i
     .exec(text.trim())?.[1]?.toLowerCase();
@@ -271,6 +279,17 @@ function isGroupChat(chat) {
   return chat?.type === 'group' || chat?.type === 'supergroup';
 }
 
+function getTelegramGroupMembershipStatus(member) {
+  if (['creator', 'administrator', 'member'].includes(member?.status) ||
+      (member?.status === 'restricted' && member.is_member === true)) {
+    return 'member';
+  }
+  if (member?.status === 'left') return 'left';
+  if (member?.status === 'kicked') return 'kicked';
+  if (member?.status === 'restricted' && member.is_member === false) return 'removed';
+  return null;
+}
+
 function isReadyLesson(lesson) {
   if (!lesson || typeof lesson.videoFile !== 'string' || !lesson.videoFile.trim()) {
     return false;
@@ -361,6 +380,8 @@ function getTelegramStudentHelpMessage() {
 
 • تقدر تبدّل المسار في أي وقت. تقدمك في التمرين الحالي محفوظ، ولما ترجع للمسار حتواصل من نفس الدرس.
 
+• لو الدرس الحالي ما وصلك، أرسل /repeat لإعادة إرساله. اختيار مسار عندك فيه تمرين منتظر ما حيرسل نفس الدرس مرة تانية.
+
 • أرسل /previous للرجوع للحصة السابقة، أو /next للانتقال للحصة الجاية. الحصص التي تستلمها تُحفظ في سجل دروسك.
 
 • أرسل /payment لمعرفة حالة الدفع، أو /paid لإرسال بلاغ للمراجعة. أرسل صورة الإيصال في الخاص.
@@ -442,7 +463,7 @@ export class TelegramBotApi {
     return this.request('getUpdates', {
       offset,
       timeout: LONG_POLL_SECONDS,
-      allowed_updates: ['message']
+      allowed_updates: ['message', 'chat_member']
     });
   }
 
@@ -728,6 +749,10 @@ export class TelegramLessonAgent {
     const reportProgress = detail => {
       if (typeof onProgress === 'function') onProgress(detail);
     };
+    if (update?.chat_member) {
+      this.recordGroupMembership(update.chat_member);
+      return;
+    }
     const message = update?.message;
     if (!message) return;
     const isGroupMemberAddition = Array.isArray(message.new_chat_members) &&
@@ -790,8 +815,11 @@ export class TelegramLessonAgent {
           telegramUserId: user.id,
           telegramUsername: user.username || previous.telegramUsername || '',
           name: getStudentName(user),
-          groupJoinedAt: previous.groupJoinedAt || joinedAt
+          groupJoinedAt: previous.groupJoinedAt || joinedAt,
+          groupMembershipStatus: 'member',
+          groupMembershipUpdatedAt: joinedAt
         };
+        delete this.progress[studentKey].groupLeftAt;
         recorded = true;
       }
       if (recorded) this.saveProgress();
@@ -964,6 +992,48 @@ export class TelegramLessonAgent {
       return;
     }
 
+    if (isRepeatLessonCommand(text)) {
+      await this.runStudentOperation(studentKey, async () => {
+        const currentState = this.progress[studentKey];
+        const privateChatId = currentState.telegramPrivateChatId;
+        if (!privateChatId) {
+          await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
+          return;
+        }
+        try {
+          const resent = await this.repeatActiveTelegramLesson(
+            studentKey,
+            privateChatId,
+            undefined,
+            reportProgress
+          );
+          if (resent) {
+            await this.bot.sendMessage(
+              chatId,
+              'تمام، أعدت إرسال الدرس في الخاص.',
+              message.message_id
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `[Telegram] Could not repeat the active lesson for ${studentKey}: ${error.message}`
+          );
+          if (isPrivateChatUnavailable(error)) {
+            delete currentState.telegramPrivateChatId;
+            this.saveProgress();
+            await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
+            return;
+          }
+          await this.bot.sendMessage(
+            chatId,
+            'ما قدرت أعيد إرسال الدرس في الخاص هسي. جرّب /repeat بعد شوية.',
+            message.message_id
+          );
+        }
+      });
+      return;
+    }
+
     const requestedTrack = getTelegramTrackCommand(text);
     if (requestedTrack === 'literature' || requestedTrack === 'spine') {
       await this.runStudentOperation(studentKey, async () => {
@@ -1019,7 +1089,9 @@ export class TelegramLessonAgent {
           (currentState.lastLessonRequestLessonId || null) ===
           (currentState.currentLessonId || null);
         const pendingFirstDelivery = currentState.lastLessonRequestLessonId === null;
-        if ((sameRequestedLesson || pendingFirstDelivery) &&
+        if ((!currentState.activeTelegramTrack ||
+             currentState.activeTelegramTrack === 'grammar') &&
+            (sameRequestedLesson || pendingFirstDelivery) &&
             Number.isFinite(lastLessonRequestAt) &&
             now - lastLessonRequestAt < TELEGRAM_LESSON_REQUEST_COOLDOWN_MS &&
             ['awaiting_task', 'awaiting_reattempt', 'awaiting_content'].includes(currentState.status)) {
@@ -1037,6 +1109,21 @@ export class TelegramLessonAgent {
           currentState.lastLessonRequestLessonId = currentState.currentLessonId || null;
           this.saveProgress();
           await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
+          return;
+        }
+        if (isExplicitGrammarLessonCommand(text) &&
+            ['awaiting_task', 'awaiting_reattempt'].includes(currentState.status)) {
+          currentState.activeTelegramTrack = 'grammar';
+          this.saveProgress();
+          await this.bot.sendMessage(
+            privateChatId,
+            'عندك تمرين القواعد الحالي منتظر إجابتك. أرسل إجابتك، أو /repeat لو الدرس ما وصلك.'
+          );
+          await this.bot.sendMessage(
+            chatId,
+            'عندك تمرين قواعد منتظر في الخاص. أرسل إجابتك هناك، أو /repeat لو الدرس ما وصلك.',
+            message.message_id
+          );
           return;
         }
         recordTelegramLessonAnnouncementOptIn(currentState);
@@ -1168,6 +1255,59 @@ export class TelegramLessonAgent {
     }
   }
 
+  async repeatActiveTelegramLesson(studentKey, chatId, messageId, reportProgress) {
+    const state = this.progress[studentKey];
+    const track = state?.activeTelegramTrack || 'grammar';
+    const taskProgress = getTrackProgress(state, track);
+    if (!state || !['awaiting_task', 'awaiting_reattempt'].includes(taskProgress?.status)) {
+      await this.bot.sendMessage(
+        chatId,
+        'ما عندك تمرين حالي لإعادة إرساله. أرسل /grammar أو /spine أو /literature لاختيار مسار.',
+        messageId
+      );
+      return false;
+    }
+
+    this.lessonManager.refreshLessonsConfig?.();
+    const grade = state.grade || this.defaultGrade;
+    if (track === 'grammar') {
+      const { lesson, lessonIndex } = getSequentialLessonForProgress(
+        this.lessonManager.lessonsConfig,
+        grade,
+        state
+      );
+      if (!isReadyLesson(lesson)) {
+        await this.bot.sendMessage(
+          chatId,
+          'الدرس الحالي ما متوفر للإعادة هسي. أرسل /lesson بعد ما يجهز المحتوى.',
+          messageId
+        );
+        return false;
+      }
+      reportProgress?.(`Resending Grammar lesson ${lessonIndex + 1}: ${lesson.title || lesson.id}`);
+      await this.deliverLesson(studentKey, grade, lessonIndex, lesson, messageId);
+      return true;
+    }
+
+    const lessons = this.getTelegramTrackLessons(studentKey, track);
+    const lessonIndex = lessons.findIndex(lesson =>
+      lesson.id === taskProgress.activeLessonId);
+    const lesson = lessons[lessonIndex];
+    if (!isReadyLesson(lesson)) {
+      await this.bot.sendMessage(
+        chatId,
+        'الدرس الحالي ما متوفر للإعادة هسي. أرسل أمر المسار تاني بعد ما يجهز المحتوى.',
+        messageId
+      );
+      return false;
+    }
+    reportProgress?.(
+      `Resending ${track === 'literature' ? 'Literature' : 'Spine'} lesson ${lessonIndex + 1}: ${lesson.title || lesson.id}`
+    );
+    await this.deliverTelegramTrackLesson(studentKey, track, lesson, lessonIndex);
+    return true;
+  }
+
   getTelegramTrackLessons(studentKey, track) {
     this.lessonManager.refreshLessonsConfig?.();
     const state = this.progress[studentKey];
@@ -1216,6 +1356,20 @@ export class TelegramLessonAgent {
 
     state.telegramLessonTracks ||= {};
     const trackState = state.telegramLessonTracks[track] || {};
+    if (['awaiting_task', 'awaiting_reattempt'].includes(trackState.status) &&
+        trackState.activeLessonId) {
+      const activeLesson = lessons.find(lesson =>
+        lesson.id === trackState.activeLessonId);
+      if (isReadyLesson(activeLesson)) {
+        state.activeTelegramTrack = track;
+        this.saveProgress();
+        await this.bot.sendMessage(
+          chatId,
+          `عندك درس ${track === 'literature' ? 'الأدب' : 'SPINE'} الحالي منتظر إجابتك. أرسل إجابتك، أو /repeat لو الدرس ما وصلك.`
+        );
+        return false;
+      }
+    }
     const completedLessonIds = new Set(
       Array.isArray(trackState.completedLessonIds) ? trackState.completedLessonIds : []
     );
@@ -1433,6 +1587,7 @@ export class TelegramLessonAgent {
         getTelegramAnnouncementPreferenceCommand(text) !== null ||
         getTelegramCelebrationPreferenceCommand(text) !== null ||
         getNumberedLessonCommand(text) !== null ||
+        isRepeatLessonCommand(text) ||
         isLessonRequest(text);
       if (!isRegistrationOrSupportedCommand) return;
       await this.bot.sendMessage(
@@ -1480,6 +1635,28 @@ export class TelegramLessonAgent {
         String(message.chat.id),
         'الاحتفال باسمك في القروب بيحصل تلقائياً بعد ما تجاوب تمرين الحصة كامل وكل إجاباتك تكون صحيحة.'
       );
+      return;
+    }
+    if (isRepeatLessonCommand(text)) {
+      await this.runStudentOperation(studentKey, async () => {
+        try {
+          await this.repeatActiveTelegramLesson(
+            studentKey,
+            String(message.chat.id),
+            message.message_id,
+            reportProgress
+          );
+        } catch (error) {
+          this.logger.error(
+            `[Telegram] Could not repeat the active lesson for ${studentKey}: ${error.message}`
+          );
+          await this.bot.sendMessage(
+            String(message.chat.id),
+            'ما قدرت أعيد إرسال الدرس هسي. جرّب /repeat بعد شوية.',
+            message.message_id
+          );
+        }
+      });
       return;
     }
     const requestedTrack = getTelegramTrackCommand(text);
@@ -1675,6 +1852,16 @@ export class TelegramLessonAgent {
         const currentState = this.progress[studentKey];
         recordTelegramLessonAnnouncementOptIn(currentState);
         delete currentState.pendingTelegramLessonTrack;
+        if (isExplicitGrammarLessonCommand(text) &&
+            ['awaiting_task', 'awaiting_reattempt'].includes(currentState.status)) {
+          currentState.activeTelegramTrack = 'grammar';
+          this.saveProgress();
+          await this.bot.sendMessage(
+            String(message.chat.id),
+            'عندك تمرين القواعد الحالي منتظر إجابتك. أرسل إجابتك، أو /repeat لو الدرس ما وصلك.'
+          );
+          return;
+        }
         currentState.telegramPrivateChatId = String(message.chat.id);
         this.saveProgress();
         try {
@@ -1801,6 +1988,51 @@ export class TelegramLessonAgent {
 
   }
 
+  recordGroupMembership(update) {
+    const chat = update?.chat;
+    const chatId = Number.isSafeInteger(chat?.id) ? String(chat.id) : '';
+    const groupGrade = this.groupGrades.get(chatId);
+    const member = update?.new_chat_member;
+    const user = member?.user;
+    const membershipStatus = getTelegramGroupMembershipStatus(member);
+    if (!groupGrade || !Number.isSafeInteger(user?.id) || user.is_bot ||
+        IGNORED_TELEGRAM_USER_IDS.has(String(user.id)) || !membershipStatus) return;
+
+    const oldMembershipStatus =
+      getTelegramGroupMembershipStatus(update.old_chat_member);
+    const eventDate = Number.isSafeInteger(update.date) && update.date > 0
+      ? new Date(update.date * 1000)
+      : null;
+    const changedAt = eventDate && Number.isFinite(eventDate.getTime())
+      ? eventDate.toISOString()
+      : new Date().toISOString();
+    const studentKey = getProgressKey(chatId, user.id);
+    const previous = this.progress[studentKey] || {};
+    const student = {
+      ...previous,
+      grade: groupGrade,
+      status: previous.status || 'awaiting_content',
+      telegramChatId: chatId,
+      telegramUserId: user.id,
+      telegramUsername: user.username || previous.telegramUsername || '',
+      name: getStudentName(user),
+      groupMembershipStatus: membershipStatus,
+      groupMembershipUpdatedAt: changedAt
+    };
+
+    if (membershipStatus === 'member') {
+      if (oldMembershipStatus !== 'member') {
+        student.groupJoinedAt = previous.groupJoinedAt || changedAt;
+      }
+      delete student.groupLeftAt;
+    } else {
+      student.groupLeftAt = changedAt;
+    }
+
+    this.progress[studentKey] = student;
+    this.saveProgress();
+  }
+
   saveProgress() {
     saveJsonAtomically(this.progressFile, this.progress);
   }
@@ -1916,7 +2148,7 @@ export class TelegramLessonAgent {
         String(state.telegramUserId) !== request.userId ||
         state.grade !== request.gradeKey ||
         (!isScoreMessage &&
-          (state.currentLessonId !== request.currentLessonId ||
+          ((state.currentLessonId || '') !== request.currentLessonId ||
             !['awaiting_task', 'awaiting_reattempt', 'awaiting_content', 'completed'].includes(state.status)))) {
       const errorMessage = isScoreMessage
         ? 'Student identity or grade changed before the score message could be delivered.'
