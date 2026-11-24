@@ -16,6 +16,42 @@ function validTimestamp(value) {
   return new Date(value).toISOString();
 }
 
+export function getLessonPaymentStartAt(student) {
+  if (!student || typeof student !== 'object') return null;
+  const firstLessonStartedAt = validTimestamp(student.firstLessonStartedAt);
+  if (firstLessonStartedAt) return firstLessonStartedAt;
+
+  const trackStates = student.telegramLessonTracks &&
+    typeof student.telegramLessonTracks === 'object' &&
+    !Array.isArray(student.telegramLessonTracks)
+    ? Object.values(student.telegramLessonTracks)
+    : [];
+  const completionTimestamps = Array.isArray(student.lessonCompletionTimestamps)
+    ? student.lessonCompletionTimestamps
+    : [];
+  const startedAtCandidates = [
+    student.deliveredAt,
+    student.treasureIsland?.deliveredAt,
+    student.lastLessonCompletionAt,
+    student.lastTaskSubmission?.submittedAt,
+    ...completionTimestamps,
+    ...trackStates.map(track => track?.deliveredAt)
+  ].map(validTimestamp).filter(Boolean).sort();
+  if (startedAtCandidates.length) return startedAtCandidates[0];
+
+  const hasStartedLessons = Boolean(
+    student.currentLessonId ||
+    (Array.isArray(student.lessonHistory) && student.lessonHistory.length) ||
+    (Array.isArray(student.completedLessonIds) && student.completedLessonIds.length) ||
+    (Number.isSafeInteger(student.currentLessonIndex) && student.currentLessonIndex >= 0) ||
+    student.treasureIsland?.activeLessonId ||
+    trackStates.some(track => track?.activeLessonId)
+  );
+  return hasStartedLessons
+    ? validTimestamp(student.enrolledAt) || validTimestamp(student.joinedAt)
+    : null;
+}
+
 function normalizeAmount(value) {
   if (value === '' || value === null || value === undefined) return null;
   const amount = Number(value);
@@ -215,7 +251,7 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
   }
 
   function currentPeriodFor(record, enrolledAt, now) {
-    const effectiveEnrollment = record?.enrolledAt || validTimestamp(enrolledAt);
+    const effectiveEnrollment = validTimestamp(enrolledAt) || record?.enrolledAt;
     if (!effectiveEnrollment) {
       throw new Error('Student enrollment date is not available for the payment ledger.');
     }
@@ -235,6 +271,34 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
         updatedAt: null
       })
     };
+  }
+
+  function reanchorRecord(record, enrolledAt, now) {
+    if (!record || record.enrolledAt === enrolledAt) return false;
+    const previousBounds = getRollingPaymentPeriod(record.enrolledAt, now);
+    const nextBounds = getRollingPaymentPeriod(enrolledAt, now);
+    const previousCurrent = record.periods[previousBounds.periodStart];
+    if (previousCurrent && previousCurrent.status !== 'unpaid' &&
+        previousBounds.periodStart !== nextBounds.periodStart) {
+      const nextCurrent = record.periods[nextBounds.periodStart];
+      const carryForward = nextCurrent?.status === 'paid' ? nextCurrent : previousCurrent;
+      record.periods[nextBounds.periodStart] = {
+        ...previousCurrent,
+        ...(nextCurrent || {}),
+        ...nextBounds,
+        status: carryForward.status,
+        amount: carryForward.amount ?? previousCurrent.amount ?? null,
+        currency: carryForward.currency || previousCurrent.currency || null,
+        source: carryForward.source || previousCurrent.source || null,
+        claimedAt: carryForward.claimedAt || previousCurrent.claimedAt || null,
+        reviewedAt: carryForward.reviewedAt || previousCurrent.reviewedAt || null,
+        paidAt: carryForward.paidAt || previousCurrent.paidAt || null,
+        details: carryForward.details || previousCurrent.details || null
+      };
+      delete record.periods[previousBounds.periodStart];
+    }
+    record.enrolledAt = enrolledAt;
+    return true;
   }
 
   return {
@@ -269,6 +333,7 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
           enrolledAt: normalizedEnrolledAt,
           periods: {}
         };
+        reanchorRecord(record, normalizedEnrolledAt, Date.now());
         const previous = record.paymentInformationDelivery || {};
         const previousAttemptTime = Date.parse(previous.attemptedAt || '');
         const attemptIsActive = previous.inProgress &&
@@ -329,10 +394,52 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
       if (typeof studentKey !== 'string' || !studentKey.trim()) {
         throw new Error('A student identifier is required to read payment status.');
       }
-      const ledger = read();
-      const record = ledger[studentKey];
-      const period = currentPeriodFor(record, enrolledAt, now);
-      return { studentKey, enrolledAt: record?.enrolledAt || validTimestamp(enrolledAt), ...period };
+      const normalizedEnrolledAt = validTimestamp(enrolledAt);
+      return withLock(() => {
+        const ledger = read();
+        const record = ledger[studentKey];
+        if (record && normalizedEnrolledAt &&
+            reanchorRecord(record, normalizedEnrolledAt, now)) {
+          write(ledger);
+        }
+        const period = currentPeriodFor(record, normalizedEnrolledAt, now);
+        return {
+          studentKey,
+          enrolledAt: record?.enrolledAt || normalizedEnrolledAt,
+          ...period
+        };
+      });
+    },
+    getCurrentForStudents(students, now = Date.now()) {
+      if (!Array.isArray(students)) {
+        throw new Error('A list of students is required to read payment statuses.');
+      }
+      return withLock(() => {
+        const ledger = read();
+        let changed = false;
+        const currentStudents = students.map(({ studentKey, enrolledAt }) => {
+          if (typeof studentKey !== 'string' || !studentKey.trim()) {
+            throw new Error('A student identifier is required to read payment status.');
+          }
+          const normalizedEnrolledAt = validTimestamp(enrolledAt);
+          const record = ledger[studentKey];
+          if (record && normalizedEnrolledAt &&
+              reanchorRecord(record, normalizedEnrolledAt, now)) {
+            changed = true;
+          }
+          return {
+            studentKey,
+            paymentInformationDelivery: getPaymentInformationDelivery(record),
+            payment: {
+              studentKey,
+              enrolledAt: record?.enrolledAt || normalizedEnrolledAt,
+              ...currentPeriodFor(record, normalizedEnrolledAt, now)
+            }
+          };
+        });
+        if (changed) write(ledger);
+        return currentStudents;
+      });
     },
     recordClaim(studentKey, {
       enrolledAt,
@@ -350,7 +457,8 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
       return withLock(() => {
         const ledger = read();
         const record = ledger[studentKey] || { enrolledAt: normalizedEnrolledAt, periods: {} };
-        const bounds = getRollingPaymentPeriod(record.enrolledAt, normalizedClaimedAt);
+        reanchorRecord(record, normalizedEnrolledAt, normalizedClaimedAt);
+        const bounds = getRollingPaymentPeriod(normalizedEnrolledAt, normalizedClaimedAt);
         const previous = record.periods[bounds.periodStart];
         const period = {
           ...bounds,
@@ -403,7 +511,8 @@ export function createStudentPaymentLedger(filePath = STUDENT_PAYMENT_LEDGER_FIL
       return withLock(() => {
         const ledger = read();
         const record = ledger[studentKey] || { enrolledAt: normalizedEnrolledAt, periods: {} };
-        const bounds = getRollingPaymentPeriod(record.enrolledAt, normalizedReviewedAt);
+        reanchorRecord(record, normalizedEnrolledAt, normalizedReviewedAt);
+        const bounds = getRollingPaymentPeriod(normalizedEnrolledAt, normalizedReviewedAt);
         const previous = record.periods[bounds.periodStart] || {};
         const updatedPeriod = {
           ...bounds,

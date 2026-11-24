@@ -25,6 +25,7 @@ import { scanPaymentReceipt } from './payment_scanner.js';
 import {
   createStudentPaymentLedger,
   formatStudentPaymentStatus,
+  getLessonPaymentStartAt,
   STUDENT_PAYMENT_LEDGER_FILE
 } from './student_payment_ledger.js';
 import { STUDENT_PAYMENT_INFORMATION_MESSAGE } from './student_payment_information.js';
@@ -49,6 +50,13 @@ import {
   inferTelegramGenderFromName,
   personalizeTelegramMessage
 } from './telegram_student_gender.js';
+import {
+  clearTelegramPrivateChatBlocked,
+  isTelegramBotBlockedError,
+  isTelegramPrivateChatBlocked,
+  markTelegramPrivateChatBlocked,
+  TELEGRAM_BLOCKED_RECIPIENTS_FILE
+} from './telegram_blocked_recipients.js';
 import { createTelegramStudentGenderStore } from './telegram_student_gender_store.js';
 import {
   getDueLessonAnswerReminders,
@@ -78,7 +86,7 @@ const TELEGRAM_PAYMENT_REMINDER_LESSONS = 5;
 const TELEGRAM_MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 const EXERCISE_SCORING_POLICY = 'first_attempt';
 const TELEGRAM_LESSON_REQUEST_COOLDOWN_MS = 2 * 60 * 1000;
-const TELEGRAM_TRACK_SELECTION_SETTLE_MS = 500;
+const TELEGRAM_TRACK_SELECTION_SETTLE_MS = 1000;
 const TELEGRAM_UPDATE_CONCURRENCY = 5;
 const TELEGRAM_CHAT_HISTORY_LIMIT = 200;
 const IGNORED_TELEGRAM_USER_IDS = new Set(['6413779313']);
@@ -309,12 +317,19 @@ function getNewStudentInstructions(users) {
   });
   const plural = mentions.length > 1;
   text += ` 👋\n\nعشان تبدأ${plural ? 'وا' : ''} الدروس:
-١. ${plural ? 'افتحوا' : 'افتح'} المحادثة الخاصة مع @eSchoolsdBot واضغط${plural ? 'وا' : ''} Start.
+١. ${plural ? 'افتحوا' : 'أفتح'} المحادثة الخاصة مع @eSchoolsdBot واضغط${plural ? 'وا' : ''} Start.
 ٢. بعد الضغط على Start، اختار${plural ? 'وا' : ''} المسار البتبدأ${plural ? 'وا' : ''} بيه في الخاص:
 • /spine لدروس SPINE.
 • /grammar لدروس القواعد.
 • /literature لفصول Treasure Island.
 الدروس حتوصلك${plural ? 'م' : ''} في الخاص.`;
+  for (const command of ['/spine', '/grammar', '/literature']) {
+    entities.push({
+      type: 'code',
+      offset: text.indexOf(command),
+      length: command.length
+    });
+  }
   return { text, entities };
 }
 
@@ -360,7 +375,7 @@ function getTelegramStudentHelpMessage() {
 }
 
 function isPrivateChatUnavailable(error) {
-  return /bot can't initiate conversation|user is deactivated|chat not found|have no rights to send/i.test(error.message);
+  return /bot can't initiate conversation|bot was blocked by the user|previously blocked|user is deactivated|chat not found|have no rights to send/i.test(error.message);
 }
 
 export class TelegramBotApi {
@@ -593,6 +608,7 @@ export class TelegramLessonAgent {
     lessonSkipQueue = new LessonSkipQueue(TELEGRAM_LESSON_SKIP_REQUESTS_FILE),
     mediaActivityFile = TELEGRAM_AGENT_MEDIA_ACTIVITY_FILE,
     mediaRetryRequestsFile = TELEGRAM_AGENT_MEDIA_RETRY_REQUESTS_FILE,
+    blockedRecipientsFile = TELEGRAM_BLOCKED_RECIPIENTS_FILE,
     paymentLedger = createStudentPaymentLedger(STUDENT_PAYMENT_LEDGER_FILE),
     paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
     scanReceipt = scanPaymentReceipt,
@@ -625,6 +641,7 @@ export class TelegramLessonAgent {
     this.lessonSkipQueue = lessonSkipQueue;
     this.mediaActivityFile = mediaActivityFile;
     this.mediaRetryRequestsFile = mediaRetryRequestsFile;
+    this.blockedRecipientsFile = blockedRecipientsFile;
     this.paymentLedger = paymentLedger;
     this.paymentReceiptImageDirectory = paymentReceiptImageDirectory;
     this.scanReceipt = scanReceipt;
@@ -650,6 +667,9 @@ export class TelegramLessonAgent {
     const sendMessage = bot.sendMessage.bind(bot);
     const sendVideo = bot.sendVideo.bind(bot);
     this.bot.sendMessage = async (chatId, text, ...args) => {
+      if (isTelegramPrivateChatBlocked(chatId, this.blockedRecipientsFile)) {
+        throw new Error('Telegram private chat was previously blocked; send skipped.');
+      }
       const studentEntry = Object.entries(this.progress).find(([, state]) =>
         state.telegramPrivateChatId &&
         String(state.telegramPrivateChatId) === String(chatId));
@@ -658,17 +678,38 @@ export class TelegramLessonAgent {
         : null;
       const gender = getTelegramStudentGender(studentEntry?.[1], override).value;
       const personalizedText = personalizeTelegramMessage(text, gender);
-      const result = await sendMessage(chatId, personalizedText, ...args);
+      let result;
+      try {
+        result = await sendMessage(chatId, personalizedText, ...args);
+      } catch (error) {
+        if (isTelegramBotBlockedError(error)) {
+          markTelegramPrivateChatBlocked(chatId, this.blockedRecipientsFile);
+          this.logger.info('[Telegram] A recipient blocked the bot; future private messages will be skipped.');
+        }
+        throw error;
+      }
       if (studentEntry && typeof personalizedText === 'string') {
         this.recordTelegramChatMessage(studentEntry[0], 'bot', personalizedText);
       }
       return result;
     };
     this.bot.sendVideo = async (chatId, video, caption, ...args) => {
+      if (isTelegramPrivateChatBlocked(chatId, this.blockedRecipientsFile)) {
+        throw new Error('Telegram private chat was previously blocked; send skipped.');
+      }
       const studentEntry = Object.entries(this.progress).find(([, state]) =>
         state.telegramPrivateChatId &&
         String(state.telegramPrivateChatId) === String(chatId));
-      const result = await sendVideo(chatId, video, caption, ...args);
+      let result;
+      try {
+        result = await sendVideo(chatId, video, caption, ...args);
+      } catch (error) {
+        if (isTelegramBotBlockedError(error)) {
+          markTelegramPrivateChatBlocked(chatId, this.blockedRecipientsFile);
+          this.logger.info('[Telegram] A recipient blocked the bot; future private messages will be skipped.');
+        }
+        throw error;
+      }
       if (studentEntry) {
         this.recordTelegramChatMessage(
           studentEntry[0],
@@ -872,9 +913,17 @@ export class TelegramLessonAgent {
     if (isPaymentStatusCommand(text)) {
       const state = this.progress[studentKey];
       if (state?.telegramPrivateChatId) {
+        const lessonStartedAt = getLessonPaymentStartAt(state);
+        if (!lessonStartedAt) {
+          await this.sendPrivateNotice(
+            studentKey,
+            'فترة الاشتراك بتبدأ من يوم استلام أول درس. حتقدر تتابع حالة الدفع بعد ما يبدأ الدرس.'
+          );
+          return;
+        }
         const payment = this.paymentLedger.getCurrent(
           studentKey,
-          state.enrolledAt || state.joinedAt || state.deliveredAt
+          lessonStartedAt
         );
         await this.bot.sendMessage(
           state.telegramPrivateChatId,
@@ -892,8 +941,16 @@ export class TelegramLessonAgent {
       await this.runStudentOperation(studentKey, async () => {
         this.recordStudentActivity(studentKey, chatId, message.from);
         const state = this.progress[studentKey];
+        const lessonStartedAt = getLessonPaymentStartAt(state);
+        if (!lessonStartedAt) {
+          await this.sendPrivateNotice(
+            studentKey,
+            'فترة الاشتراك بتبدأ من يوم استلام أول درس. أرسل /paid بعد ما يبدأ الدرس.'
+          );
+          return;
+        }
         const payment = this.paymentLedger.recordClaim(studentKey, {
-          enrolledAt: state.enrolledAt || state.joinedAt || state.deliveredAt,
+          enrolledAt: lessonStartedAt,
           source: 'telegram-claim'
         });
         await this.sendPrivateNotice(
@@ -1231,12 +1288,13 @@ export class TelegramLessonAgent {
     const taskVersion = getLessonTaskVersion(lesson);
     const isSameActiveLesson = trackState.activeLessonId === lesson.id &&
       trackState.taskVersion === taskVersion;
+    const deliveredAt = new Date().toISOString();
     state.telegramLessonTracks[track] = {
       ...trackState,
       activeLessonId: lesson.id,
       status: 'awaiting_task',
       taskVersion,
-      deliveredAt: new Date().toISOString(),
+      deliveredAt,
       correctQuestionNumbers: isSameActiveLesson
         ? trackState.correctQuestionNumbers || []
         : [],
@@ -1247,6 +1305,7 @@ export class TelegramLessonAgent {
         ? trackState.retryQuestionNumbers || []
         : []
     };
+    state.firstLessonStartedAt ||= getLessonPaymentStartAt(state) || deliveredAt;
     state.activeTelegramTrack = track;
     delete state.pendingTelegramLessonTrack;
     this.saveProgress();
@@ -1343,6 +1402,12 @@ export class TelegramLessonAgent {
   async handlePrivateUpdate(message, reportProgress) {
     const userId = message.from?.id;
     if (!Number.isSafeInteger(userId) || message.from.is_bot) return;
+    if (clearTelegramPrivateChatBlocked(
+      message.chat?.id,
+      this.blockedRecipientsFile
+    )) {
+      this.logger.info('[Telegram] A recipient resumed the private chat; private messaging is re-enabled.');
+    }
     const text = typeof message.text === 'string' ? message.text.trim() : '';
     const found = this.findTelegramStudent(userId);
     if (found && text) this.recordTelegramChatMessage(found[0], 'student', text);
@@ -1495,9 +1560,17 @@ export class TelegramLessonAgent {
       return;
     }
     if (isPaymentStatusCommand(text)) {
+      const lessonStartedAt = getLessonPaymentStartAt(state);
+      if (!lessonStartedAt) {
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          'فترة الاشتراك بتبدأ من يوم استلام أول درس. حتقدر تتابع حالة الدفع بعد ما يبدأ الدرس.'
+        );
+        return;
+      }
       const payment = this.paymentLedger.getCurrent(
         studentKey,
-        state.enrolledAt || state.joinedAt || state.deliveredAt
+        lessonStartedAt
       );
       await this.bot.sendMessage(String(message.chat.id), formatStudentPaymentStatus(payment));
       return;
@@ -1531,8 +1604,16 @@ export class TelegramLessonAgent {
     }
 
     if (isPaymentClaimCommand(text) || isExplicitPaidClaim(text)) {
+      const lessonStartedAt = getLessonPaymentStartAt(state);
+      if (!lessonStartedAt) {
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          'فترة الاشتراك بتبدأ من يوم استلام أول درس. أرسل /paid بعد ما يبدأ الدرس.'
+        );
+        return;
+      }
       const payment = this.paymentLedger.recordClaim(studentKey, {
-        enrolledAt: state.enrolledAt || state.joinedAt || state.deliveredAt,
+        enrolledAt: lessonStartedAt,
         source: 'telegram-claim'
       });
       await this.bot.sendMessage(
@@ -1621,6 +1702,14 @@ export class TelegramLessonAgent {
     }
 
     if (Array.isArray(message.photo) && message.photo.length) {
+      const lessonStartedAt = getLessonPaymentStartAt(state);
+      if (!lessonStartedAt) {
+        await this.bot.sendMessage(
+          String(message.chat.id),
+          'فترة الاشتراك بتبدأ من يوم استلام أول درس؛ أرسل الإيصال بعد ما يبدأ الدرس.'
+        );
+        return;
+      }
       let receiptId = null;
       let receiptRecorded = false;
       try {
@@ -1644,7 +1733,7 @@ export class TelegramLessonAgent {
         }
         receiptId = savePaymentReceiptImage(image, this.paymentReceiptImageDirectory);
         const payment = this.paymentLedger.recordClaim(studentKey, {
-          enrolledAt: state.enrolledAt || state.joinedAt || state.deliveredAt,
+          enrolledAt: lessonStartedAt,
           source: 'telegram-receipt',
           details: { ...scan.details, receiptId }
         });
@@ -2331,6 +2420,7 @@ export class TelegramLessonAgent {
         : canRestoreTaskProgress
           ? savedTaskProgress
           : {};
+    const deliveredAt = new Date().toISOString();
     const updatedProgress = {
       ...previous,
       grade,
@@ -2344,7 +2434,8 @@ export class TelegramLessonAgent {
         : taskProgress.status === 'awaiting_reattempt'
           ? 'awaiting_reattempt'
           : 'awaiting_task',
-      deliveredAt: new Date().toISOString(),
+      deliveredAt,
+      firstLessonStartedAt: getLessonPaymentStartAt(previous) || deliveredAt,
       joinedAt: previous.joinedAt || new Date().toISOString(),
       lessonsCompleted: previous.lessonsCompleted || 0,
       taskVersion: isVideoOnly ? null : getLessonTaskVersion(lesson),

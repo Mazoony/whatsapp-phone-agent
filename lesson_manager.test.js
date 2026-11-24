@@ -541,6 +541,10 @@ test('lets Grade 3 students choose and complete Treasure Island lessons without 
     assert.equal(lessonManager.progress[jid].status, 'completed');
     assert.equal(lessonManager.progress[jid].treasureIsland.activeLessonId, 'chapter_1');
     assert.equal(lessonManager.progress[jid].treasureIsland.status, 'awaiting_task');
+    assert.equal(
+      lessonManager.progress[jid].firstLessonStartedAt,
+      lessonManager.progress[jid].treasureIsland.deliveredAt
+    );
   } finally {
     lessonManager.progress = originalProgress;
     lessonManager.saveProgress = originalSaveProgress;
@@ -801,6 +805,10 @@ test('delivers only the lesson video and task without simulated typing delays', 
     ]);
     assert.deepEqual(presenceUpdates, []);
     assert.equal(lessonManager.progress[jid].status, 'awaiting_task');
+    assert.equal(
+      lessonManager.progress[jid].firstLessonStartedAt,
+      lessonManager.progress[jid].deliveredAt
+    );
   } finally {
     lesson.videoFile = originalVideoPath;
     if (originalProgress) lessonManager.progress[jid] = originalProgress;

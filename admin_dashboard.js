@@ -58,6 +58,13 @@ import {
   TELEGRAM_UPDATE_QUEUE_FILE
 } from './telegram_update_queue.js';
 import { isTelegramAnnouncementRecipient } from './telegram_announcement_recipients.js';
+import {
+  getTelegramBlockedPrivateChatIds,
+  isTelegramBotBlockedError,
+  isTelegramPrivateChatBlocked,
+  markTelegramPrivateChatBlocked,
+  TELEGRAM_BLOCKED_RECIPIENTS_FILE
+} from './telegram_blocked_recipients.js';
 import { findLessonForMediaActivity } from './lesson_media_retry.js';
 import { getInactiveEligibleEsContacts } from './broadcast_utils.js';
 import {
@@ -121,6 +128,7 @@ import {
 import {
   createStudentPaymentLedger,
   formatStudentPaymentStatus,
+  getLessonPaymentStartAt,
   PAYMENT_STATUSES,
   STUDENT_PAYMENT_LEDGER_FILE
 } from './student_payment_ledger.js';
@@ -217,7 +225,7 @@ function getLessonLeaderboard(progress, now, period = 'weekly', timeZone = 'Afri
   const weekEndDate = new Date(weekStartDate.getTime() + 6 * 24 * 60 * 60 * 1000);
   const weekEnd = weekEndDate.toISOString().slice(0, 10);
   const periodStart = period === 'daily' ? today : weekStart;
-  const students = Object.values(progress || {}).flatMap(student => {
+  const students = Object.entries(progress || {}).flatMap(([studentKey, student]) => {
     const completionCandidates = [
       ...(Array.isArray(student.lessonCompletionTimestamps)
         ? student.lessonCompletionTimestamps
@@ -237,12 +245,17 @@ function getLessonLeaderboard(progress, now, period = 'weekly', timeZone = 'Afri
       return date >= periodStart && date <= today;
     }).length;
     if (!completions) return [];
+    const userIdValue = student.telegramUserId ?? studentKey.split(':').at(-1);
+    const userId = /^\d+$/.test(String(userIdValue || ''))
+      ? Number(userIdValue)
+      : null;
     return [{
       name: String(student.name || (student.telegramUsername ? `@${student.telegramUsername}` : 'Student'))
         .replace(/[\u0000-\u001f\u007f]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, 80) || 'Student',
+      userId: Number.isSafeInteger(userId) && userId > 0 ? userId : null,
       lessonsCompleted: completions
     }];
   }).sort((left, right) =>
@@ -269,6 +282,7 @@ function getLessonLeaderboard(progress, now, period = 'weekly', timeZone = 'Afri
         'برافو للطلاب على اجتهادهم وإكمال الحصص هذا الأسبوع:'
       ];
   let visibleCount = 0;
+  const messageEntities = [];
   for (const [index, student] of students.entries()) {
     const rank = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
     const line = `${rank} ${student.name} — ${student.lessonsCompleted} حصة`;
@@ -277,6 +291,14 @@ function getLessonLeaderboard(progress, now, period = 'weekly', timeZone = 'Afri
       ? `\n\nو ${omittedCount} طالب/طلاب آخرين يستحقون التقدير 👏`
       : '';
     if (`${lines.join('\n')}\n${line}${suffix}`.length > 3800) break;
+    if (student.userId) {
+      messageEntities.push({
+        type: 'text_mention',
+        offset: lines.join('\n').length + 1 + rank.length + 1,
+        length: student.name.length,
+        user: { id: student.userId, is_bot: false, first_name: student.name }
+      });
+    }
     lines.push(line);
     visibleCount += 1;
   }
@@ -290,7 +312,8 @@ function getLessonLeaderboard(progress, now, period = 'weekly', timeZone = 'Afri
     date: today,
     weekStart,
     weekEnd,
-    students,
+    students: students.map(({ name, lessonsCompleted }) => ({ name, lessonsCompleted })),
+    messageEntities,
     message: students.length ? lines.join('\n') : ''
   };
 }
@@ -1166,6 +1189,7 @@ export function listDashboardStudentProgress(
       status: student.status || 'awaiting_content',
       paymentKey: key,
       enrolledAt: student.enrolledAt || student.joinedAt || student.deliveredAt || null,
+      lessonStartedAt: getLessonPaymentStartAt(student),
       currentLessonId: student.currentLessonId || '',
       currentLessonNumber: getCurrentLessonNumber(student, data.lessons),
       lessonTitle: lesson?.title || student.currentLessonId || '',
@@ -2653,6 +2677,7 @@ export function createAdminDashboardServer({
   paymentReceiptImageDirectory = PAYMENT_RECEIPT_IMAGE_DIRECTORY,
   historicalPaymentReceiptsFile = HISTORICAL_PAYMENT_RECEIPTS_FILE,
   telegramGroupId = process.env.TELEGRAM_GROUP_ID,
+  telegramBlockedRecipientsFile = TELEGRAM_BLOCKED_RECIPIENTS_FILE,
   telegramClassGroups = process.env.TELEGRAM_CLASS_GROUPS
     ? JSON.parse(process.env.TELEGRAM_CLASS_GROUPS)
     : {},
@@ -2675,21 +2700,31 @@ export function createAdminDashboardServer({
   const paymentLabels = createContactPaymentLabelsStore(paymentLabelsFile);
   const studentPaymentLedger = createStudentPaymentLedger(paymentLedgerFile);
   const sendTelegramPaymentMessage = async (chatId, text) => {
-    if (telegramPaymentNotifier) {
-      await telegramPaymentNotifier(String(chatId), text);
-      return;
+    if (isTelegramPrivateChatBlocked(chatId, telegramBlockedRecipientsFile)) {
+      throw new Error('Telegram private chat was previously blocked; send skipped.');
     }
-    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-    if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not configured.');
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: String(chatId), text }),
-      signal: AbortSignal.timeout(10_000)
-    });
-    const result = await response.json();
-    if (!response.ok || result?.ok !== true) {
-      throw new Error(result?.description || 'Telegram rejected the message.');
+    try {
+      if (telegramPaymentNotifier) {
+        await telegramPaymentNotifier(String(chatId), text);
+        return;
+      }
+      const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+      if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not configured.');
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: String(chatId), text }),
+        signal: AbortSignal.timeout(10_000)
+      });
+      const result = await response.json();
+      if (!response.ok || result?.ok !== true) {
+        throw new Error(result?.description || 'Telegram rejected the message.');
+      }
+    } catch (error) {
+      if (isTelegramBotBlockedError(error)) {
+        markTelegramPrivateChatBlocked(chatId, telegramBlockedRecipientsFile);
+      }
+      throw error;
     }
   };
   const historicalPaymentReceipts = createHistoricalPaymentReceiptStore(historicalPaymentReceiptsFile);
@@ -2888,6 +2923,9 @@ export function createAdminDashboardServer({
       trendEndDate,
       enrollmentEndDate
     );
+    const blockedPrivateChatIds = getTelegramBlockedPrivateChatIds(
+      telegramBlockedRecipientsFile
+    );
     const telegramChatReadState = chatReadState.read();
     const telegramMediaActivities = includeMediaProgress
       ? readAgentMediaActivities(telegramAgentMediaActivityFile)
@@ -2928,6 +2966,9 @@ export function createAdminDashboardServer({
             .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0]
           : null;
         const telegramStudent = data.telegramProgress[student.jid];
+        const telegramBotBlocked = blockedPrivateChatIds.has(
+          String(telegramStudent?.telegramPrivateChatId || '')
+        );
         const latestStudentMessageAt = Math.max(
           Date.parse(telegramStudent?.lastStudentMessage?.receivedAt || '') || 0,
           ...(Array.isArray(telegramStudent?.telegramChatHistory)
@@ -2938,6 +2979,10 @@ export function createAdminDashboardServer({
         );
         return {
           ...student,
+          telegramBotBlocked,
+          canReplyPrivately: student.canReplyPrivately && !telegramBotBlocked,
+          canSkipToNextLesson: student.canSkipToNextLesson && !telegramBotBlocked,
+          canRegradeTask: student.canRegradeTask && !telegramBotBlocked,
           unread: latestStudentMessageAt > 0 &&
             latestStudentMessageAt > Number(telegramChatReadState[student.jid] || 0),
           gender: getTelegramStudentGender(telegramStudent, genderOverrides[student.jid]),
@@ -2950,6 +2995,7 @@ export function createAdminDashboardServer({
             : null,
           availableLessons: getReadyTelegramLessons(student.grade, data.lessons),
           canSendReminder: Boolean(
+            !telegramBotBlocked &&
             data.telegramProgress[student.jid]?.telegramPrivateChatId &&
             ['awaiting_task', 'awaiting_reattempt'].includes(
               data.telegramProgress[student.jid]?.status
@@ -3561,6 +3607,10 @@ export function createAdminDashboardServer({
           }))
           .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
           .slice(-200);
+        const telegramBotBlocked = isTelegramPrivateChatBlocked(
+          student.telegramPrivateChatId,
+          telegramBlockedRecipientsFile
+        );
         sendJson(res, 200, {
           student: {
             jid: studentKey,
@@ -3570,8 +3620,10 @@ export function createAdminDashboardServer({
             ))
               ? Date.parse(student.lastActivityAt || student.lastStudentMessage?.receivedAt || '')
               : null,
+            telegramBotBlocked,
             canReplyPrivately: typeof student.telegramPrivateChatId === 'string' &&
-              Boolean(student.telegramPrivateChatId.trim())
+              Boolean(student.telegramPrivateChatId.trim()) &&
+              !telegramBotBlocked
           },
           messages
         });
@@ -3636,8 +3688,10 @@ export function createAdminDashboardServer({
           Date.now(),
           period
         );
+        const preview = { ...leaderboard };
+        delete preview.messageEntities;
         sendJson(res, 200, {
-          ...leaderboard,
+          ...preview,
           groupConfigured: Boolean(telegramGroupId),
           botConfigured: Boolean(telegramLeaderboardNotifier || process.env.TELEGRAM_BOT_TOKEN?.trim())
         });
@@ -3686,14 +3740,19 @@ export function createAdminDashboardServer({
             return;
           }
           if (telegramLeaderboardNotifier) {
-            await telegramLeaderboardNotifier(String(telegramGroupId), leaderboard.message);
+            await telegramLeaderboardNotifier(
+              String(telegramGroupId),
+              leaderboard.message,
+              leaderboard.messageEntities
+            );
           } else {
             const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({
                 chat_id: String(telegramGroupId),
-                text: leaderboard.message
+                text: leaderboard.message,
+                entities: leaderboard.messageEntities
               }),
               signal: AbortSignal.timeout(10_000)
             });
@@ -5294,34 +5353,45 @@ export function createAdminDashboardServer({
       try {
         const progressSnapshot = getTelegramProgressSnapshot('UTC');
         const telegramProgress = readJsonFileOr(telegramProgressFile, {});
-        const students = progressSnapshot.students
-          .filter(student => student.paymentKey && student.enrolledAt)
-          .map(student => {
-            const progress = telegramProgress[student.paymentKey] || {};
-            return {
-              platform: 'Telegram',
-              studentKey: student.paymentKey,
-              name: student.name,
-              gradeName: student.gradeName,
-              enrolledAt: student.enrolledAt,
-              currentLesson: student.lessonTitle || '',
-              currentLessonNumber: student.currentLessonNumber,
-              hasStartedLessons: Boolean(
-                progress.deliveredAt ||
-                progress.currentLessonId ||
-                (Array.isArray(progress.lessonHistory) && progress.lessonHistory.length > 0) ||
-                (Number.isSafeInteger(progress.currentLessonIndex) && progress.currentLessonIndex >= 0)
-              ),
-              privateChatStarted: Boolean(progress.telegramPrivateChatId),
-              paymentInformationDelivery:
-                studentPaymentLedger.getPaymentInformationDelivery(student.paymentKey),
-              payment: studentPaymentLedger.getCurrent(
-                student.paymentKey,
-                student.enrolledAt
-              )
-            };
-          });
-        const studentsByKey = new Map(students.map(student => [student.studentKey, student]));
+        const paymentEligibleStudents = progressSnapshot.students
+          .filter(student => student.paymentKey && (student.enrolledAt || student.lessonStartedAt));
+        const currentPaymentsByStudent = new Map(
+          studentPaymentLedger.getCurrentForStudents(
+            paymentEligibleStudents
+              .filter(student => student.lessonStartedAt)
+              .map(student => ({
+                studentKey: student.paymentKey,
+                enrolledAt: student.lessonStartedAt
+              }))
+          ).map(current => [current.studentKey, current])
+        );
+        const studentRecords = paymentEligibleStudents.map(student => {
+          const progress = telegramProgress[student.paymentKey] || {};
+          const currentPayment = currentPaymentsByStudent.get(student.paymentKey);
+          return {
+            platform: 'Telegram',
+            studentKey: student.paymentKey,
+            name: student.name,
+            gradeName: student.gradeName,
+            enrolledAt: student.lessonStartedAt,
+            currentLesson: student.lessonTitle || '',
+            currentLessonNumber: student.currentLessonNumber,
+            hasStartedLessons: Boolean(
+              progress.deliveredAt ||
+              progress.currentLessonId ||
+              (Array.isArray(progress.lessonHistory) && progress.lessonHistory.length > 0) ||
+              (Number.isSafeInteger(progress.currentLessonIndex) && progress.currentLessonIndex >= 0)
+            ),
+            privateChatStarted: Boolean(progress.telegramPrivateChatId),
+            paymentInformationDelivery: currentPayment?.paymentInformationDelivery || null,
+            payment: currentPayment?.payment || null
+          };
+        });
+        const students = studentRecords.filter(student =>
+          student.hasStartedLessons && student.enrolledAt && student.payment);
+        const studentsByKey = new Map(
+          studentRecords.map(student => [student.studentKey, student])
+        );
         const payments = Object.entries(studentPaymentLedger.list())
           .flatMap(([studentKey, record]) => Object.values(record.periods || {})
             .filter(payment => payment.status === 'paid' && payment.paidAt)
@@ -5529,7 +5599,7 @@ export function createAdminDashboardServer({
           return;
         }
         const student = getTelegramProgressSnapshot('UTC').students.find(item =>
-          item.paymentKey === studentKey && item.enrolledAt);
+          item.paymentKey === studentKey && item.lessonStartedAt);
         if (!student) {
           sendJson(res, 404, { error: 'Student was not found in the current progress list.' });
           return;
@@ -5633,7 +5703,7 @@ export function createAdminDashboardServer({
 
         const attempt = studentPaymentLedger.beginPaymentInformationDelivery(
           body.studentKey,
-          { enrolledAt: student.enrolledAt, force: true }
+          { enrolledAt: student.lessonStartedAt, force: true }
         );
         if (!attempt) {
           sendJson(res, 409, { error: 'Payment information is already being sent to this student.' });
@@ -5703,12 +5773,12 @@ export function createAdminDashboardServer({
           sendJson(res, 404, { error: 'Student was not found in the current progress list.' });
           return;
         }
-        if (!student.enrolledAt) {
-          sendJson(res, 409, { error: 'This student has no enrollment date to anchor a rolling payment period.' });
+        if (!student.lessonStartedAt) {
+          sendJson(res, 409, { error: 'This student has no lesson start date to anchor a rolling payment period.' });
           return;
         }
         const payment = studentPaymentLedger.setStatus(body.studentKey, {
-          enrolledAt: student.enrolledAt,
+          enrolledAt: student.lessonStartedAt,
           status: body.status,
           ...(Object.hasOwn(body, 'amount') ? { amount: body.amount } : {}),
           ...(Object.hasOwn(body, 'currency') ? { currency: body.currency } : {}),
@@ -5970,6 +6040,12 @@ export function createAdminDashboardServer({
           });
           return;
         }
+        if (isTelegramPrivateChatBlocked(privateChatId, telegramBlockedRecipientsFile)) {
+          sendJson(res, 409, {
+            error: 'The student blocked the bot; the private message was not sent.'
+          });
+          return;
+        }
         try {
           if (telegramMessageNotifier) {
             await telegramMessageNotifier(privateChatId, body.message.trim());
@@ -6004,6 +6080,9 @@ export function createAdminDashboardServer({
           scheduleChange(path.basename(telegramDashboardChatRepliesFile));
           sendJson(res, 200, { sent: true });
         } catch (error) {
+          if (isTelegramBotBlockedError(error)) {
+            markTelegramPrivateChatBlocked(privateChatId, telegramBlockedRecipientsFile);
+          }
           console.error(
             `[Admin Dashboard] Could not send a private reply to ${body.studentKey}:`,
             error.message

@@ -29,6 +29,10 @@ import {
 import { createContactPaymentLabelsStore } from './contact_payment_labels.js';
 import { config } from './config.js';
 import { STUDENT_PAYMENT_INFORMATION_MESSAGE } from './student_payment_information.js';
+import {
+  createStudentPaymentLedger,
+  getRollingPaymentPeriod
+} from './student_payment_ledger.js';
 import { personalizeTelegramMessage } from './telegram_student_gender.js';
 import { WhatsAppPresenceManager } from './whatsapp_presence.js';
 import { createScheduledLessonStore } from './scheduled_lessons.js';
@@ -368,6 +372,56 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
 
   const invalidTimeZoneResponse = await fetch(`${origin}/telegram-overview?timeZone=Not%2FAZone`);
   assert.equal(invalidTimeZoneResponse.status, 400);
+});
+
+test('Telegram dashboard stops private replies after Telegram reports a blocked bot', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-blocked-recipient-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const progressFile = path.join(directory, 'telegram_progress.json');
+  const blockedRecipientsFile = path.join(directory, 'blocked_recipients.json');
+  fs.writeFileSync(progressFile, JSON.stringify({
+    'telegram:-1001:10': {
+      telegramChatId: '-1001',
+      telegramUserId: 10,
+      telegramPrivateChatId: '10'
+    }
+  }));
+  let sendAttempts = 0;
+  const server = createAdminDashboardServer({
+    telegramProgressFile: progressFile,
+    telegramBlockedRecipientsFile: blockedRecipientsFile,
+    telegramMessageNotifier: async () => {
+      sendAttempts += 1;
+      throw new Error('Forbidden: bot was blocked by the user');
+    }
+  });
+  t.after(() => new Promise(resolve => {
+    if (server.listening) server.close(resolve);
+    else resolve();
+  }));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const sendReply = () => fetch(`${origin}/api/admin/telegram-student-reply`, {
+    method: 'POST',
+    headers: {
+      Origin: origin,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      studentKey: 'telegram:-1001:10',
+      message: 'A private update'
+    })
+  });
+
+  assert.equal((await sendReply()).status, 502);
+  assert.equal((await sendReply()).status, 409);
+  assert.equal(sendAttempts, 1);
+  const progressResponse = await fetch(`${origin}/api/admin/telegram-progress?timeZone=UTC`);
+  assert.equal(progressResponse.status, 200);
+  const progress = await progressResponse.json();
+  const student = progress.students.find(item => item.jid === 'telegram:-1001:10');
+  assert.equal(student.telegramBotBlocked, true);
+  assert.equal(student.canReplyPrivately, false);
 });
 
 test('Telegram overview reports class-specific statistics and deduplicates all-class totals', async t => {
@@ -729,6 +783,7 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   fs.writeFileSync(progressFile, JSON.stringify({
     'telegram:-1001:10': {
       name: 'Zeinab',
+      telegramUserId: 10,
       telegramCelebrationsOptIn: false,
       lessonCompletionTimestamps: [
         new Date(now).toISOString(),
@@ -738,6 +793,7 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
     },
     'telegram:-1001:11': {
       name: 'Amina',
+      telegramUserId: 11,
       telegramCelebrationsOptIn: false,
       lessonCompletionTimestamps: [
         new Date(now).toISOString(),
@@ -750,6 +806,7 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
     },
     'telegram:-1001:13': {
       name: 'Nested track student',
+      telegramUserId: 13,
       telegramLessonTracks: {
         treasure_island: {
           lessonCompletionTimestamps: [new Date(now).toISOString()]
@@ -761,8 +818,8 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   const server = createAdminDashboardServer({
     telegramProgressFile: progressFile,
     telegramGroupId: '-1001',
-    telegramLeaderboardNotifier: async (chatId, message) => {
-      sentMessages.push({ chatId, message });
+    telegramLeaderboardNotifier: async (chatId, message, entities) => {
+      sentMessages.push({ chatId, message, entities });
     }
   });
   t.after(async () => {
@@ -812,6 +869,15 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].chatId, '-1001');
   assert.equal(sentMessages[0].message, preview.message);
+  assert.deepEqual(sentMessages[0].entities.map(entity => ({
+    name: sentMessages[0].message.slice(entity.offset, entity.offset + entity.length),
+    id: entity.user.id,
+    type: entity.type
+  })), [
+    { name: 'Zeinab', id: 10, type: 'text_mention' },
+    { name: 'Amina', id: 11, type: 'text_mention' },
+    { name: 'Nested track student', id: 13, type: 'text_mention' }
+  ]);
 
   const shareDailyResponse = await fetch(`${leaderboardUrl}?period=daily`, {
     method: 'POST',
@@ -825,6 +891,7 @@ test('Telegram weekly leaderboard counts this week and only shares after dashboa
   assert.equal(sharedDaily.studentsCount, 3);
   assert.equal(sentMessages.length, 2);
   assert.equal(sentMessages[1].message, dailyPreview.message);
+  assert.equal(sentMessages[1].entities.length, 3);
 
   const invalidPeriodResponse = await fetch(`${leaderboardUrl}?period=monthly`);
   assert.equal(invalidPeriodResponse.status, 400);
@@ -2521,7 +2588,9 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
   const paymentReceiptImageDirectory = path.join(temporaryDirectory, 'payment_receipts');
   const historicalPaymentReceiptsFile = path.join(temporaryDirectory, 'historical_payment_receipts.json');
   const enrolledAt = '2026-01-01T12:00:00.000Z';
+  const lessonStartedAt = '2026-01-10T12:00:00.000Z';
   const studentKey = 'telegram:-100123:44';
+  const unstartedStudentKey = 'telegram:-100123:45';
   const telegramProgressFile = path.join(temporaryDirectory, 'telegram_progress.json');
   const paymentNotifications = [];
   const data = {
@@ -2538,14 +2607,29 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
         currentLessonIndex: 0,
         status: 'awaiting_task',
         enrolledAt,
-        deliveredAt: enrolledAt,
+        deliveredAt: lessonStartedAt,
+        firstLessonStartedAt: lessonStartedAt,
         telegramChatId: '-100123',
         telegramUserId: 44,
         telegramPrivateChatId: '44'
+      },
+      'telegram:-100123:45': {
+        name: 'Joined Only Student',
+        grade: 'grade_3_secondary',
+        enrolledAt,
+        joinedAt: enrolledAt,
+        telegramChatId: '-100123',
+        telegramUserId: 45
       }
     }
   };
   fs.writeFileSync(telegramProgressFile, JSON.stringify(data.telegramProgress));
+  createStudentPaymentLedger(paymentLedgerFile).setStatus(unstartedStudentKey, {
+    enrolledAt,
+    status: 'paid',
+    amount: 12000,
+    reviewedAt: '2026-01-15T12:00:00.000Z'
+  });
   const server = createAdminDashboardServer({
     readData: () => data,
     telegramProgressFile,
@@ -2566,10 +2650,17 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     const initial = await initialResponse.json();
     assert.equal(initial.students.length, 1);
     assert.equal(initial.students[0].studentKey, studentKey);
+    assert.equal(initial.students[0].hasStartedLessons, true);
     assert.equal(initial.students[0].payment.status, 'unpaid');
     assert.equal(initial.students[0].paymentInformationDelivery.status, 'not_sent');
-    assert.equal(initial.students[0].hasStartedLessons, true);
     assert.equal(initial.students[0].currentLessonNumber, 1);
+    assert.equal(
+      initial.students[0].payment.periodStart,
+      getRollingPaymentPeriod(lessonStartedAt).periodStart
+    );
+    assert.equal(initial.payments.length, 1);
+    assert.equal(initial.payments[0].studentKey, unstartedStudentKey);
+    assert.equal(initial.payments[0].name, 'Joined Only Student');
 
     const manualSendResponse = await fetch(`${origin}/api/admin/payment-information`, {
       method: 'POST',
@@ -2626,11 +2717,12 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
     const paidHistoryResponse = await fetch(ledgerUrl);
     assert.equal(paidHistoryResponse.status, 200);
     const paidHistory = await paidHistoryResponse.json();
-    assert.equal(paidHistory.payments.length, 1);
-    assert.equal(paidHistory.payments[0].studentKey, studentKey);
-    assert.equal(paidHistory.payments[0].amount, 17000);
-    assert.equal(paidHistory.payments[0].currency, 'SDG');
-    assert.equal(paidHistory.payments[0].paidAt, reviewed.payment.paidAt);
+    assert.equal(paidHistory.payments.length, 2);
+    const reviewedStudentPayment = paidHistory.payments.find(payment =>
+      payment.studentKey === studentKey);
+    assert.equal(reviewedStudentPayment.amount, 17000);
+    assert.equal(reviewedStudentPayment.currency, 'SDG');
+    assert.equal(reviewedStudentPayment.paidAt, reviewed.payment.paidAt);
 
     const historicalReceipt = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
     const historicalPaymentDate = '2026-02-20T12:00:00.000Z';
@@ -2660,7 +2752,7 @@ test('dashboard lists and reviews rolling student payment-ledger records', async
 
     const historyWithHistorical = await (await fetch(ledgerUrl)).json();
     assert.equal(historyWithHistorical.students[0].payment.status, 'paid');
-    assert.equal(historyWithHistorical.payments.length, 2);
+    assert.equal(historyWithHistorical.payments.length, 3);
     const storedHistoricalPayment = historyWithHistorical.payments.find(payment =>
       payment.source === 'historical-receipt');
     assert.equal(storedHistoricalPayment.amount, 12500);

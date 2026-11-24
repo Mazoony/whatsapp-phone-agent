@@ -13,6 +13,7 @@ import {
 import { LessonSkipQueue } from './lesson_skip_queue.js';
 import { createTelegramStudentGenderStore } from './telegram_student_gender_store.js';
 import { createStudentPaymentLedger } from './student_payment_ledger.js';
+import { isTelegramPrivateChatBlocked } from './telegram_blocked_recipients.js';
 import { readAgentMediaActivities, writeAgentMediaActivity } from './agent_media_activity.js';
 import { enqueueAgentMediaRetry } from './agent_media_retry.js';
 import {
@@ -41,6 +42,7 @@ function createFixture(t, {
   motivationTimeZone,
   evaluateTask,
   classGroups,
+  blockedRecipientsFile,
   privateChatStarted = true
 } = {}) {
   const directory = makeTemporaryDirectory();
@@ -94,6 +96,8 @@ function createFixture(t, {
   const paymentReceiptImageDirectory = path.join(directory, 'payment_receipts');
   const mediaActivityFile = path.join(directory, 'telegram_agent_media_activity.json');
   const mediaRetryRequestsFile = path.join(directory, 'telegram_agent_media_retry_requests.json');
+  const resolvedBlockedRecipientsFile = blockedRecipientsFile ||
+    path.join(directory, 'telegram_blocked_recipients.json');
   let currentPrivateChatError = privateChatError;
   const bot = {
     sendMessage: async (chatId, text, replyToMessageId, entities) => {
@@ -143,6 +147,7 @@ function createFixture(t, {
     lessonSkipQueue,
     mediaActivityFile,
     mediaRetryRequestsFile,
+    blockedRecipientsFile: resolvedBlockedRecipientsFile,
     paymentLedger,
     paymentReceiptImageDirectory,
     ...(motivationTimeZone ? { motivationTimeZone } : {}),
@@ -167,6 +172,7 @@ function createFixture(t, {
     lessonSkipQueue,
     mediaActivityFile,
     mediaRetryRequestsFile,
+    blockedRecipientsFile: resolvedBlockedRecipientsFile,
     paymentLedger,
     paymentReceiptImageDirectory,
     privateSendAttempts,
@@ -176,6 +182,45 @@ function createFixture(t, {
     }
   };
 }
+
+test('Telegram skips future private sends after the bot is blocked by a student', async t => {
+  const { agent, blockedRecipientsFile, privateSendAttempts, setPrivateChatError } = createFixture(t, {
+    privateChatError: new Error('Telegram sendMessage failed: Forbidden: bot was blocked by the user')
+  });
+
+  await assert.rejects(
+    agent.bot.sendMessage('44', 'first message'),
+    /bot was blocked by the user/
+  );
+  assert.equal(isTelegramPrivateChatBlocked('44', blockedRecipientsFile), true);
+
+  setPrivateChatError(null);
+  await assert.rejects(agent.bot.sendMessage('44', 'later message'), /previously blocked/);
+  await assert.rejects(
+    agent.bot.sendVideo('44', Buffer.from('video'), 'lesson'),
+    /previously blocked/
+  );
+  assert.deepEqual(privateSendAttempts, ['message']);
+
+  await agent.handleUpdate(privateUpdate({ text: '/start' }));
+  assert.equal(isTelegramPrivateChatBlocked('44', blockedRecipientsFile), false);
+  assert.deepEqual(privateSendAttempts, ['message', 'message']);
+});
+
+test('Telegram does not block recipients for unrelated upload errors', async t => {
+  const { agent, blockedRecipientsFile, privateSendAttempts, setPrivateChatError } = createFixture(t, {
+    privateChatError: new Error(
+      'Telegram sendVideo request failed before a response was received (EPERM).'
+    )
+  });
+
+  await assert.rejects(agent.bot.sendVideo('44', Buffer.from('video'), 'lesson'), /EPERM/);
+  assert.equal(isTelegramPrivateChatBlocked('44', blockedRecipientsFile), false);
+
+  setPrivateChatError(null);
+  await agent.bot.sendMessage('44', 'message after upload error');
+  assert.deepEqual(privateSendAttempts, ['video', 'message']);
+});
 
 function markPrivateChatStarted(agent, userId, chatId = -100123, grade = 'grade_3_secondary') {
   const studentKey = `telegram:${chatId}:${userId}`;
@@ -1214,17 +1259,24 @@ test('Telegram welcomes new group members with a tagged private-chat setup instr
   assert.match(sent[0].text, /\/spine/);
   assert.match(sent[0].text, /\/grammar/);
   assert.match(sent[0].text, /\/literature/);
-  assert.deepEqual(sent[0].entities, [{
-    type: 'text_mention',
-    offset: sent[0].text.indexOf('Maha Ahmed'),
-    length: 'Maha Ahmed'.length,
-    user: {
-      id: 44,
-      first_name: 'Maha',
-      last_name: 'Ahmed',
-      username: 'maha_ahmed'
-    }
-  }]);
+  assert.deepEqual(sent[0].entities, [
+    {
+      type: 'text_mention',
+      offset: sent[0].text.indexOf('Maha Ahmed'),
+      length: 'Maha Ahmed'.length,
+      user: {
+        id: 44,
+        first_name: 'Maha',
+        last_name: 'Ahmed',
+        username: 'maha_ahmed'
+      }
+    },
+    ...['/spine', '/grammar', '/literature'].map(command => ({
+      type: 'code',
+      offset: sent[0].text.indexOf(command),
+      length: command.length
+    }))
+  ]);
   assert.ok(student.onboardingInstructionsSentAt);
 
   await agent.handleUpdate({
@@ -1339,6 +1391,7 @@ test('Telegram mentions subscription payment once after the fifth completed less
   assert.equal(paymentNotices.length, 1);
   assert.match(paymentNotices[0].text, /17 ألف جنيه سوداني/);
   assert.match(paymentNotices[0].text, /رقم الحساب: 2865022/);
+  assert.match(paymentNotices[0].text, /ورسل الإشعار هنا نفس المحادثة دي/);
 
   await agent.handleUpdate(privateUpdate({ text: 'correct answer' }));
   assert.equal(
@@ -1363,12 +1416,19 @@ test('Telegram asks students to start the private chat before sending lessons th
   assert.match(sent[0].text, /\/spine/);
   assert.match(sent[0].text, /\/grammar/);
   assert.match(sent[0].text, /\/literature/);
-  assert.deepEqual(sent[0].entities, [{
-    type: 'text_mention',
-    offset: sent[0].text.indexOf('Student 44'),
-    length: 'Student 44'.length,
-    user: { id: 44, first_name: 'Student 44', is_bot: false }
-  }]);
+  assert.deepEqual(sent[0].entities, [
+    {
+      type: 'text_mention',
+      offset: sent[0].text.indexOf('Student 44'),
+      length: 'Student 44'.length,
+      user: { id: 44, first_name: 'Student 44', is_bot: false }
+    },
+    ...['/spine', '/grammar', '/literature'].map(command => ({
+      type: 'code',
+      offset: sent[0].text.indexOf(command),
+      length: command.length
+    }))
+  ]);
   assert.equal(agent.progress['telegram:-100123:44'].currentLessonId, undefined);
   assert.equal(agent.progress['telegram:-100123:44'].telegramPrivateChatId, undefined);
 
@@ -2295,17 +2355,32 @@ test('Telegram agent ignores Mazin Salih in groups and private chats', async t =
 test('Telegram payment claims remain pending until an administrator reviews them', async t => {
   const { agent, paymentLedger, sent } = createFixture(t);
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
+  const firstLessonStartedAt = agent.progress['telegram:-100123:44'].firstLessonStartedAt;
+  assert.ok(firstLessonStartedAt);
   const groupMessagesBeforeClaim = sent.filter(message => message.chatId === '-100123').length;
   await agent.handleUpdate(groupUpdate({ text: '/paid' }));
 
   const payment = paymentLedger.getCurrent(
     'telegram:-100123:44',
-    agent.progress['telegram:-100123:44'].enrolledAt
+    firstLessonStartedAt
   );
   assert.equal(payment.status, 'pending_review');
+  assert.equal(payment.periodStart, firstLessonStartedAt);
   assert.equal(sent.filter(message => message.chatId === '-100123').length, groupMessagesBeforeClaim);
   assert.equal(sent.at(-1).chatId, '44');
   assert.match(sent.at(-1).text, /وصل إشعار الدفع للمراجعة، حنراجعه وبأكد ليك\. موفق يا رب!/);
+});
+
+test('Telegram does not accept a payment claim before the first lesson starts', async t => {
+  const { agent, paymentLedger } = createFixture(t);
+
+  await agent.handleUpdate(groupUpdate({ text: '/paid' }));
+
+  assert.deepEqual(paymentLedger.list(), {});
+  assert.equal(
+    agent.progress['telegram:-100123:44'].firstLessonStartedAt,
+    undefined
+  );
 });
 
 test('Telegram payment status is sent privately and group replies do not disclose it', async t => {
@@ -2313,7 +2388,7 @@ test('Telegram payment status is sent privately and group replies do not disclos
   await agent.handleUpdate(groupUpdate({ text: '/lesson' }));
   const state = agent.progress['telegram:-100123:44'];
   paymentLedger.setStatus('telegram:-100123:44', {
-    enrolledAt: state.enrolledAt,
+    enrolledAt: state.firstLessonStartedAt,
     status: 'paid'
   });
 
@@ -2422,7 +2497,7 @@ test('Telegram receipt scans are recorded as pending review', async t => {
 
   const payment = paymentLedger.getCurrent(
     'telegram:-100123:44',
-    agent.progress['telegram:-100123:44'].enrolledAt
+    agent.progress['telegram:-100123:44'].firstLessonStartedAt
   );
   assert.equal(payment.status, 'pending_review');
   assert.equal(payment.amount, 17000);

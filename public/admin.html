@@ -6,6 +6,15 @@
   <meta name="referrer" content="no-referrer">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <title>eShool | Telegram Learning Dashboard</title>
+  <script>
+    try {
+      if (localStorage.getItem('eshool-dashboard-theme') === 'dark') {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    } catch (error) {
+      console.warn('[Dashboard] Could not read saved theme:', error.message);
+    }
+  </script>
   <style>
     :root {
       color-scheme: light;
@@ -20,6 +29,20 @@
       --red: #b94747;
       --shadow: 0 12px 30px rgba(30, 56, 44, .06);
       --chat-doodle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%239eb8a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' opacity='.23'%3E%3Cpath d='M29 28c7-11 20-5 18 4-1 5-7 8-12 6l-5 5 1-8c-5-1-6-4-2-7zM133 31l3 7 7 1-6 4 1 7-6-4-6 4 2-7-6-4 7-1zM184 83c0-7 6-12 13-12s13 5 13 12-6 12-13 12h-3l-6 5 1-7c-3-2-5-6-5-10zM61 100c-7-7-18-2-15 6 2 5 8 6 12 3 3 5 10 5 12 0 3-8-5-14-9-9zM112 121c0-8 7-15 15-15s15 7 15 15-7 15-15 15-15-7-15-15zm7 0h16m-8-8v16M28 177c9-11 17-11 25 0-8 11-16 11-25 0zm5 0h15M93 184c0-5 4-9 9-9s9 4 9 9-4 9-9 9-9-4-9-9zm9-18v5m0 27v5m-18-19h5m27 0h5M169 167c7 3 12 9 13 17-8 0-14-4-18-10m4-7c-1 8-5 15-12 19m13-19-1 14M77 39c-5 2-8 7-8 12 0 7 5 12 12 12 6 0 11-5 11-11 0-4-2-7-5-9'/%3E%3C/g%3E%3C/svg%3E");
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #e7eee9;
+      --muted: #a1b0a7;
+      --line: #35463d;
+      --paper: #202c26;
+      --canvas: #141c18;
+      --green: #61d19b;
+      --green-soft: #244333;
+      --amber: #e7b65f;
+      --red: #f07e7e;
+      --shadow: 0 12px 30px rgba(0, 0, 0, .2);
+      --chat-doodle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%239eb8a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' opacity='.12'%3E%3Cpath d='M29 28c7-11 20-5 18 4-1 5-7 8-12 6l-5 5 1-8c-5-1-6-4-2-7zM133 31l3 7 7 1-6 4 1 7-6-4-6 4 2-7-6-4 7-1zM184 83c0-7 6-12 13-12s13 5 13 12-6 12-13 12h-3l-6 5 1-7c-3-2-5-6-5-10zM61 100c-7-7-18-2-15 6 2 5 8 6 12 3 3 5 10 5 12 0 3-8-5-14-9-9zM112 121c0-8 7-15 15-15s15 7 15 15-7 15-15 15-15-7-15-15zm7 0h16m-8-8v16M28 177c9-11 17-11 25 0-8 11-16 11-25 0zm5 0h15M93 184c0-5 4-9 9-9s9 4 9 9-4 9-9 9-9-4-9-9zm9-18v5m0 27v5m-18-19h5m27 0h5M169 167c7 3 12 9 13 17-8 0-14-4-18-10m4-7c-1 8-5 15-12 19m13-19-1 14M77 39c-5 2-8 7-8 12 0 7 5 12 12 12 6 0 11-5 11-11 0-4-2-7-5-9'/%3E%3C/g%3E%3C/svg%3E");
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
@@ -83,6 +106,8 @@
     h1 { font-size: clamp(23px, 3vw, 30px); letter-spacing: -1px; margin: 0 0 4px; }
     .subheading { margin: 0; color: var(--muted); }
     .top-actions { display: flex; align-items: center; gap: 10px; }
+    .theme-toggle { min-height: 36px; border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; color: var(--ink); background: var(--paper); font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .theme-toggle:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
     .notification-toggle { white-space: nowrap; }
     .notification-status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     .local-tag { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #d8e8dd; background: #f7fcf8; color: #326a4f; border-radius: 999px; padding: 7px 11px; font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -288,6 +313,11 @@
     .timeline-controls button:focus-visible { outline: 2px solid #23875a; outline-offset: 2px; }
     .timeline-pan-target { cursor: grab; touch-action: pan-y; }
     .timeline-pan-target.timeline-pan-active { cursor: grabbing; user-select: none; }
+    .timeline-pan-visual { will-change: transform; }
+    .timeline-pan-active .timeline-pan-visual,
+    .timeline-pan-active.timeline-pan-visual { transition: none; }
+    .timeline-pan-settling .timeline-pan-visual,
+    .timeline-pan-settling.timeline-pan-visual { transition: transform .18s ease-out; }
     .telegram-stats-panel { margin: 14px 0; padding: 18px; border-radius: 14px; }
     .telegram-stats-panel h2 { margin: 0; font-size: 15px; }
     .telegram-stats-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
@@ -360,6 +390,7 @@
     .telegram-presence.online { color: #18764d; background: #e6f4ed; }
     .telegram-presence.offline { color: #63716a; background: #eef1ef; }
     .telegram-presence.unknown { color: #8a6a2a; background: #fff5df; }
+    .telegram-progress-presence { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
     @media (max-width: 700px) {
       .telegram-stats-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .weekly-chat-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -372,6 +403,11 @@
     .payment-calendar-nav button:disabled { opacity: .45; cursor: not-allowed; }
     .payment-calendar-month { font-size: 15px; font-weight: 750; }
     .payment-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .metrics, .gender-statistics, .score-distribution-grid, .telegram-class-grid,
+    .telegram-stats-summary, .weekly-chat-summary, .payment-summary-grid,
+    .roster-insights, .columns, .agent-runtime-grid {
+      row-gap: 16px;
+    }
     .payment-summary-stat { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
     .payment-summary-label { display: block; color: var(--muted); font-size: 10px; font-weight: 650; }
     .payment-summary-value { display: block; margin-top: 5px; font-size: 19px; font-weight: 760; }
@@ -828,6 +864,19 @@
     .payment-ledger-amount input:first-child { width: 90px; }
     .payment-ledger-amount input:last-child { width: 60px; }
     .payment-ledger-actions select { flex: 1; }
+    .payment-ledger-action { display: inline-flex; min-height: 32px; min-width: 68px; align-items: center; justify-content: center; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; font: inherit; font-size: 10px; font-weight: 750; white-space: nowrap; transition: background .15s, border-color .15s, box-shadow .15s, color .15s; }
+    .payment-ledger-action:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+    .dashboard-cache-status { color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .payment-ledger-send { border-color: #b9ddc4; color: #286442; background: #f3fbf6; }
+    .payment-ledger-send:hover:not(:disabled) { border-color: #8fbea0; background: #e4f4ea; }
+    .payment-ledger-send:disabled { border-color: #dbe4de; color: #73827c; background: #f2f5f3; cursor: not-allowed; }
+    .payment-ledger-save { min-width: 62px; border-color: var(--green); color: white; background: var(--green); }
+    .payment-ledger-save:hover:not(:disabled) { border-color: #0f684c; background: #0f684c; box-shadow: 0 3px 8px #137b5a2a; }
+    :root[data-theme="dark"] .payment-ledger-send { border-color: #365b45; color: #b8f0d0; background: #244333; }
+    :root[data-theme="dark"] .payment-ledger-send:hover:not(:disabled) { border-color: #4a795b; background: #2c5140; }
+    :root[data-theme="dark"] .payment-ledger-send:disabled { border-color: #35463d; color: #85968b; background: #18231d; }
+    :root[data-theme="dark"] .payment-ledger-save { border-color: #61d19b; color: #10251c; background: #61d19b; }
+    :root[data-theme="dark"] .payment-ledger-save:hover:not(:disabled) { border-color: #84e2b2; background: #84e2b2; box-shadow: 0 3px 10px #0005; }
     .discount-offer-dialog { width: min(680px, calc(100% - 24px)); max-width: none; max-height: 92vh; overflow-y: auto; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: white; color: var(--ink); box-shadow: 0 24px 70px rgba(10, 35, 25, .28); }
     .discount-offer-dialog::backdrop { background: rgba(18, 38, 30, .58); backdrop-filter: blur(4px); }
     .discount-offer-form { display: grid; gap: 12px; padding: 20px; }
@@ -883,6 +932,10 @@
     .payment-receipt-preview:hover img, .payment-receipt-preview:focus-visible img { border-color: var(--green); }
     .pagination { display: flex; justify-content: center; align-items: center; gap: 11px; padding: 12px; color: var(--muted); font-size: 11px; }
     .pagination button { border: 1px solid var(--line); background: white; border-radius: 7px; padding: 5px 9px; }
+    .pagination.button { display: inline-flex; min-height: 32px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; color: var(--ink); background: var(--paper); font: inherit; font-size: 11px; font-weight: 650; transition: background .15s, border-color .15s, color .15s; }
+    .pagination.button:hover:not(:disabled) { border-color: #a9cdb6; background: #f2f7f4; }
+    .pagination.button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+    .pagination.button:disabled { border-color: #d5ded8; color: #69766f; background: #f0f3f1; cursor: not-allowed; }
     .error { margin: 14px 0; padding: 11px 13px; border: 1px solid #f1cccc; background: #fff5f4; border-radius: 9px; color: var(--red); font-size: 12px; }
 
     /* Curriculum & Lessons Management Styles */
@@ -1045,6 +1098,430 @@
     body.telegram-only #section-payment-calendar {
       display: none !important;
     }
+    :root[data-theme="dark"] body { background: var(--canvas); color: var(--ink); }
+    :root[data-theme="dark"] .auth-screen { background: radial-gradient(circle at top, #203b2e, var(--canvas) 55%); }
+    :root[data-theme="dark"] .auth-card,
+    :root[data-theme="dark"] .panel,
+    :root[data-theme="dark"] .metric,
+    :root[data-theme="dark"] .agent-queue-worker,
+    :root[data-theme="dark"] .agent-queue-item,
+    :root[data-theme="dark"] .refresh,
+    :root[data-theme="dark"] .weekly-chat-tooltip,
+    :root[data-theme="dark"] .timeline-controls button,
+    :root[data-theme="dark"] .telegram-history-controls button,
+    :root[data-theme="dark"] .telegram-stats-tooltip,
+    :root[data-theme="dark"] .payment-calendar-toolbar button,
+    :root[data-theme="dark"] .chat-date-filter button,
+    :root[data-theme="dark"] .broadcast-format-toolbar button,
+    :root[data-theme="dark"] .broadcast-attachment-button,
+    :root[data-theme="dark"] .chat-item,
+    :root[data-theme="dark"] .conversation-history-more,
+    :root[data-theme="dark"] .student-profile-close,
+    :root[data-theme="dark"] .student-profile-action button,
+    :root[data-theme="dark"] .contact-actions button,
+    :root[data-theme="dark"] .es-activity-close,
+    :root[data-theme="dark"] .discount-offer-minimize,
+    :root[data-theme="dark"] .pagination button,
+    :root[data-theme="dark"] .stage-pill,
+    :root[data-theme="dark"] .curriculum-grade-dropdown,
+    :root[data-theme="dark"] .grade-curriculum-panel,
+    :root[data-theme="dark"] .lesson-card,
+    :root[data-theme="dark"] .btn-action,
+    :root[data-theme="dark"] .curriculum-exercise-toggle,
+    :root[data-theme="dark"] .tab-btn,
+    :root[data-theme="dark"] .dropzone,
+    :root[data-theme="dark"] .btn-micro,
+    :root[data-theme="dark"] .discount-offer-metric,
+    :root[data-theme="dark"] .preview-bubble,
+    :root[data-theme="dark"] .weekly-chat-stat,
+    :root[data-theme="dark"] .telegram-class-card,
+    :root[data-theme="dark"] .telegram-stat-card,
+    :root[data-theme="dark"] .payment-summary-stat,
+    :root[data-theme="dark"] .payment-calendar-entry,
+    :root[data-theme="dark"] .student-answer-item,
+    :root[data-theme="dark"] .score-distribution-card,
+    :root[data-theme="dark"] .student-profile-dialog,
+    :root[data-theme="dark"] .student-profile-section,
+    :root[data-theme="dark"] .dashboard-dialog,
+    :root[data-theme="dark"] .discount-offer-dialog,
+    :root[data-theme="dark"] .lesson-modal-dialog {
+      background-color: var(--paper);
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    :root[data-theme="dark"] .panel-head,
+    :root[data-theme="dark"] .modal-header,
+    :root[data-theme="dark"] .modal-footer,
+    :root[data-theme="dark"] .student-profile-header,
+    :root[data-theme="dark"] th {
+      background-color: #1b2721;
+      color: var(--ink);
+    }
+    :root[data-theme="dark"] .bar-label,
+    :root[data-theme="dark"] td,
+    :root[data-theme="dark"] .send-lesson-option,
+    :root[data-theme="dark"] .discount-offer-recipients,
+    :root[data-theme="dark"] .dashboard-dialog-input-label,
+    :root[data-theme="dark"] .dashboard-dialog-actions button,
+    :root[data-theme="dark"] .lesson-modal-form label,
+    :root[data-theme="dark"] .section-sublabel,
+    :root[data-theme="dark"] .tab-btn,
+    :root[data-theme="dark"] .presence-timeline li,
+    :root[data-theme="dark"] .activity-chart-title,
+    :root[data-theme="dark"] .engagement-metric span,
+    :root[data-theme="dark"] .engagement-metric small,
+    :root[data-theme="dark"] .telegram-dialog-message {
+      color: var(--ink);
+    }
+    :root[data-theme="dark"] .agent-queue-worker,
+    :root[data-theme="dark"] .agent-queue-item,
+    :root[data-theme="dark"] .refresh,
+    :root[data-theme="dark"] .weekly-chat-tooltip,
+    :root[data-theme="dark"] .timeline-controls button,
+    :root[data-theme="dark"] .telegram-history-controls button,
+    :root[data-theme="dark"] .telegram-stats-tooltip,
+    :root[data-theme="dark"] .chat-date-filter button,
+    :root[data-theme="dark"] .broadcast-format-toolbar button,
+    :root[data-theme="dark"] .broadcast-attachment-button,
+    :root[data-theme="dark"] .chat-item,
+    :root[data-theme="dark"] .es-activity-close,
+    :root[data-theme="dark"] .discount-offer-minimize,
+    :root[data-theme="dark"] .pagination button,
+    :root[data-theme="dark"] .stage-pill,
+    :root[data-theme="dark"] .curriculum-grade-dropdown,
+    :root[data-theme="dark"] .grade-curriculum-panel,
+    :root[data-theme="dark"] .lesson-card,
+    :root[data-theme="dark"] .btn-action,
+    :root[data-theme="dark"] .curriculum-exercise-toggle,
+    :root[data-theme="dark"] .tab-btn,
+    :root[data-theme="dark"] .dropzone,
+    :root[data-theme="dark"] .btn-micro,
+    :root[data-theme="dark"] .discount-offer-metric,
+    :root[data-theme="dark"] .preview-bubble,
+    :root[data-theme="dark"] .weekly-chat-stat,
+    :root[data-theme="dark"] .telegram-class-card,
+    :root[data-theme="dark"] .telegram-stat-card,
+    :root[data-theme="dark"] .payment-summary-stat,
+    :root[data-theme="dark"] .payment-calendar-entry,
+    :root[data-theme="dark"] .student-answer-item,
+    :root[data-theme="dark"] .score-distribution-card,
+    :root[data-theme="dark"] .student-profile-section,
+    :root[data-theme="dark"] .dashboard-dialog-actions button,
+    :root[data-theme="dark"] .dashboard-dialog-input,
+    :root[data-theme="dark"] .student-profile-action button,
+    :root[data-theme="dark"] .student-profile-close,
+    :root[data-theme="dark"] .btn-action,
+    :root[data-theme="dark"] .tab-btn,
+    :root[data-theme="dark"] .dropzone,
+    :root[data-theme="dark"] .send-lesson-picker-trigger,
+    :root[data-theme="dark"] .send-lesson-menu,
+    :root[data-theme="dark"] .send-lesson-option,
+    :root[data-theme="dark"] .payment-calendar-day,
+    :root[data-theme="dark"] .payment-calendar-toolbar button,
+    :root[data-theme="dark"] .contact-actions button,
+    :root[data-theme="dark"] .contact-gender,
+    :root[data-theme="dark"] .agent-media-more,
+    :root[data-theme="dark"] .agent-queue-control,
+    :root[data-theme="dark"] .conversation-history-more,
+    :root[data-theme="dark"] .roster-follow-up-item,
+    :root[data-theme="dark"] .student-chat-reply textarea {
+      background-color: var(--paper);
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    :root[data-theme="dark"] .agent-queue-worker.active,
+    :root[data-theme="dark"] .agent-queue-item.active,
+    :root[data-theme="dark"] .telegram-class-metric,
+    :root[data-theme="dark"] .engagement-metric,
+    :root[data-theme="dark"] .lesson-follow-through,
+    :root[data-theme="dark"] .student-profile-section,
+    :root[data-theme="dark"] .curriculum-video-section,
+    :root[data-theme="dark"] .curriculum-task-section,
+    :root[data-theme="dark"] .curriculum-rubric-section,
+    :root[data-theme="dark"] .discount-offer-preview,
+    :root[data-theme="dark"] .discount-offer-delivery,
+    :root[data-theme="dark"] .broadcast-attachment,
+    :root[data-theme="dark"] .leaderboard-preview,
+    :root[data-theme="dark"] .presence-metrics,
+    :root[data-theme="dark"] .student-chat-panel,
+    :root[data-theme="dark"] .student-chat-list-head,
+    :root[data-theme="dark"] .telegram-join-peak,
+    :root[data-theme="dark"] .lesson-empty-card {
+      background-color: #1b2721;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    :root[data-theme="dark"] input,
+    :root[data-theme="dark"] select,
+    :root[data-theme="dark"] textarea {
+      color: var(--ink);
+      background-color: #18231d;
+      border-color: var(--line);
+    }
+    :root[data-theme="dark"] .chat-item,
+    :root[data-theme="dark"] .message.client,
+    :root[data-theme="dark"] .agent-conversation,
+    :root[data-theme="dark"] .messages,
+    :root[data-theme="dark"] .student-chat-messages,
+    :root[data-theme="dark"] .student-chat-composer-wrap,
+    :root[data-theme="dark"] .student-chat-status {
+      background-color: #18231d;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    :root[data-theme="dark"] .chat-item:hover,
+    :root[data-theme="dark"] .chat-item.selected,
+    :root[data-theme="dark"] .roster-follow-up-item:hover,
+    :root[data-theme="dark"] .btn-action:hover,
+    :root[data-theme="dark"] .tab-btn:not(.active),
+    :root[data-theme="dark"] .payment-calendar-day.outside-month,
+    :root[data-theme="dark"] .payment-calendar-day.has-payments {
+      background-color: #244333;
+      color: var(--ink);
+    }
+    :root[data-theme="dark"] .tab-btn.active {
+      background: var(--green);
+      border-color: var(--green);
+      color: #10251a;
+    }
+    :root[data-theme="dark"] .student-chat-list-item {
+      background: var(--paper);
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    :root[data-theme="dark"] .student-chat-message {
+      background: #202c26;
+      color: var(--ink);
+    }
+    :root[data-theme="dark"] .student-chat-message.bot {
+      background: #244333;
+    }
+    :root[data-theme="dark"] .lesson-card:hover {
+      background: var(--paper);
+    }
+    :root[data-theme="dark"] .local-tag,
+    :root[data-theme="dark"] .presence-state,
+    :root[data-theme="dark"] .telegram-presence.offline,
+    :root[data-theme="dark"] .status {
+      background-color: #26372e;
+      border-color: var(--line);
+      color: #b7c8bd;
+    }
+    :root[data-theme="dark"] .viewer-mode-banner,
+    :root[data-theme="dark"] .agent-queue-paused,
+    :root[data-theme="dark"] .telegram-presence.unknown,
+    :root[data-theme="dark"] .status.awaiting_task,
+    :root[data-theme="dark"] .status.awaiting_content,
+    :root[data-theme="dark"] .status.pending_review {
+      background-color: #3a3020;
+      border-color: #5b4b2d;
+      color: #f0c979;
+    }
+    :root[data-theme="dark"] .badge.gender {
+      background-color: #2b304b;
+      color: #c3c9f5;
+    }
+    :root[data-theme="dark"] .badge.unread,
+    :root[data-theme="dark"] .badge.paid,
+    :root[data-theme="dark"] .status.completed,
+    :root[data-theme="dark"] .status.paid,
+    :root[data-theme="dark"] .telegram-presence.online,
+    :root[data-theme="dark"] .presence-state.online {
+      background-color: #244333;
+      border-color: #365b45;
+      color: #b8f0d0;
+    }
+    :root[data-theme="dark"] .status.awaiting_reattempt,
+    :root[data-theme="dark"] .status.rejected {
+      background-color: #42292a;
+      border-color: #663b3e;
+      color: #f3a5a5;
+    }
+    :root[data-theme="dark"] .chat-item.unread .chat-name,
+    :root[data-theme="dark"] .payment-calendar-count {
+      color: var(--green);
+    }
+    :root[data-theme="dark"] .activity-chart-title,
+    :root[data-theme="dark"] .student-insight-legend,
+    :root[data-theme="dark"] .quick-row span:first-child,
+    :root[data-theme="dark"] .chat-date-filter label,
+    :root[data-theme="dark"] .send-lesson-picker,
+    :root[data-theme="dark"] .btn-action {
+      color: var(--muted);
+    }
+    :root[data-theme="dark"] .telegram-stats-tooltip,
+    :root[data-theme="dark"] .weekly-chat-tooltip {
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    :root[data-theme="dark"] .message.agent,
+    :root[data-theme="dark"] .student-chat-message.bot,
+    :root[data-theme="dark"] .payment-calendar-day.has-payments,
+    :root[data-theme="dark"] .status.completed,
+    :root[data-theme="dark"] .status.paid {
+      background-color: #244333;
+      color: #b8f0d0;
+      border-color: #365b45;
+    }
+    :root[data-theme="dark"] .telegram-stats-chart,
+    :root[data-theme="dark"] .weekly-chat-chart,
+    :root[data-theme="dark"] .student-insight-chart-wrap {
+      background: #18231d;
+      border-color: var(--line);
+    }
+    :root[data-theme="dark"] .student-insight-bar.messages {
+      background-color: #79a8cf;
+    }
+    :root[data-theme="dark"] .student-insight-lines .active-line {
+      stroke: #61d19b;
+    }
+    :root[data-theme="dark"] #section-progress > .panel.table-wrap {
+      background-color: var(--canvas);
+    }
+    :root[data-theme="dark"] #section-progress .progress-table tbody tr[data-progress-student] > td {
+      background: var(--paper);
+      border-color: var(--line);
+      color: var(--ink);
+    }
+    :root[data-theme="dark"] .auth-password-toggle,
+    :root[data-theme="dark"] .student-chat-message p,
+    :root[data-theme="dark"] .preview-caption-text {
+      color: var(--ink);
+    }
+    :root[data-theme="dark"] .dashboard-dialog-message,
+    :root[data-theme="dark"] .dashboard-dialog-actions button:not(.dashboard-dialog-confirm) {
+      color: var(--muted);
+    }
+    :root[data-theme="dark"] .pagination.button {
+      border-color: #46594f;
+      color: #dfe9e2;
+      background: #202c26;
+    }
+    :root[data-theme="dark"] .pagination.button:hover:not(:disabled) {
+      border-color: #4a795b;
+      color: var(--ink);
+      background: #244333;
+    }
+    :root[data-theme="dark"] .pagination.button:disabled {
+      border-color: #3b4e43;
+      color: #91a198;
+      background: #26342d;
+      opacity: 1;
+    }
+    :root[data-theme="dark"] .primary-button,
+    :root[data-theme="dark"] .send-lesson-button,
+    :root[data-theme="dark"] .dashboard-dialog-actions .dashboard-dialog-confirm {
+      color: #10251c;
+    }
+    :root[data-theme="dark"] .primary-button:hover:not(:disabled),
+    :root[data-theme="dark"] .send-lesson-button:hover:not(:disabled),
+    :root[data-theme="dark"] .dashboard-dialog-actions .dashboard-dialog-confirm:hover {
+      border-color: #84e2b2;
+      color: #10251c;
+      background: #84e2b2;
+    }
+    :root[data-theme="dark"] .primary-button:disabled,
+    :root[data-theme="dark"] .send-lesson-button:disabled {
+      border-color: #46594f;
+      color: #a1b0a7;
+      background: #35463d;
+      opacity: 1;
+    }
+    :root[data-theme="dark"] .skip-lesson-button {
+      border-color: #365b45;
+      color: #b8f0d0;
+      background: #244333;
+    }
+    :root[data-theme="dark"] .skip-lesson-button:hover:not(:disabled) {
+      border-color: #4a795b;
+      background: #2c5140;
+    }
+    :root[data-theme="dark"] .dashboard-dialog[data-variant="danger"] .dashboard-dialog-confirm {
+      border-color: var(--red);
+      color: #2b1111;
+      background: var(--red);
+    }
+    :root[data-theme="dark"] .dashboard-dialog[data-variant="danger"] .dashboard-dialog-confirm:hover {
+      background: #ff9a9a;
+    }
+    :root[data-theme="dark"] .agent-connection-button,
+    :root[data-theme="dark"] .agent-response-button {
+      border-color: #365b45;
+      color: #b8f0d0;
+      background: #244333;
+    }
+    :root[data-theme="dark"] .agent-connection-button:hover:not(:disabled),
+    :root[data-theme="dark"] .agent-response-button:hover:not(:disabled) {
+      border-color: #4a795b;
+      background: #2c5140;
+    }
+    :root[data-theme="dark"] .agent-connection-button.disconnecting {
+      border-color: #663b3e;
+      color: #f3a5a5;
+      background: #42292a;
+    }
+    :root[data-theme="dark"] .agent-connection-button:disabled,
+    :root[data-theme="dark"] .agent-response-button:disabled {
+      border-color: #3b4e43;
+      color: #91a198;
+      background: #26342d;
+      opacity: 1;
+    }
+    :root[data-theme="dark"] .btn-action {
+      color: #dfe9e2;
+    }
+    :root[data-theme="dark"] .btn-action.btn-danger,
+    :root[data-theme="dark"] .btn-micro.btn-danger,
+    :root[data-theme="dark"] .contact-actions button[data-contact-action="ban"],
+    :root[data-theme="dark"] .contact-actions button[data-contact-action="delete"] {
+      border-color: #663b3e;
+      color: #f3a5a5;
+      background: #2b2021;
+    }
+    :root[data-theme="dark"] .btn-action.btn-danger:hover,
+    :root[data-theme="dark"] .btn-micro.btn-danger:hover,
+    :root[data-theme="dark"] .contact-actions button[data-contact-action="ban"]:hover,
+    :root[data-theme="dark"] .contact-actions button[data-contact-action="delete"]:hover {
+      border-color: #8a4c50;
+      background: #42292a;
+    }
+    :root[data-theme="dark"] .rubric-delete-btn {
+      color: #f07e7e;
+    }
+    :root[data-theme="dark"] .rubric-delete-btn:hover {
+      background: #42292a;
+    }
+    :root[data-theme="dark"] .filter-note button {
+      color: var(--green);
+    }
+    :root[data-theme="dark"] .student-answer-name {
+      color: #e7eee9;
+    }
+    :root[data-theme="dark"] .student-answer-preview {
+      color: #b3c2b9;
+    }
+    :root[data-theme="dark"] .student-answer-time {
+      color: #a1b0a7;
+    }
+    :root[data-theme="dark"] .student-answer-recheck {
+      border-color: #365b45;
+      color: #b8f0d0;
+      background: #244333;
+    }
+    :root[data-theme="dark"] .student-answer-recheck:hover:not(:disabled) {
+      border-color: #4a795b;
+      background: #2c5140;
+    }
+    :root[data-theme="dark"] .student-answer-recheck:disabled {
+      border-color: #3b4e43;
+      color: #91a198;
+      background: #26342d;
+      opacity: 1;
+    }
+    @media (max-width: 700px) {
+      .top-actions { flex-wrap: wrap; justify-content: flex-end; }
+      .theme-toggle { padding-inline: 8px; }
+    }
   </style>
 </head>
 <body class="auth-locked telegram-only">
@@ -1101,8 +1578,8 @@
 
     <main>
       <header class="topbar">
-        <div><h1 id="page-title">Telegram overview</h1><p class="subheading" id="page-subtitle">Monitor bot status, learners, and lesson progress. <span class="live-update-indicator" id="live-update-status">Live updates on</span></p></div>
-        <div class="top-actions"><span class="local-tag"><i class="local-dot"></i> Local only</span><button class="pagination button notification-toggle" id="dashboard-notifications" type="button" aria-pressed="false">Enable notifications</button><span class="notification-status" id="dashboard-notification-status" role="status" aria-live="polite"></span><button class="pagination button" id="dashboard-logout" type="button">Lock</button><button class="refresh" id="refresh" title="Refresh data" aria-label="Refresh data">↻</button></div>
+        <div><h1 id="page-title">Telegram overview</h1><p class="subheading" id="page-subtitle">Monitor bot status, learners, and lesson progress. <span class="live-update-indicator" id="live-update-status">Live updates on</span> <span class="dashboard-cache-status" id="dashboard-cache-status" role="status" aria-live="polite"></span></p></div>
+        <div class="top-actions"><span class="local-tag"><i class="local-dot"></i> Local only</span><button class="theme-toggle" id="dashboard-theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark theme">🌙 Dark</button><button class="pagination button notification-toggle" id="dashboard-notifications" type="button" aria-pressed="false">Enable notifications</button><span class="notification-status" id="dashboard-notification-status" role="status" aria-live="polite"></span><button class="pagination button" id="dashboard-logout" type="button">Lock</button><button class="refresh" id="refresh" title="Refresh data" aria-label="Refresh data">↻</button></div>
       </header>
       <div class="viewer-mode-banner" id="viewer-mode-banner" role="status" hidden><strong>Read-only viewer.</strong> You can browse dashboard information, but cannot send messages or change records.</div>
       <div id="error" class="error" hidden></div>
@@ -1588,7 +2065,7 @@
         <div class="section-heading">
           <div>
             <h2>Student payment ledger</h2>
-            <p>Each payment period lasts 30 days from the student's enrollment date. Claims and receipt scans stay pending until you confirm them. The bot sends payment information after a student's first lesson; use the status below to check delivery or send it again.</p>
+            <p>Each payment period lasts 30 days from the student's first lesson. Claims and receipt scans stay pending until you confirm them. The bot sends payment information after a student's first lesson; use the status below to check delivery or send it again.</p>
           </div>
           <div class="top-actions">
             <button class="pagination button" id="payment-ledger-refresh" type="button">Refresh</button>
@@ -1656,7 +2133,7 @@
           </div>
           <table>
             <thead><tr><th>Student</th><th>Grade</th><th>Paid on</th><th>Amount</th><th>Receipt</th></tr></thead>
-            <tbody id="telegram-payment-history-rows"><tr><td colspan="4" class="empty">Loading payment history…</td></tr></tbody>
+            <tbody id="telegram-payment-history-rows"><tr><td colspan="5" class="empty">Loading payment history…</td></tr></tbody>
           </table>
         </article>
         <div class="section-heading" style="margin-top:20px">
@@ -2328,6 +2805,25 @@
   <script>
     const PAGE_SIZE = 30;
     const CONTACT_PAGE_SIZE = 50;
+    const DASHBOARD_THEME_STORAGE_KEY = 'eshool-dashboard-theme';
+    const themeToggle = document.querySelector('#dashboard-theme-toggle');
+    const applyDashboardTheme = theme => {
+      const isDark = theme === 'dark';
+      document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+      themeToggle.setAttribute('aria-pressed', String(isDark));
+      themeToggle.setAttribute('aria-label', `Switch to ${isDark ? 'light' : 'dark'} theme`);
+      themeToggle.textContent = isDark ? '☀️ Light' : '🌙 Dark';
+    };
+    applyDashboardTheme(document.documentElement.dataset.theme);
+    themeToggle.addEventListener('click', () => {
+      const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      applyDashboardTheme(theme);
+      try {
+        localStorage.setItem(DASHBOARD_THEME_STORAGE_KEY, theme);
+      } catch (error) {
+        console.warn('[Dashboard] Could not save theme:', error.message);
+      }
+    });
     let offset = 0;
     let totalChats = 0;
     let activeChatsOnly = false;
@@ -2403,8 +2899,9 @@
     const AGENT_MEDIA_PREVIEW_COUNT = 3;
     const DASHBOARD_CACHE_PREFIX = 'eshool-dashboard-cache:v1:';
     const DASHBOARD_CACHE_TTL_MS = 60_000;
-    const DASHBOARD_CACHE_MAX_ENTRY_CHARS = 500_000;
-    const DASHBOARD_CACHE_MAX_TOTAL_CHARS = 2_000_000;
+    const DASHBOARD_CACHE_STALE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+    const DASHBOARD_CACHE_MAX_ENTRY_CHARS = 2_000_000;
+    const DASHBOARD_CACHE_MAX_TOTAL_CHARS = 2_300_000;
     const DASHBOARD_CACHE_MAX_ENTRIES = 24;
     const dashboardApiRequests = new Map();
     let dashboardCacheGeneration = 0;
@@ -2600,10 +3097,16 @@
 
     function dashboardApiCacheKey(path) {
       const url = new URL(path, window.location.origin);
-      if (!/^\/api\/admin\/(overview|progress|es-contacts|blocked-contacts|curriculum(?:\/grade)?|payment-calendar|scheduled-lessons(?:\/options)?)$/.test(url.pathname)) {
+      if (!/^\/api\/admin\/(overview|progress|es-contacts|blocked-contacts|curriculum(?:\/grade)?|payment-calendar|payment-ledger|telegram-overview|telegram-progress|telegram-stats|student-activity|scheduled-lessons(?:\/options)?)$/.test(url.pathname)) {
         return null;
       }
       return `${DASHBOARD_CACHE_PREFIX}${url.pathname}${url.search}`;
+    }
+
+    function dashboardApiUsesStaleCache(path) {
+      const url = new URL(path, window.location.origin);
+      return /^\/api\/admin\/(overview|payment-ledger|student-activity|telegram-overview|telegram-progress|telegram-stats)$/
+        .test(url.pathname);
     }
 
     function clearDashboardApiCache() {
@@ -2618,20 +3121,58 @@
       }
     }
 
-    function readDashboardApiCache(key) {
+    function invalidateDashboardApiCache() {
+      dashboardCacheGeneration += 1;
+      try {
+        for (const key of Array.from({ length: sessionStorage.length }, (_, index) =>
+          sessionStorage.key(index))) {
+          if (!key?.startsWith(DASHBOARD_CACHE_PREFIX)) continue;
+          const serialized = sessionStorage.getItem(key);
+          if (!serialized) continue;
+          const entry = JSON.parse(serialized);
+          if (entry && typeof entry === 'object') {
+            entry.invalidated = true;
+            sessionStorage.setItem(key, JSON.stringify(entry));
+          }
+        }
+      } catch (error) {
+        console.warn('[Dashboard Cache] Could not mark browser cache stale:', error.message);
+      }
+    }
+
+    function updateDashboardCacheStatus(cachedAt, { stale = false, refreshing = false, error = null } = {}) {
+      const status = $('#dashboard-cache-status');
+      if (!status || !Number.isFinite(cachedAt)) return;
+      const time = new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric',
+        minute: '2-digit'
+      }).format(new Date(cachedAt));
+      status.textContent = stale
+        ? `Showing saved data from ${time}${refreshing ? ' · refreshing…' : ' · refresh failed'}`
+        : `Saved data updated ${time}`;
+      status.title = error ? `Background refresh failed: ${error.message}` : '';
+    }
+
+    function readDashboardApiCache(key, { allowStale = false } = {}) {
       if (!key) return null;
       try {
         const serialized = sessionStorage.getItem(key);
         if (!serialized) return null;
         const entry = JSON.parse(serialized);
+        const age = Date.now() - entry.cachedAt;
         if (!Number.isFinite(entry.cachedAt) ||
-            Date.now() - entry.cachedAt > DASHBOARD_CACHE_TTL_MS ||
-            Date.now() < entry.cachedAt ||
+            age < 0 ||
+            age > (allowStale ? DASHBOARD_CACHE_STALE_MAX_AGE_MS : DASHBOARD_CACHE_TTL_MS) ||
             !Object.hasOwn(entry, 'data')) {
           sessionStorage.removeItem(key);
           return null;
         }
-        return entry.data;
+        const stale = entry.invalidated === true || age > DASHBOARD_CACHE_TTL_MS;
+        if (stale && !allowStale) {
+          sessionStorage.removeItem(key);
+          return null;
+        }
+        return { data: entry.data, cachedAt: entry.cachedAt, stale };
       } catch (error) {
         console.warn('[Dashboard Cache] Could not read browser session cache:', error.message);
         return null;
@@ -2653,7 +3194,7 @@
           try {
             const value = JSON.parse(entry.value);
             if (!Number.isFinite(value.cachedAt) ||
-                Date.now() - value.cachedAt > DASHBOARD_CACHE_TTL_MS ||
+                Date.now() - value.cachedAt > DASHBOARD_CACHE_STALE_MAX_AGE_MS ||
                 Date.now() < value.cachedAt) {
               sessionStorage.removeItem(entry.key);
               entry.value = '';
@@ -2690,14 +3231,31 @@
       if (viewerMode && method !== 'GET') {
         throw new Error('This dashboard is read-only.');
       }
-      const { skipDashboardCache = false, ...requestOptions } = options;
+      const {
+        skipDashboardCache = false,
+        forceDashboardRefresh = false,
+        onCacheRefresh = null,
+        ...requestOptions
+      } = options;
       const cacheKey = !skipDashboardCache && method === 'GET' && !requestOptions.body
         ? dashboardApiCacheKey(path)
         : null;
-      if (cacheKey) {
-        const cachedData = readDashboardApiCache(cacheKey);
-        if (cachedData !== null) return cachedData;
-        if (dashboardApiRequests.has(cacheKey)) return dashboardApiRequests.get(cacheKey);
+      const staleCacheEnabled = Boolean(cacheKey && dashboardApiUsesStaleCache(path));
+      let cachedEntry = null;
+      if (cacheKey && !forceDashboardRefresh) {
+        cachedEntry = readDashboardApiCache(cacheKey, { allowStale: staleCacheEnabled });
+        if (cachedEntry && !cachedEntry.stale) {
+          if (staleCacheEnabled) updateDashboardCacheStatus(cachedEntry.cachedAt);
+          return cachedEntry.data;
+        }
+        if (cachedEntry?.stale && staleCacheEnabled) {
+          updateDashboardCacheStatus(cachedEntry.cachedAt, { stale: true, refreshing: true });
+          if (dashboardApiRequests.has(cacheKey)) return cachedEntry.data;
+        } else if (dashboardApiRequests.has(cacheKey)) {
+          return dashboardApiRequests.get(cacheKey);
+        }
+      } else if (cacheKey && dashboardApiRequests.has(cacheKey)) {
+        return dashboardApiRequests.get(cacheKey);
       }
 
       const cacheGeneration = dashboardCacheGeneration;
@@ -2716,18 +3274,37 @@
         if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
         if (cacheKey && cacheGeneration === dashboardCacheGeneration) {
           writeDashboardApiCache(cacheKey, data);
+          if (staleCacheEnabled) updateDashboardCacheStatus(Date.now());
         } else if (method !== 'GET') {
           clearDashboardApiCache();
         }
         return data;
       })();
       if (cacheKey) dashboardApiRequests.set(cacheKey, request);
-      try {
-        return await request;
-      } finally {
+      const releaseRequest = () => {
         if (cacheKey && dashboardApiRequests.get(cacheKey) === request) {
           dashboardApiRequests.delete(cacheKey);
         }
+      };
+      if (cachedEntry?.stale && staleCacheEnabled) {
+        request.then(() => {
+          releaseRequest();
+          if (typeof onCacheRefresh === 'function') {
+            Promise.resolve().then(onCacheRefresh).catch(error => {
+              console.warn('[Dashboard Cache] Could not render refreshed dashboard data:', error.message);
+            });
+          }
+        }, error => {
+          releaseRequest();
+          updateDashboardCacheStatus(cachedEntry.cachedAt, { stale: true, error });
+          console.warn('[Dashboard Cache] Background refresh failed:', error.message);
+        });
+        return cachedEntry.data;
+      }
+      try {
+        return await request;
+      } finally {
+        releaseRequest();
       }
     }
 
@@ -3161,7 +3738,7 @@
       dashboardEvents.addEventListener('dashboard-update', event => {
         try {
           const update = JSON.parse(event.data);
-          clearDashboardApiCache();
+          invalidateDashboardApiCache();
           const files = Array.isArray(update.files) ? update.files : [];
           if (files.includes('telegram_agent_media_activity.json')) {
             scheduleTelegramMediaActivityRefresh();
@@ -4127,21 +4704,80 @@
         chart.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight');
         chart.setAttribute('aria-label',
           `${chart.getAttribute('aria-label') || 'Time-series chart'}. Drag horizontally to browse dates; focus and use the arrow keys to navigate.`);
+        const getPanTargets = () => chart.matches('svg')
+          ? [...chart.querySelectorAll(
+              'polyline, polygon, circle, line.weekly-chat-telegram-hit-line'
+            )]
+          : [...chart.querySelectorAll(
+              'svg polyline, svg polygon, svg circle, svg line.weekly-chat-telegram-hit-line'
+            )];
+        const applyPanOffset = distance => {
+          for (const target of binding.panTargets || []) {
+            const original = binding.originalTransforms.get(target);
+            target.style.transform =
+              `${original && original !== 'none' ? `${original} ` : ''}translateX(${distance}px)`;
+          }
+        };
+        const finishPanPreview = () => {
+          if (binding.moveFrame) {
+            cancelAnimationFrame(binding.moveFrame);
+            binding.moveFrame = null;
+          }
+          chart.classList.remove('timeline-pan-active');
+          chart.classList.add('timeline-pan-settling');
+          for (const target of binding.panTargets || []) {
+            target.style.transform = binding.originalTransforms.get(target) || '';
+          }
+          if (binding.settleTimer) clearTimeout(binding.settleTimer);
+          binding.settleTimer = setTimeout(() => {
+            chart.classList.remove('timeline-pan-settling');
+            for (const target of binding.panTargets || []) {
+              target.classList.remove('timeline-pan-visual');
+              target.style.willChange = '';
+            }
+            binding.panTargets = [];
+            binding.originalTransforms = new Map();
+            binding.settleTimer = null;
+          }, 180);
+        };
         chart.addEventListener('pointerdown', event => {
-          if (event.button !== 0 ||
+          if (binding.pointerId != null || event.button !== 0 ||
               (event.target instanceof Element &&
                 event.target.closest('button,a,input,select,textarea'))) return;
           event.preventDefault();
+          if (binding.settleTimer) {
+            clearTimeout(binding.settleTimer);
+            binding.settleTimer = null;
+            chart.classList.remove('timeline-pan-settling');
+          }
           binding.pointerId = event.pointerId;
           binding.startX = event.clientX;
+          binding.distance = 0;
+          binding.panTargets = getPanTargets();
+          binding.originalTransforms = new Map();
+          for (const target of binding.panTargets) {
+            binding.originalTransforms.set(target, target.style.transform);
+            target.classList.add('timeline-pan-visual');
+            target.style.willChange = 'transform';
+          }
           chart.classList.add('timeline-pan-active');
           chart.setPointerCapture(event.pointerId);
+        });
+        chart.addEventListener('pointermove', event => {
+          if (event.pointerId !== binding.pointerId) return;
+          binding.distance = event.clientX - binding.startX;
+          if (binding.moveFrame) return;
+          binding.moveFrame = requestAnimationFrame(() => {
+            binding.moveFrame = null;
+            applyPanOffset(binding.distance);
+          });
         });
         chart.addEventListener('pointerup', event => {
           if (event.pointerId !== binding.pointerId) return;
           const distance = event.clientX - binding.startX;
           binding.pointerId = null;
-          chart.classList.remove('timeline-pan-active');
+          applyPanOffset(distance);
+          finishPanPreview();
           if (Math.abs(distance) < 12) return;
           const width = chart.getBoundingClientRect().width;
           if (!width) return;
@@ -4152,7 +4788,12 @@
         });
         chart.addEventListener('pointercancel', () => {
           binding.pointerId = null;
-          chart.classList.remove('timeline-pan-active');
+          finishPanPreview();
+        });
+        chart.addEventListener('lostpointercapture', event => {
+          if (event.pointerId !== binding.pointerId) return;
+          binding.pointerId = null;
+          finishPanPreview();
         });
         chart.addEventListener('keydown', event => {
           if (event.target !== chart) return;
@@ -4211,10 +4852,18 @@
       telegramStatsWindowEndDate ||= today;
       if (telegramStatsWindowEndDate > today) telegramStatsWindowEndDate = today;
       const requestedEndDate = telegramStatsWindowEndDate;
-      const stats = await api(`/api/admin/telegram-stats?${new URLSearchParams({
+      const statsPath = `/api/admin/telegram-stats?${new URLSearchParams({
         timeZone,
         endDate: requestedEndDate
-      })}`);
+      })}`;
+      const stats = await api(statsPath, {
+        onCacheRefresh: () => {
+          if (requestedEndDate !== telegramStatsWindowEndDate ||
+              !document.querySelector('#section-overview').classList.contains('active')) return;
+          return loadTelegramStats().catch(error =>
+            showError(`Could not refresh Telegram statistics: ${error.message}`));
+        }
+      });
       if (requestedEndDate !== telegramStatsWindowEndDate) return;
       renderTelegramStats(stats, timeZone);
       attachTimelineGestures($('#telegram-stats-chart'), (direction, dragDays) => {
@@ -4283,15 +4932,22 @@
       if (weeklyChatWindowEndDate > today) weeklyChatWindowEndDate = today;
       const classEndDate = telegramClassWindowEndDate;
       const weeklyEndDate = weeklyChatWindowEndDate;
+      const refreshOverview = () => {
+        if (classEndDate !== telegramClassWindowEndDate ||
+            weeklyEndDate !== weeklyChatWindowEndDate ||
+            !document.querySelector('#section-overview').classList.contains('active')) return;
+        return loadOverview().catch(error =>
+          showError(`Could not refresh dashboard statistics: ${error.message}`));
+      };
       const [data, overview] = await Promise.all([
         api(`/api/admin/telegram-overview?${new URLSearchParams({
           timeZone,
           endDate: classEndDate
-        })}`),
+        })}`, { onCacheRefresh: refreshOverview }),
         api(`/api/admin/overview?${new URLSearchParams({
           timeZone,
           endDate: weeklyEndDate
-        })}`)
+        })}`, { onCacheRefresh: refreshOverview })
       ]);
       $('#metric-telegram-students').textContent = data.telegramStudents.toLocaleString();
       $('#metric-telegram-joins').textContent =
@@ -4538,7 +5194,15 @@
         timeZone,
         endDate
       });
-      const activity = await api(`/api/admin/student-activity?${query}`);
+      const activity = await api(`/api/admin/student-activity?${query}`, {
+        onCacheRefresh: () => {
+          if (jid !== selectedJid ||
+              Number(query.get('days')) !== activityDays ||
+              endDate !== activityWindowEndDate) return;
+          return loadStudentActivity(jid).catch(error =>
+            showError(`Could not refresh student activity: ${error.message}`));
+        }
+      });
       if (jid !== selectedJid ||
           activity.days !== activityDays ||
           endDate !== activityWindowEndDate) return;
@@ -4940,7 +5604,15 @@
       $('#es-activity-title').textContent = `Typical messaging activity · ${esActivityName}`;
       $('#es-activity-summary').textContent = 'Loading incoming-message activity…';
       $('#es-activity-grid').innerHTML = '';
-      const activity = await api(`/api/admin/student-activity?${query}`);
+      const activity = await api(`/api/admin/student-activity?${query}`, {
+        onCacheRefresh: () => {
+          if (esActivityJid !== query.get('jid') ||
+              Number(query.get('days')) !== esActivityDays ||
+              endDate !== esActivityWindowEndDate) return;
+          return loadEsStudentActivity().catch(error =>
+            showError(`Could not refresh student activity: ${error.message}`));
+        }
+      });
       if (activity.jid !== esActivityJid ||
           activity.days !== esActivityDays ||
           endDate !== esActivityWindowEndDate) return;
@@ -5456,7 +6128,7 @@
             <form class="student-answer-reply" data-telegram-reply="${escapeHtml(student.jid)}">
               <textarea name="message" maxlength="4096" required placeholder="Write a private reply…" aria-label="Private reply to ${escapeHtml(student.name || 'Telegram student')}" ${student.canReplyPrivately ? '' : 'disabled'}></textarea>
               <button class="primary-button" type="submit" ${student.canReplyPrivately ? '' : 'disabled'}>Send reply</button>
-              <span class="student-answer-reply-status" role="status">${student.canReplyPrivately ? '' : 'Student must start a private chat with the bot before you can reply.'}</span>
+              <span class="student-answer-reply-status" role="status">${student.canReplyPrivately ? '' : student.telegramBotBlocked ? 'Student blocked the bot; private replies are disabled.' : 'Student must start a private chat with the bot before you can reply.'}</span>
             </form>
           </details>`;
         }).join('')
@@ -5473,7 +6145,10 @@
           !student?.canReplyPrivately;
         form.querySelector('button[type="submit"]').disabled = saved.sendDisabled ||
           !student?.canReplyPrivately;
-        form.querySelector('.student-answer-reply-status').textContent = saved.status;
+        form.querySelector('.student-answer-reply-status').textContent =
+          student?.telegramBotBlocked
+            ? 'Student blocked the bot; private replies are disabled.'
+            : saved.status;
       }
       if (activeStudentKey && activeTextarea && selection) {
         const refreshedTextarea = [...container.querySelectorAll('[data-telegram-reply]')]
@@ -5585,8 +6260,10 @@
       $('#telegram-student-chat-list').innerHTML = visibleStudents.length
         ? visibleStudents.map(student => {
           const name = getChatStudentName(student);
-          const preview = student.lastStudentMessage?.text ||
-            (student.canReplyPrivately ? 'Private chat started' : 'No private messages yet');
+          const preview = student.telegramBotBlocked
+            ? 'Bot blocked — private messages unavailable'
+            : student.lastStudentMessage?.text ||
+              (student.canReplyPrivately ? 'Private chat started' : 'No private messages yet');
           const lastMessageTime = Date.parse(student.lastStudentMessage?.receivedAt || '');
           const timeLabel = Number.isFinite(lastMessageTime)
             ? new Intl.DateTimeFormat(undefined, {
@@ -5713,7 +6390,9 @@
       form.querySelector('button[type="submit"]').disabled = !student.canReplyPrivately;
       if (!student.canReplyPrivately) {
         $('#telegram-student-chat-status').textContent =
-          'The student must start a private chat with the bot before you can reply.';
+          student.telegramBotBlocked
+            ? 'The student blocked the bot; private replies are disabled.'
+            : 'The student must start a private chat with the bot before you can reply.';
       } else if (!silent) {
         $('#telegram-student-chat-status').textContent = '';
       }
@@ -6004,6 +6683,7 @@
     }
 
     async function loadProgress() {
+      if (document.querySelector('#progress-rows [data-send-lesson-picker].is-open')) return;
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const today = getDateKeyInTimeZone(timeZone);
       progressTrendWindowEndDate ||= today;
@@ -6012,11 +6692,22 @@
       if (telegramEnrollmentWindowEndDate > today) telegramEnrollmentWindowEndDate = today;
       const trendEndDate = progressTrendWindowEndDate;
       const enrollmentEndDate = telegramEnrollmentWindowEndDate;
-      const { students, insights } = await api(`/api/admin/telegram-progress?${new URLSearchParams({
+      const progressPath = `/api/admin/telegram-progress?${new URLSearchParams({
         timeZone,
         trendEndDate,
         enrollmentEndDate
-      })}`);
+      })}`;
+      const { students, insights } = await api(progressPath, {
+        onCacheRefresh: () => {
+          if (trendEndDate !== progressTrendWindowEndDate ||
+              enrollmentEndDate !== telegramEnrollmentWindowEndDate ||
+              !isProgressSectionActive() ||
+              document.querySelector('#progress-rows [data-send-lesson-picker].is-open')) return;
+          return loadProgress().catch(error =>
+            showError(`Could not refresh student progress and statistics: ${error.message}`));
+        }
+      });
+      if (document.querySelector('#progress-rows [data-send-lesson-picker].is-open')) return;
       if (trendEndDate !== progressTrendWindowEndDate ||
           enrollmentEndDate !== telegramEnrollmentWindowEndDate) return;
       progressStudents = students;
@@ -6082,13 +6773,17 @@
           : skipRequest?.status === 'failed'
             ? `Previous attempt failed: ${escapeHtml(skipRequest.error || 'delivery error')}`
             : `Next: ${escapeHtml(student.nextLessonTitle)}`;
+        const telegramBotBlocked = student.platform === 'Telegram' &&
+          student.telegramBotBlocked === true;
         const requiresPrivateStart = student.platform === 'Telegram' &&
-          student.canReplyPrivately !== true;
-        const skipAction = student.canSkipToNextLesson && !requiresPrivateStart
+          student.canReplyPrivately !== true && !telegramBotBlocked;
+        const skipAction = student.canSkipToNextLesson && !requiresPrivateStart &&
+          !telegramBotBlocked
           ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-skip-platform="${escapeHtml(student.platform)}" data-skip-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${hasPendingLessonRequest ? 'disabled' : ''}>${skipButtonLabel}</button><small class="skip-lesson-status">${skipStatusText}</small></div>`
           : '';
         const availableLessons = student.platform === 'Telegram' ? student.availableLessons || [] : [];
-        const sendLessonAction = availableLessons.length && !requiresPrivateStart
+        const sendLessonAction = availableLessons.length && !requiresPrivateStart &&
+          !telegramBotBlocked
           ? `<div class="send-lesson-controls">
               <div class="send-lesson-picker" data-send-lesson-picker>
                 <span>Choose a lesson</span>
@@ -6121,10 +6816,12 @@
                 : '<small class="send-lesson-status">This becomes their active lesson.</small>'}
             </div>`
           : '';
-        const privateStartNotice = requiresPrivateStart
-          ? '<small class="skip-lesson-status">Student must start a private chat with the bot before receiving lessons.</small>'
-          : '';
-        const regradeAction = student.canRegradeTask
+        const privateStartNotice = telegramBotBlocked
+          ? '<small class="skip-lesson-status">Student blocked the bot; Telegram messages cannot be sent.</small>'
+          : requiresPrivateStart
+            ? '<small class="skip-lesson-status">Student must start a private chat with the bot before receiving lessons.</small>'
+            : '';
+        const regradeAction = student.canRegradeTask && !telegramBotBlocked
           ? `<div class="skip-lesson-controls"><button class="skip-lesson-button" type="button" data-regrade-jid="${escapeHtml(student.jid)}" data-current-lesson="${escapeHtml(student.currentLessonId)}" ${isRegradingTask || hasPendingLessonRequest ? 'disabled' : ''}>${regradeButtonLabel}</button><small class="skip-lesson-status">${regradeStatusText}</small></div>`
           : '';
         const gradeKey = student.grade || student.gradeName || '__unknown';
@@ -6148,8 +6845,12 @@
         const presenceTitle = student.telegramPresenceUpdatedAt
           ? `Last checked ${formatDate(student.telegramPresenceUpdatedAt)}`
           : 'Telegram has not provided a current presence status.';
-        const presenceCell = presence
-          ? `<span class="telegram-presence ${presence}" title="${escapeHtml(presenceTitle)}">${presenceLabel}</span>`
+        const presenceCell = presence || telegramBotBlocked
+          ? `<div class="telegram-progress-presence">${presence
+            ? `<span class="telegram-presence ${presence}" title="${escapeHtml(presenceTitle)}">${presenceLabel}</span>`
+            : ''}${telegramBotBlocked
+              ? '<span class="status rejected" title="Telegram reported that this student blocked the bot. Private messages are disabled.">Bot blocked</span>'
+              : ''}</div>`
           : '—';
         const lessonCompletionLabel = Number.isFinite(student.lessonCompletionPercent)
           ? `${student.lessonsPassed} / ${student.lessonsReceived} · ${student.lessonCompletionPercent}%`
@@ -6157,7 +6858,7 @@
         const exerciseScoreLabel = Number.isFinite(student.exerciseScorePercent)
           ? `${student.exerciseScorePercent}% · ${student.scoreCorrectQuestions} / ${student.scoreTotalQuestions}`
           : 'Not recorded';
-        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td title="Lessons passed out of lessons received">${lessonCompletionLabel}</td><td title="Correct answers across delivered exercises; corrected answers also count">${exerciseScoreLabel}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || (requiresPrivateStart ? '' : '—')}${privateStartNotice}</div></td></tr>`;
+        return `<tr tabindex="-1" data-progress-student="${escapeHtml(student.jid)}" data-progress-platform="${escapeHtml(student.platform)}" data-search="${escapeHtml(searchText)}" data-grade="${escapeHtml(gradeKey)}" data-status="${progressStatus}" data-last-activity="${Number.isFinite(activityTimestamp) ? activityTimestamp : ''}"><td>${escapeHtml(student.platform)}</td><td><button class="progress-student-link" type="button" data-open-student-profile data-profile-jid="${escapeHtml(student.jid)}" data-profile-platform="${escapeHtml(student.platform)}" aria-label="Open profile for ${escapeHtml(student.name)}">${escapeHtml(student.name)}</button></td><td>${presenceCell}</td><td>${escapeHtml(student.gradeName)}</td><td>${escapeHtml(student.lessonTitle || '—')}</td><td><span class="status ${escapeHtml(student.status)}">${escapeHtml(student.status)}</span></td><td>${student.platform === 'Telegram' ? formatDate(student.joinedAt) : '—'}</td><td>${formatDate(student.lastStudentActivityAt)}</td><td title="Last 7 days / last 30 days">${student.totalIncomingMessages.toLocaleString()} total<br><small>${student.incomingMessagesLast7Days.toLocaleString()} / 7d · ${student.incomingMessagesLast30Days.toLocaleString()} / 30d</small></td><td>${student.activeDaysLast30Days} / 30</td><td title="Lessons passed out of lessons received">${lessonCompletionLabel}</td><td title="Correct answers across delivered exercises; corrected answers also count">${exerciseScoreLabel}</td><td>${formatDate(student.deliveredAt)}</td><td><div class="progress-actions">${sendLessonAction}${regradeAction}${skipAction || (requiresPrivateStart || telegramBotBlocked ? '' : '—')}${privateStartNotice}</div></td></tr>`;
       }).join('') : '<tr><td colspan="14" class="empty">No student progress recorded yet.</td></tr>';
       applyProgressFilters();
       $('#progress-rows').querySelectorAll('[data-send-lesson-picker]').forEach(picker => {
@@ -7127,8 +7828,45 @@
       renderPaymentCalendar();
     }
 
-    async function loadPaymentLedger() {
-      const { students, payments } = await api('/api/admin/payment-ledger');
+    function paymentLedgerHasUnsavedChanges() {
+      const activeElement = document.activeElement;
+      return [...$('#payment-ledger-rows').querySelectorAll('tr[data-payment-ledger-key]')]
+        .some(row => {
+          if (row.contains(activeElement)) return true;
+          return ['[data-payment-amount]', '[data-payment-currency]', '[data-payment-status]']
+            .some(selector => {
+              const control = row.querySelector(selector);
+              return control && control.value !== control.dataset.savedValue;
+            });
+        });
+    }
+
+    async function loadPaymentLedger({ forceRefresh = false } = {}) {
+      if (!forceRefresh && paymentLedgerHasUnsavedChanges()) return;
+      let ledgerData;
+      try {
+        ledgerData = await api('/api/admin/payment-ledger', {
+          forceDashboardRefresh: forceRefresh,
+          onCacheRefresh: () => {
+            if (!document.querySelector('#section-payment-ledger').classList.contains('active')) return;
+            return loadPaymentLedger().catch(error =>
+              showError(`Could not refresh payment ledger: ${error.message}`));
+          }
+        });
+      } catch (error) {
+        const historyRows = $('#telegram-payment-history-rows');
+        const ledgerRows = $('#payment-ledger-rows');
+        if (!historyRows.dataset.loaded) {
+          historyRows.innerHTML =
+            '<tr><td colspan="5" class="empty">Could not load payment history. Use Refresh to try again.</td></tr>';
+        }
+        if (!ledgerRows.dataset.loaded) {
+          ledgerRows.innerHTML =
+            '<tr><td colspan="10" class="empty">Could not load payment records. Use Refresh to try again.</td></tr>';
+        }
+        throw error;
+      }
+      const { students, payments } = ledgerData;
       telegramPaymentHistory = payments;
       renderTelegramPaymentSummary();
       const studentSelect = $('#historical-payment-student');
@@ -7181,14 +7919,16 @@
             <td>${Number.isSafeInteger(student.currentLessonNumber) ? `Lesson ${escapeHtml(String(student.currentLessonNumber))}` : '—'}</td>
             <td>${escapeHtml(formatDate(payment.periodStart, false))} – ${escapeHtml(formatDate(periodEnd, false))}</td>
             <td><span class="status ${escapeHtml(payment.status)}">${escapeHtml(statusLabels[payment.status] || payment.status)}</span>${payment.claimedAt ? `<small class="skip-lesson-status">Reported ${escapeHtml(formatDate(payment.claimedAt))}</small>` : ''}</td>
-            <td><div class="payment-ledger-amount"><input type="number" min="0" step="any" inputmode="decimal" aria-label="Amount for ${escapeHtml(student.name)}" data-payment-amount value="${payment.amount ?? ''}" placeholder="Optional"><input type="text" maxlength="3" aria-label="Currency for ${escapeHtml(student.name)}" data-payment-currency value="${escapeHtml(payment.currency || 'SDG')}"></div></td>
+            <td><div class="payment-ledger-amount"><input type="number" min="0" step="any" inputmode="decimal" aria-label="Amount for ${escapeHtml(student.name)}" data-payment-amount data-saved-value="${escapeHtml(payment.amount ?? '')}" value="${payment.amount ?? ''}" placeholder="Optional"><input type="text" maxlength="3" aria-label="Currency for ${escapeHtml(student.name)}" data-payment-currency data-saved-value="${escapeHtml(payment.currency || 'SDG')}" value="${escapeHtml(payment.currency || 'SDG')}"></div></td>
             <td>${evidence || '—'}</td>
             <td><div><span class="status ${deliveryInfo.sentAt ? 'paid' : deliveryInfo.status === 'sending' ? 'pending_review' : deliveryInfo.status === 'failed' ? 'rejected' : 'unpaid'}">${deliveryInfo.sentAt ? 'Received' : deliveryInfo.status === 'sending' ? 'Sending…' : deliveryInfo.status === 'failed' ? 'Not received · failed' : 'Not received'}</span>${deliveryInfo.sentAt ? `<small class="skip-lesson-status">Sent ${escapeHtml(formatDate(deliveryInfo.sentAt))}</small>` : deliveryInfo.lastError ? '<small class="skip-lesson-status">Last attempt failed</small>' : ''}</div></td>
-            <td><button class="pagination button" type="button" data-payment-info-send data-payment-info-sent="${Boolean(deliveryInfo.sentAt)}" ${canSendPaymentInfo ? '' : 'disabled'} title="${student.hasStartedLessons ? student.privateChatStarted ? '' : 'Student has not started the private chat' : 'Available after the first lesson'}">${deliveryInfo.inProgress ? 'Sending…' : deliveryInfo.sentAt ? 'Resend' : 'Send'}</button></td>
-            <td><div class="payment-ledger-actions"><select aria-label="Payment status for ${escapeHtml(student.name)}" data-payment-status>${Object.entries(statusLabels).map(([value, label]) => `<option value="${value}" ${value === payment.status ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="pagination button" type="button" data-payment-save>Save</button></div></td>
+            <td><button class="payment-ledger-action payment-ledger-send" type="button" data-payment-info-send data-payment-info-sent="${Boolean(deliveryInfo.sentAt)}" ${canSendPaymentInfo ? '' : 'disabled'} title="${student.hasStartedLessons ? student.privateChatStarted ? '' : 'Student has not started the private chat' : 'Available after the first lesson'}">${deliveryInfo.inProgress ? 'Sending…' : deliveryInfo.sentAt ? 'Resend' : 'Send'}</button></td>
+            <td><div class="payment-ledger-actions"><select aria-label="Payment status for ${escapeHtml(student.name)}" data-payment-status data-saved-value="${escapeHtml(payment.status)}">${Object.entries(statusLabels).map(([value, label]) => `<option value="${value}" ${value === payment.status ? 'selected' : ''}>${label}</option>`).join('')}</select><button class="payment-ledger-action payment-ledger-save" type="button" data-payment-save>Save</button></div></td>
           </tr>`;
         }).join('')
         : '<tr><td colspan="10" class="empty">No students with lesson progress are available yet.</td></tr>';
+      $('#telegram-payment-history-rows').dataset.loaded = 'true';
+      $('#payment-ledger-rows').dataset.loaded = 'true';
 
       $('#payment-ledger-rows').querySelectorAll('[data-payment-save]').forEach(button => {
         button.addEventListener('click', async () => {
@@ -7213,7 +7953,7 @@
                 currency: currencyInput.value
               })
             });
-            await loadPaymentLedger();
+            await loadPaymentLedger({ forceRefresh: true });
             if (result.notification?.reason === 'private_chat_not_started') {
               showError('Payment was marked as paid, but the student was not notified. They need to open @eSchoolsdBot and press Start in a private chat first.');
             } else if (result.notification?.reason === 'delivery_failed') {
@@ -7243,7 +7983,7 @@
               method: 'POST',
               body: JSON.stringify({ studentKey: row.dataset.paymentLedgerKey })
             });
-            await loadPaymentLedger();
+            await loadPaymentLedger({ forceRefresh: true });
           } catch (error) {
             showError(`Could not send payment information: ${error.message}`);
             try {
@@ -8298,7 +9038,8 @@
       renderPaymentCalendar();
     });
     $('#payment-ledger-refresh').addEventListener('click', () => {
-      loadPaymentLedger().catch(error => showError(`Could not refresh payment ledger: ${error.message}`));
+      loadPaymentLedger({ forceRefresh: true })
+        .catch(error => showError(`Could not refresh payment ledger: ${error.message}`));
     });
     $('#historical-payment-form').addEventListener('submit', async event => {
       event.preventDefault();

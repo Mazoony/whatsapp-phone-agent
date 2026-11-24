@@ -40,7 +40,8 @@ import {
 import { scanPaymentReceipt } from '../../payment_scanner.js';
 import {
   createStudentPaymentLedger,
-  formatStudentPaymentStatus
+  formatStudentPaymentStatus,
+  getLessonPaymentStartAt
 } from '../../student_payment_ledger.js';
 import {
   clearAgentQr,
@@ -890,9 +891,16 @@ async function startAgent() {
 
           if (isPaymentStatusRequest(aggregatedText)) {
             const student = lessonManager.getStudent(jid, phoneJid);
+            const lessonStartedAt = getLessonPaymentStartAt(student);
+            if (!lessonStartedAt) {
+              await sock.sendMessage(jid, {
+                text: 'فترة الاشتراك بتبدأ من يوم استلام أول درس. حتقدر تتابع حالة الدفع بعد ما يبدأ الدرس.'
+              });
+              return;
+            }
             const payment = studentPaymentLedger.getCurrent(
               phoneJid || jid,
-              student?.enrolledAt || student?.deliveredAt || new Date().toISOString()
+              lessonStartedAt
             );
             await sock.sendMessage(jid, {
               text: formatStudentPaymentStatus(payment)
@@ -920,9 +928,16 @@ async function startAgent() {
 
           if (paidClaim || scannedPayment) {
             const student = lessonManager.getStudent(jid, phoneJid);
+            const lessonStartedAt = getLessonPaymentStartAt(student);
+            if (!lessonStartedAt) {
+              await sock.sendMessage(jid, {
+                text: 'فترة الاشتراك بتبدأ من يوم استلام أول درس. أرسل /paid بعد ما يبدأ الدرس.'
+              });
+              return;
+            }
             try {
               const payment = studentPaymentLedger.recordClaim(phoneJid || jid, {
-                enrolledAt: student?.enrolledAt || student?.deliveredAt || new Date().toISOString(),
+                enrolledAt: lessonStartedAt,
                 source: scannedPayment ? 'whatsapp-receipt' : 'whatsapp-claim',
                 details: scannedPayment?.details || null
               });

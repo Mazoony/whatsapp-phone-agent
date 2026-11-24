@@ -7,6 +7,7 @@ import { sendHumanizedMessage } from './humanization.js';
 import { historyManager } from './history.js';
 import { findLessonForMediaActivity } from './lesson_media_retry.js';
 import { getPhoneJid } from './phonebook.js';
+import { getLessonPaymentStartAt } from './student_payment_ledger.js';
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve('data');
@@ -507,15 +508,21 @@ class LessonManager {
       );
       return false;
     }
-    const existing = this.getStudent(jid, phoneJid)?.treasureIsland || {};
+    const previousProgress = this.getStudent(jid, phoneJid);
+    const deliveredAt = new Date().toISOString();
+    const lessonStartedAt = getLessonPaymentStartAt(previousProgress) || deliveredAt;
+    const existing = previousProgress?.treasureIsland || {};
     this.setTreasureIslandState(jid, phoneJid, {
       ...existing,
       activeLessonId: lesson.id,
       lastLessonId: lesson.id,
       status: 'awaiting_task',
-      deliveredAt: new Date().toISOString(),
+      deliveredAt,
       pendingLessonSelection: false
     });
+    const updatedProgress = this.getStudent(jid, phoneJid);
+    updatedProgress.firstLessonStartedAt ||= lessonStartedAt;
+    this.saveProgress();
     console.log(`[LessonManager] Delivered Treasure Island ${lesson.title} video and exercise to ${jid} (${videoAbsolutePath}).`);
     return true;
   }
@@ -972,6 +979,7 @@ class LessonManager {
       exerciseScores,
       status: lesson.hasExercise === false ? 'completed' : 'awaiting_task',
       deliveredAt,
+      firstLessonStartedAt: getLessonPaymentStartAt(previousProgress) || deliveredAt,
       enrolledAt: previousProgress?.enrolledAt || deliveredAt
     };
     this.progress[jid] = progressEntry;

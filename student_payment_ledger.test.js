@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
   createStudentPaymentLedger,
   formatStudentPaymentStatus,
+  getLessonPaymentStartAt,
   getRollingPaymentPeriod,
   PAYMENT_PERIOD_MS
 } from './student_payment_ledger.js';
@@ -23,7 +24,7 @@ test('student payment status messages are in Sudanese Arabic', () => {
   assert.match(formatStudentPaymentStatus({ ...payment, status: 'unpaid' }), /ما في دفع مؤكد/);
 });
 
-test('rolling payment periods begin at enrollment and advance every 30 days', () => {
+test('rolling payment periods begin at the first lesson and advance every 30 days', () => {
   const enrolledAt = Date.parse('2026-01-01T12:00:00.000Z');
   assert.deepEqual(getRollingPaymentPeriod(enrolledAt, enrolledAt + 10 * 24 * 60 * 60 * 1000), {
     cycle: 1,
@@ -35,6 +36,23 @@ test('rolling payment periods begin at enrollment and advance every 30 days', ()
     periodStart: new Date(enrolledAt + PAYMENT_PERIOD_MS).toISOString(),
     periodEnd: new Date(enrolledAt + 2 * PAYMENT_PERIOD_MS).toISOString()
   });
+});
+
+test('lesson payment start prefers first delivery evidence and excludes unstarted students', () => {
+  assert.equal(getLessonPaymentStartAt({
+    enrolledAt: '2026-01-01T12:00:00.000Z',
+    joinedAt: '2026-01-01T12:00:00.000Z',
+    deliveredAt: '2026-01-20T12:00:00.000Z',
+    lessonCompletionTimestamps: ['2026-01-10T12:00:00.000Z']
+  }), '2026-01-10T12:00:00.000Z');
+  assert.equal(getLessonPaymentStartAt({
+    enrolledAt: '2026-01-01T12:00:00.000Z',
+    joinedAt: '2026-01-01T12:00:00.000Z'
+  }), null);
+  assert.equal(getLessonPaymentStartAt({
+    enrolledAt: '2026-01-01T12:00:00.000Z',
+    treasureIsland: { deliveredAt: '2026-01-10T12:00:00.000Z' }
+  }), '2026-01-10T12:00:00.000Z');
 });
 
 test('payment claims remain pending until reviewed and a later period starts unpaid', t => {
@@ -91,6 +109,36 @@ test('payment claims remain pending until reviewed and a later period starts unp
   assert.equal(nextPeriod.cycle, 2);
 });
 
+test('changing the payment anchor preserves the active payment in the new lesson period', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'student-payment-reanchor-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const ledger = createStudentPaymentLedger(path.join(directory, 'ledger.json'));
+  const studentKey = 'telegram:-100123:44';
+  const joinedAt = '2026-02-01T12:00:00.000Z';
+  const lessonStartedAt = '2026-02-10T12:00:00.000Z';
+  const reviewedAt = '2026-03-10T12:00:00.000Z';
+
+  ledger.setStatus(studentKey, {
+    enrolledAt: joinedAt,
+    status: 'paid',
+    amount: 17000,
+    currency: 'SDG',
+    reviewedAt
+  });
+
+  const payment = ledger.getCurrent(
+    studentKey,
+    lessonStartedAt,
+    Date.parse('2026-03-15T12:00:00.000Z')
+  );
+  assert.equal(payment.status, 'paid');
+  assert.equal(payment.periodStart, '2026-03-12T12:00:00.000Z');
+  assert.equal(payment.paidAt, reviewedAt);
+  const record = ledger.list()[studentKey];
+  assert.equal(record.enrolledAt, lessonStartedAt);
+  assert.deepEqual(Object.keys(record.periods), [payment.periodStart]);
+});
+
 test('payment information delivery is tracked and can be manually retried', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'student-payment-info-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -135,6 +183,43 @@ test('payment information delivery is tracked and can be manually retried', t =>
   assert.ok(delivery.attemptedAt);
   assert.equal(delivery.lastError, null);
   assert.equal(delivery.inProgress, false);
+});
+
+test('payment statuses for multiple students read the ledger once', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'student-payment-batch-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const filePath = path.join(directory, 'ledger.json');
+  const ledger = createStudentPaymentLedger(filePath);
+  const enrolledAt = '2026-01-01T12:00:00.000Z';
+  const now = Date.parse('2026-01-10T12:00:00.000Z');
+  ledger.setStatus('student-paid', {
+    enrolledAt,
+    status: 'paid',
+    reviewedAt: '2026-01-05T12:00:00.000Z'
+  });
+
+  const originalReadFileSync = fs.readFileSync;
+  let ledgerReadCount = 0;
+  fs.readFileSync = function(file, ...args) {
+    if (path.resolve(String(file)) === path.resolve(filePath)) ledgerReadCount += 1;
+    return originalReadFileSync.call(this, file, ...args);
+  };
+  let currentPayments;
+  try {
+    currentPayments = ledger.getCurrentForStudents([
+      { studentKey: 'student-paid', enrolledAt },
+      { studentKey: 'student-unpaid', enrolledAt }
+    ], now);
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+
+  assert.equal(ledgerReadCount, 1);
+  assert.deepEqual(currentPayments.map(item => item.payment.status), ['paid', 'unpaid']);
+  assert.deepEqual(
+    currentPayments.map(item => item.paymentInformationDelivery.status),
+    ['not_sent', 'not_sent']
+  );
 });
 
 test('payment ledger rejects invalid status, amount, currency, and enrollment dates', t => {
