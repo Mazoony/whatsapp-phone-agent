@@ -433,6 +433,11 @@
     .historical-payment-form input, .historical-payment-form select { width: 100%; min-width: 0; min-height: 36px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: white; font: inherit; font-size: 11px; }
     .historical-payment-form .historical-payment-file, .historical-payment-form .historical-payment-submit { grid-column: span 2; }
     .historical-payment-form .historical-payment-submit { justify-self: start; min-height: 36px; }
+    .historical-payment-form .historical-payment-file input[type="file"]::file-selector-button { margin-right: 8px; padding: 6px 10px; border: 1px solid #b9ddc4; border-radius: 6px; color: #286442; background: #f3fbf6; font: inherit; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s; }
+    .historical-payment-form .historical-payment-file input[type="file"]::file-selector-button:hover { border-color: #8fbea0; background: #e4f4ea; }
+    .historical-payment-form .historical-payment-file input[type="file"]:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+    :root[data-theme="dark"] .historical-payment-form .historical-payment-file input[type="file"]::file-selector-button { border-color: #365b45; color: #b8f0d0; background: #244333; }
+    :root[data-theme="dark"] .historical-payment-form .historical-payment-file input[type="file"]::file-selector-button:hover { border-color: #4a795b; background: #2c5140; }
     .historical-payment-note, .historical-payment-status { margin: 8px 0 0; color: var(--muted); font-size: 10px; }
     .historical-payment-status.error { color: var(--red); }
     .historical-payment-receipt { color: var(--green); font-size: 10px; font-weight: 650; }
