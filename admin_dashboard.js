@@ -1,9 +1,16 @@
 import http from 'node:http';
+import https from 'node:https';
 import { spawn } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import {
+  constants as zlibConstants,
+  createBrotliCompress,
+  createGzip
+} from 'node:zlib';
 import { DashboardAuth } from './dashboard_auth.js';
 import { generateLessonAnswerKey } from './answer_key_generator.js';
 import { getPhoneJid } from './phonebook.js';
@@ -402,11 +409,10 @@ function getTelegramClassStatistics(progress, lessons, groupGrades, now, timeZon
     classStats.groupIds.add(chatId);
     classes.set(grade, classStats);
   }
-  for (const [studentKey, student] of Object.entries(progress || {})) {
-    if (!student || typeof student !== 'object') continue;
+  for (const { student, studentKey } of getTelegramUniqueStudentRecords(progress)) {
     const grade = groupGrades.get(String(student.telegramChatId)) ||
-      student.grade ||
-      config.defaultStudentGrade;
+      (typeof student.grade === 'string' && lessons[student.grade] ? student.grade : null) ||
+      'unassigned';
     const classStats = classes.get(grade) || { grade, groupIds: new Set(), students: new Map() };
     if (student.telegramChatId) classStats.groupIds.add(String(student.telegramChatId));
     const userId = String(student.telegramUserId || studentKey.split(':').at(-1));
@@ -428,7 +434,7 @@ function getTelegramClassStatistics(progress, lessons, groupGrades, now, timeZon
   }
 
   const today = calendarDateKey(now, timeZone);
-  const weekCutoff = now - 7 * 24 * 60 * 60 * 1000;
+  const recentDates = new Set(getRecentCalendarDates(now, 7, timeZone));
   const dates = getCalendarDatesEndingAt(
     trendEndDate || calendarDateKey(now, timeZone),
     30
@@ -447,16 +453,15 @@ function getTelegramClassStatistics(progress, lessons, groupGrades, now, timeZon
           const date = calendarDateKey(joinedAt, timeZone);
           joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
           if (date === today) joinedToday += 1;
-          if (joinedAt >= weekCutoff) joinedLast7Days += 1;
+          if (recentDates.has(date)) joinedLast7Days += 1;
         }
-        const activeDates = new Set(telegramActivityTimestamps(student)
+        const activityDates = new Set(telegramActivityTimestamps(student)
           .filter(timestamp => timestamp <= now)
           .map(timestamp => calendarDateKey(timestamp, timeZone)));
-        for (const date of activeDates) {
-          activeByDate.set(date, (activeByDate.get(date) || 0) + 1);
+        for (const date of activityDates) {
+          if (recentDates.has(date)) activeByDate.set(date, (activeByDate.get(date) || 0) + 1);
         }
-        if (telegramActivityTimestamps(student).some(timestamp =>
-          timestamp >= weekCutoff && timestamp <= now)) {
+        if ([...activityDates].some(date => recentDates.has(date))) {
           activeLearnersLast7Days += 1;
         }
       }
@@ -466,7 +471,9 @@ function getTelegramClassStatistics(progress, lessons, groupGrades, now, timeZon
       );
       return {
         grade,
-        name: lessons[grade]?.name || grade,
+        name: lessons[grade]?.name || (grade === 'unassigned'
+          ? 'Unassigned (missing group mapping)'
+          : grade),
         groupIds: [...groupIds].sort(),
         students: studentRecords.length,
         joinedToday,
@@ -497,17 +504,32 @@ function getTelegramUniqueStudentRecords(progress) {
       student.lastTelegramGroupActivityAt || student.lastActivityAt || student.groupJoinedAt || ''
     );
     const previousActivityAt = Date.parse(
-      previous?.lastTelegramGroupActivityAt ||
-      previous?.lastActivityAt ||
-      previous?.groupJoinedAt ||
+      previous?.student.lastTelegramGroupActivityAt ||
+      previous?.student.lastActivityAt ||
+      previous?.student.groupJoinedAt ||
       ''
     );
     if (!previous || (Number.isFinite(activityAt) &&
         (!Number.isFinite(previousActivityAt) || activityAt > previousActivityAt))) {
-      students.set(userId, student);
+      students.set(userId, { student, studentKey });
     }
   }
-  return [...students.entries()].map(([userId, student]) => ({ userId, student }));
+  return [...students.entries()].map(([userId, record]) => ({
+    userId,
+    student: record.student,
+    studentKey: record.studentKey
+  }));
+}
+
+function getTelegramUniqueJoinCountsByDate(progress, timeZone, now) {
+  const joinsByDate = new Map();
+  for (const { student } of getTelegramUniqueStudentRecords(progress)) {
+    const joinedAt = Date.parse(student.groupJoinedAt || '');
+    if (!Number.isFinite(joinedAt) || joinedAt > now) continue;
+    const date = calendarDateKey(joinedAt, timeZone);
+    joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
+  }
+  return joinsByDate;
 }
 
 function addLessonCompletionStats(gradeCurriculum, studentsProgress) {
@@ -997,7 +1019,12 @@ function telegramActivityTimestamps(student) {
   return Number.isFinite(fallback) ? [fallback] : [];
 }
 
-function getTelegramJoinPeaksByWeekday(telegramStudents, timeZone) {
+function getTelegramJoinPeaksByWeekday(
+  telegramStudents,
+  timeZone,
+  periodStart = null,
+  periodEnd = null
+) {
   let formatter;
   try {
     formatter = new Intl.DateTimeFormat('en-US', {
@@ -1016,6 +1043,9 @@ function getTelegramJoinPeaksByWeekday(telegramStudents, timeZone) {
   for (const student of telegramStudents) {
     const joinedAt = Date.parse(student.joinedAt || '');
     if (!Number.isFinite(joinedAt)) continue;
+    const joinDate = calendarDateKey(joinedAt, timeZone);
+    if ((periodStart && joinDate < periodStart) ||
+        (periodEnd && joinDate > periodEnd)) continue;
     const parts = Object.fromEntries(
       formatter.formatToParts(new Date(joinedAt)).map(part => [part.type, part.value])
     );
@@ -1142,7 +1172,11 @@ export function listDashboardStudentProgress(
       ...exerciseScore
     };
   });
-  const telegramProgress = Object.entries(data.telegramProgress || {});
+  const telegramProgress = getTelegramUniqueStudentRecords(data.telegramProgress)
+    .map(({ userId, studentKey, student }) => [
+      studentKey || `telegram:${student.telegramChatId || ''}:${userId}`,
+      student
+    ]);
   const telegramStudents = telegramProgress.map(([key, student]) => {
     const activityTimestamps = telegramActivityTimestamps(student)
       .filter(timestamp => Number.isFinite(timestamp) && timestamp <= nowTimestamp);
@@ -1736,15 +1770,15 @@ export function getDashboardOverview(data, now = Date.now(), timeZone = 'UTC', w
     timestampMs(latestMessage(messages)?.timestamp) >= recentWindow).length;
   const progressRecords = Object.values(data.progress);
   const telegramProgressRecords = Object.values(data.telegramProgress || {});
-  const joinedDates = telegramProgressRecords
-    .map(student => Date.parse(student.groupJoinedAt || ''))
-    .filter(timestamp => Number.isFinite(timestamp) && timestamp <= nowTimestamp)
-    .map(timestamp => calendarDateKey(timestamp, timeZone));
+  const joinsByDate = getTelegramUniqueJoinCountsByDate(
+    data.telegramProgress || {},
+    timeZone,
+    nowTimestamp
+  );
   const today = calendarDateKey(nowTimestamp, timeZone);
-  const recentDates = new Set(getRecentCalendarDates(nowTimestamp, 7, timeZone));
   const telegramDailyJoins = getRecentCalendarDates(nowTimestamp, 7, timeZone).map(date => ({
     date,
-    students: joinedDates.filter(joinedDate => joinedDate === date).length
+    students: joinsByDate.get(date) || 0
   }));
   const configuredLessonCount = Object.values(data.lessons)
     .reduce((total, grade) => total + (grade.lessons?.length || 0), 0);
@@ -1773,8 +1807,9 @@ export function getDashboardOverview(data, now = Date.now(), timeZone = 'UTC', w
     completed: [...progressRecords, ...telegramProgressRecords]
       .filter(student => student.status === 'completed').length,
     telegramStudents: telegramProgressRecords.length,
-    telegramJoinedToday: joinedDates.filter(joinedDate => joinedDate === today).length,
-    telegramJoinedLast7Days: joinedDates.filter(joinedDate => recentDates.has(joinedDate)).length,
+    telegramJoinedToday: joinsByDate.get(today) || 0,
+    telegramJoinedLast7Days: getRecentCalendarDates(nowTimestamp, 7, timeZone)
+      .reduce((total, date) => total + (joinsByDate.get(date) || 0), 0),
     telegramDailyJoins,
     configuredLessons: configuredLessonCount
   };
@@ -2190,6 +2225,92 @@ function sendJson(res, statusCode, payload) {
     'X-Content-Type-Options': 'nosniff'
   });
   res.end(JSON.stringify(payload));
+}
+
+function matchesDashboardBridgeToken(suppliedToken, expectedToken) {
+  if (typeof suppliedToken !== 'string' || !expectedToken) return false;
+  const supplied = Buffer.from(suppliedToken);
+  const expected = Buffer.from(expectedToken);
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+
+function proxyDashboardRequest(req, res, target, bridgeToken, remoteCa) {
+  const upstreamUrl = new URL(req.url, target);
+  const transport = upstreamUrl.protocol === 'https:' ? https : http;
+  const headers = { ...req.headers };
+  delete headers.host;
+  delete headers.connection;
+  headers['x-dashboard-bridge-token'] = bridgeToken;
+
+  const upstreamRequest = transport.request(upstreamUrl, {
+    method: req.method,
+    headers,
+    ...(remoteCa ? { ca: remoteCa } : {})
+  }, upstreamResponse => {
+    const responseHeaders = { ...upstreamResponse.headers };
+    delete responseHeaders.connection;
+    delete responseHeaders['keep-alive'];
+    delete responseHeaders.upgrade;
+    delete responseHeaders.trailer;
+    res.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
+    upstreamResponse.pipe(res);
+  });
+
+  upstreamRequest.setTimeout(30_000, () => {
+    upstreamRequest.destroy(new Error('Remote dashboard request timed out.'));
+  });
+  upstreamRequest.on('error', error => {
+    if (res.headersSent) {
+      res.destroy(error);
+      return;
+    }
+    console.error('[Admin Dashboard] Remote dashboard request failed:', error.message);
+    sendJson(res, 502, {
+      error: 'Could not reach the phone dashboard. Check its connection and address.'
+    });
+  });
+  req.on('aborted', () => upstreamRequest.destroy());
+  res.on('close', () => {
+    if (!res.writableEnded) upstreamRequest.destroy();
+  });
+  req.pipe(upstreamRequest);
+}
+
+function getPreferredHtmlEncoding(req) {
+  const rawHeader = req.headers['accept-encoding'];
+  const header = Array.isArray(rawHeader) ? rawHeader.join(',') : rawHeader || '';
+  const encodings = new Map(header.split(',').map(entry => {
+    const [encoding, ...parameters] = entry.trim().split(';');
+    const qualityParameter = parameters.find(parameter => /^\s*q=/i.test(parameter));
+    const quality = qualityParameter
+      ? Number(qualityParameter.slice(qualityParameter.indexOf('=') + 1))
+      : 1;
+    return [encoding.toLowerCase(), Number.isFinite(quality)
+      ? Math.min(1, Math.max(0, quality))
+      : 0];
+  }));
+  const quality = encoding => encodings.has(encoding)
+    ? encodings.get(encoding)
+    : encodings.get('*') || 0;
+  const brotliQuality = quality('br');
+  const gzipQuality = quality('gzip');
+  if (brotliQuality > 0 && brotliQuality >= gzipQuality) return 'br';
+  return gzipQuality > 0 ? 'gzip' : null;
+}
+
+function streamDashboardHtml(htmlPath, res, encoding) {
+  const streams = [fs.createReadStream(htmlPath)];
+  if (encoding === 'br') {
+    streams.push(createBrotliCompress({
+      params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 }
+    }));
+  } else if (encoding === 'gzip') {
+    streams.push(createGzip());
+  }
+  streams.push(res);
+  pipeline(...streams, error => {
+    if (error) console.error('[Admin Dashboard] Could not stream dashboard HTML:', error.message);
+  });
 }
 
 function isSameOriginLoopbackRequest(req) {
@@ -2657,6 +2778,12 @@ export function createAdminDashboardServer({
   authManager = new DashboardAuth(authFile),
   viewerAuthFile = path.join(ROOT_DIR, 'data', 'admin_viewer_auth.json'),
   viewerAuthManager = new DashboardAuth(viewerAuthFile, { cookieName: 'eshool_dashboard_viewer' }),
+  bridgeToken = process.env.ADMIN_BRIDGE_TOKEN,
+  tlsKeyFile = process.env.ADMIN_TLS_KEY_FILE,
+  tlsCertFile = process.env.ADMIN_TLS_CERT_FILE,
+  remoteDashboardUrl = process.env.ADMIN_REMOTE_URL,
+  remoteDashboardToken = process.env.ADMIN_REMOTE_TOKEN,
+  remoteCaFile = process.env.ADMIN_REMOTE_CA_FILE,
   contactSyncRequestsFile = CONTACT_SYNC_REQUESTS_FILE,
   contactSyncStatusFile = CONTACT_SYNC_STATUS_FILE,
   blockedContactsFile = BLOCKED_NUMBERS_FILE,
@@ -2701,6 +2828,45 @@ export function createAdminDashboardServer({
   whatsappLessonSkipRequestsFile = WHATSAPP_LESSON_SKIP_REQUESTS_FILE,
   telegramLessonSkipRequestsFile = TELEGRAM_LESSON_SKIP_REQUESTS_FILE
 } = {}) {
+  const dashboardBridgeToken = typeof bridgeToken === 'string' ? bridgeToken.trim() : '';
+  const dashboardRemoteToken = typeof remoteDashboardToken === 'string'
+    ? remoteDashboardToken.trim()
+    : '';
+  if (dashboardBridgeToken && dashboardBridgeToken.length < 32) {
+    throw new Error('ADMIN_BRIDGE_TOKEN must contain at least 32 characters.');
+  }
+  if (Boolean(remoteDashboardUrl) !== Boolean(dashboardRemoteToken)) {
+    throw new Error('ADMIN_REMOTE_URL and ADMIN_REMOTE_TOKEN must be configured together.');
+  }
+  if (dashboardRemoteToken && dashboardRemoteToken.length < 32) {
+    throw new Error('ADMIN_REMOTE_TOKEN must contain at least 32 characters.');
+  }
+  let dashboardRemoteTarget = null;
+  if (remoteDashboardUrl) {
+    dashboardRemoteTarget = new URL(remoteDashboardUrl);
+    if (!['http:', 'https:'].includes(dashboardRemoteTarget.protocol) ||
+        dashboardRemoteTarget.username ||
+        dashboardRemoteTarget.password ||
+        dashboardRemoteTarget.pathname !== '/' ||
+        dashboardRemoteTarget.search ||
+        dashboardRemoteTarget.hash) {
+      throw new Error('ADMIN_REMOTE_URL must be an HTTP(S) dashboard origin without a path.');
+    }
+    if (dashboardRemoteTarget.protocol !== 'https:' &&
+        !['127.0.0.1', 'localhost', '[::1]'].includes(dashboardRemoteTarget.hostname)) {
+      throw new Error('ADMIN_REMOTE_URL must use HTTPS when connecting to another device.');
+    }
+  }
+  if (Boolean(tlsKeyFile) !== Boolean(tlsCertFile)) {
+    throw new Error('ADMIN_TLS_KEY_FILE and ADMIN_TLS_CERT_FILE must be configured together.');
+  }
+  const dashboardTlsOptions = tlsKeyFile
+    ? {
+        key: fs.readFileSync(tlsKeyFile),
+        cert: fs.readFileSync(tlsCertFile)
+      }
+    : null;
+  const dashboardRemoteCa = remoteCaFile ? fs.readFileSync(remoteCaFile) : null;
   let launchedAgent = null;
   const blockedContacts = createBlockedContactsStore(blockedContactsFile);
   const contactGenders = createContactGenderStore(contactGenderFile);
@@ -3215,13 +3381,11 @@ export function createAdminDashboardServer({
             activeLearners: 0
           }));
           const dailyByDate = new Map(dailyStats.map(day => [day.date, day]));
-          const joinsByDate = new Map();
-          for (const student of Object.values(telegramProgress)) {
-            const joinedAt = Date.parse(student?.groupJoinedAt || '');
-            if (!Number.isFinite(joinedAt) || joinedAt > now) continue;
-            const date = calendarDateKey(joinedAt, timeZone);
-            joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
-          }
+          const joinsByDate = getTelegramUniqueJoinCountsByDate(
+            telegramProgress,
+            timeZone,
+            now
+          );
           for (const day of dailyStats) day.joins = joinsByDate.get(day.date) || 0;
           for (const { student } of uniqueTelegramRecords) {
             const activeDates = new Set(telegramActivityTimestamps(student)
@@ -3327,7 +3491,10 @@ export function createAdminDashboardServer({
     }
   }
 
-  const server = http.createServer((req, res) => {
+  const createServer = dashboardTlsOptions
+    ? listener => https.createServer(dashboardTlsOptions, listener)
+    : listener => http.createServer(listener);
+  const server = createServer((req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -3336,6 +3503,33 @@ export function createAdminDashboardServer({
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     res.setHeader('Cache-Control', 'no-store');
     const requestUrl = new URL(req.url, 'http://127.0.0.1');
+    const isDashboardApi = requestUrl.pathname.startsWith('/api/admin/') ||
+      requestUrl.pathname.startsWith('/api/viewer/');
+    const isTrustedBridgeRequest = matchesDashboardBridgeToken(
+      req.headers['x-dashboard-bridge-token'],
+      dashboardBridgeToken
+    );
+
+    if (dashboardBridgeToken && isDashboardApi && !isTrustedBridgeRequest) {
+      sendJson(res, 401, { error: 'Dashboard bridge authentication required.' });
+      return;
+    }
+
+    if (dashboardRemoteTarget && isDashboardApi) {
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) &&
+          !isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Dashboard requests must come from this local dashboard.' });
+        return;
+      }
+      proxyDashboardRequest(
+        req,
+        res,
+        dashboardRemoteTarget,
+        dashboardRemoteToken,
+        dashboardRemoteCa
+      );
+      return;
+    }
 
     if (requestUrl.pathname.startsWith('/api/admin/auth/')) {
       if (req.method === 'GET' && requestUrl.pathname === '/api/admin/auth/status') {
@@ -3350,7 +3544,7 @@ export function createAdminDashboardServer({
 
       if (req.method === 'POST' &&
           ['/api/admin/auth/setup', '/api/admin/auth/login', '/api/admin/auth/logout'].includes(requestUrl.pathname)) {
-        if (!isSameOriginLoopbackRequest(req)) {
+        if (!isTrustedBridgeRequest && !isSameOriginLoopbackRequest(req)) {
           sendJson(res, 403, { error: 'Dashboard authentication requests must come from this local dashboard.' });
           return;
         }
@@ -3410,11 +3604,11 @@ export function createAdminDashboardServer({
       if (req.method === 'POST' &&
           ['/api/viewer/auth/setup', '/api/viewer/auth/login', '/api/viewer/auth/logout'].includes(requestUrl.pathname)) {
         const isSetup = requestUrl.pathname === '/api/viewer/auth/setup';
-        if (isSetup && !isSameOriginLoopbackRequest(req)) {
+        if (isSetup && !isTrustedBridgeRequest && !isSameOriginLoopbackRequest(req)) {
           sendJson(res, 403, { error: 'Viewer access can only be set up from this local dashboard.' });
           return;
         }
-        if (!isSetup && !isSameOriginDashboardRequest(req)) {
+        if (!isSetup && !isTrustedBridgeRequest && !isSameOriginDashboardRequest(req)) {
           sendJson(res, 403, { error: 'Viewer authentication must come from this dashboard.' });
           return;
         }
@@ -3475,7 +3669,8 @@ export function createAdminDashboardServer({
 
     if (isAdminApi &&
         ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) &&
-        (!isAdminAuthenticated || !isSameOriginLoopbackRequest(req))) {
+        (!isAdminAuthenticated ||
+          (!isTrustedBridgeRequest && !isSameOriginLoopbackRequest(req)))) {
       sendJson(res, 403, {
         error: 'State-changing dashboard requests require a local admin session.'
       });
@@ -3568,13 +3763,20 @@ export function createAdminDashboardServer({
         );
         const sumClassStatistics = key => telegramClasses.reduce((total, classStats) =>
           total + classStats[key], 0);
+        const joinsByDate = getTelegramUniqueJoinCountsByDate(
+          telegramProgress,
+          timeZone,
+          now
+        );
+        const joinsLast7Days = getRecentCalendarDates(now, 7, timeZone)
+          .reduce((total, date) => total + (joinsByDate.get(date) || 0), 0);
         sendJson(res, 200, {
           telegramStudents: uniqueStudents.length,
           telegramGenderStatistics,
           telegramLessonsCompleted: sumClassStatistics('lessonsCompleted'),
           telegramLessonCompletionsLast7Days: sumClassStatistics('lessonCompletionsLast7Days'),
-          telegramJoinedToday: sumClassStatistics('joinedToday'),
-          telegramJoinedLast7Days: sumClassStatistics('joinedLast7Days'),
+          telegramJoinedToday: joinsByDate.get(today) || 0,
+          telegramJoinedLast7Days: joinsLast7Days,
           awaitingTask: sumClassStatistics('awaitingTask'),
           awaitingReattempt: sumClassStatistics('awaitingReattempt'),
           completed: sumClassStatistics('completed'),
@@ -3805,6 +4007,35 @@ export function createAdminDashboardServer({
       return;
     }
 
+    if (req.method === 'POST' &&
+        requestUrl.pathname === '/api/admin/telegram-presence-sync') {
+      if (!isSameOriginLoopbackRequest(req)) {
+        sendJson(res, 403, { error: 'Telegram presence sync requests are only accepted locally.' });
+        return;
+      }
+      try {
+        const state = readJsonFileOr(telegramUserBroadcastFiles.state, {});
+        if (!state || typeof state !== 'object' || Array.isArray(state)) {
+          throw new Error('Invalid Telegram account broadcast state.');
+        }
+        const requestedAt = new Date().toISOString();
+        writeJsonFile(telegramUserBroadcastFiles.state, {
+          ...state,
+          groupRosterSyncRequestId: randomUUID(),
+          groupRosterSyncRequestedAt: requestedAt
+        });
+        sendJson(res, 202, {
+          status: 'queued',
+          requestedAt,
+          note: 'The Telegram account sender must be running to process this request.'
+        });
+      } catch (error) {
+        console.error('[Admin Dashboard] Could not request Telegram presence sync:', error.message);
+        sendJson(res, 500, { error: 'Could not request Telegram presence sync.' });
+      }
+      return;
+    }
+
     if (req.method === 'GET' && requestUrl.pathname === '/api/admin/telegram-stats') {
       const timeZone = requestUrl.searchParams.get('timeZone') || 'UTC';
       try {
@@ -3819,6 +4050,11 @@ export function createAdminDashboardServer({
       const requestedEndDate = requestUrl.searchParams.get('endDate') || today;
       if (!isValidCalendarDateKey(requestedEndDate) || requestedEndDate > today) {
         sendJson(res, 400, { error: 'A valid past or current end date is required.' });
+        return;
+      }
+      const requestedDays = Number(requestUrl.searchParams.get('days') || 30);
+      if (![7, 30, 90].includes(requestedDays)) {
+        sendJson(res, 400, { error: 'The activity period must be 7, 30, or 90 days.' });
         return;
       }
 
@@ -3848,18 +4084,24 @@ export function createAdminDashboardServer({
               activeByDate.set(date, (activeByDate.get(date) || 0) + 1);
             }
           }
-          const joinsByDate = new Map();
-          for (const student of Object.values(telegramProgress)) {
-            const joinedAt = Date.parse(student?.groupJoinedAt || '');
-            if (!Number.isFinite(joinedAt) || joinedAt > now) continue;
-            const date = calendarDateKey(joinedAt, timeZone);
-            joinsByDate.set(date, (joinsByDate.get(date) || 0) + 1);
-          }
-          const dailyStats = getCalendarDatesEndingAt(requestedEndDate, 30).map(date => ({
+          const joinsByDate = getTelegramUniqueJoinCountsByDate(
+            telegramProgress,
+            timeZone,
+            now
+          );
+          const dailyStats = getCalendarDatesEndingAt(requestedEndDate, requestedDays).map(date => ({
             date,
             joins: joinsByDate.get(date) || 0,
             activeLearners: activeByDate.get(date) || 0
           }));
+          const joinWeekdayHours = getTelegramJoinPeaksByWeekday(
+            uniqueTelegramRecords.map(({ student }) => ({
+              joinedAt: student.groupJoinedAt
+            })),
+            timeZone,
+            dailyStats[0].date,
+            requestedEndDate
+          );
           const joinsLast7Days = getRecentCalendarDates(now, 7, timeZone)
             .reduce((total, date) => total + (joinsByDate.get(date) || 0), 0);
           sendJson(res, 200, {
@@ -3876,6 +4118,7 @@ export function createAdminDashboardServer({
             onlineGroupMembersUpdatedAt: Number.isFinite(onlineCountUpdatedAt)
               ? telegramAccountState.onlineGroupMembersUpdatedAt
               : null,
+            onlineGroupMembersLastCheckedAt: telegramAccountState.groupRosterSyncedAt || null,
             onlineGroupMembersStatus: onlineCountIsFresh
               ? 'available'
               : Number.isFinite(onlineCountUpdatedAt) ? 'stale' : 'unavailable',
@@ -3885,7 +4128,8 @@ export function createAdminDashboardServer({
             periodStart: dailyStats[0].date,
             periodEnd: requestedEndDate,
             groupMemberHistory,
-            dailyStats
+            dailyStats,
+            joinWeekdayHours
           });
         }).catch(error => {
           console.error('[Admin Dashboard] Could not load Telegram statistics:', error.message);
@@ -4087,13 +4331,17 @@ export function createAdminDashboardServer({
     if (req.method === 'GET' &&
         ['/', '/admin', '/viewer'].includes(requestUrl.pathname)) {
       const htmlPath = path.join(ROOT_DIR, 'public', 'admin.html');
-      res.writeHead(200, {
+      const encoding = getPreferredHtmlEncoding(req);
+      const responseHeaders = {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
-        'Referrer-Policy': 'no-referrer'
-      });
-      fs.createReadStream(htmlPath).pipe(res);
+        'Referrer-Policy': 'no-referrer',
+        Vary: 'Accept-Encoding'
+      };
+      if (encoding) responseHeaders['Content-Encoding'] = encoding;
+      res.writeHead(200, responseHeaders);
+      streamDashboardHtml(htmlPath, res, encoding);
       return;
     }
 
@@ -6846,14 +7094,28 @@ export function createAdminDashboardServer({
 const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMainModule) {
   const port = Number.parseInt(process.env.ADMIN_PORT || '3001', 10);
+  const bindHost = process.env.ADMIN_HOST?.trim() || '127.0.0.1';
+  const bridgeToken = process.env.ADMIN_BRIDGE_TOKEN?.trim() || '';
+  const hasTlsFiles = Boolean(
+    process.env.ADMIN_TLS_KEY_FILE && process.env.ADMIN_TLS_CERT_FILE
+  );
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('ADMIN_PORT must be a valid TCP port.');
   }
+  if (!['127.0.0.1', 'localhost', '::1'].includes(bindHost) &&
+      (bridgeToken.length < 32 || !hasTlsFiles)) {
+    throw new Error(
+      'A 32-character ADMIN_BRIDGE_TOKEN and TLS certificate/key are required when ADMIN_HOST is not loopback.'
+    );
+  }
 
   const server = createAdminDashboardServer({
-    overviewWorkbookFile: OVERVIEW_WORKBOOK_FILE
+    overviewWorkbookFile: process.env.ADMIN_REMOTE_URL
+      ? null
+      : OVERVIEW_WORKBOOK_FILE,
+    bridgeToken
   });
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`[Admin Dashboard] Running locally at http://127.0.0.1:${port}`);
+  server.listen(port, bindHost, () => {
+    console.log(`[Admin Dashboard] Running at ${hasTlsFiles ? 'https' : 'http'}://${bindHost}:${port}`);
   });
 }

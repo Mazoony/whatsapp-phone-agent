@@ -105,6 +105,7 @@ export class TelegramUserBroadcastWorker {
     this.logger = logger;
     this.processing = false;
     this.lastGroupRosterSyncAttemptAt = 0;
+    this.lastGroupRosterSyncRequestId = null;
     this.accountUserId = null;
     this.accountUserIdLoaded = false;
   }
@@ -498,7 +499,13 @@ export class TelegramUserBroadcastWorker {
     try {
     while (!signal?.aborted) {
       try {
-        if (Date.now() - this.lastGroupRosterSyncAttemptAt >= GROUP_ROSTER_SYNC_INTERVAL_MS) {
+        const state = this.getState();
+        const syncRequestId = state.groupRosterSyncRequestId;
+        if (typeof syncRequestId === 'string' && syncRequestId &&
+            syncRequestId !== this.lastGroupRosterSyncRequestId) {
+          this.lastGroupRosterSyncRequestId = syncRequestId;
+          await this.syncGroupRoster();
+        } else if (Date.now() - this.lastGroupRosterSyncAttemptAt >= GROUP_ROSTER_SYNC_INTERVAL_MS) {
           await this.syncGroupRoster();
         }
         await this.processNextJob();

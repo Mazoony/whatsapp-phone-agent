@@ -40,6 +40,58 @@ test('Telegram user broadcasts wait ten seconds between messages by default', ()
   assert.equal(worker.sendIntervalMs, 10_000);
 });
 
+test('Telegram account worker runs dashboard-requested presence syncs', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-presence-retry-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const progressFile = path.join(directory, 'progress.json');
+  const requestsFile = path.join(directory, 'requests.json');
+  const stateFile = path.join(directory, 'state.json');
+  writeJson(progressFile, {});
+  writeJson(requestsFile, []);
+  writeJson(stateFile, { jobs: {} });
+
+  let syncCount = 0;
+  const worker = new TelegramUserBroadcastWorker({
+    client: {
+      async getDialogs() {
+        syncCount += 1;
+        return [{ entity: { id: 123 } }];
+      },
+      async *iterParticipants() {},
+      async sendMessage() {}
+    },
+    progressFile,
+    requestsFile,
+    stateFile,
+    groupId: '-100123',
+    logger: { info() {}, error() {} }
+  });
+  const controller = new AbortController();
+  const running = worker.run({ intervalMs: 5, signal: controller.signal });
+  const waitForSyncCount = async count => {
+    const deadline = Date.now() + 1_000;
+    while (syncCount < count && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.ok(syncCount >= count, `expected at least ${count} syncs; received ${syncCount}`);
+  };
+
+  try {
+    await waitForSyncCount(1);
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    writeJson(stateFile, {
+      ...state,
+      groupRosterSyncRequestId: 'dashboard-retry',
+      groupRosterSyncRequestedAt: new Date().toISOString()
+    });
+    await waitForSyncCount(2);
+  } finally {
+    controller.abort();
+    await running;
+  }
+  assert.equal(syncCount, 2);
+});
+
 test('Telegram user broadcasts resume after the server-requested flood wait', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'telegram-user-broadcast-flood-wait-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

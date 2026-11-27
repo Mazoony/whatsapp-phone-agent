@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { writeAgentMediaActivity } from './agent_media_activity.js';
 import { consumeAgentMediaRetryRequests } from './agent_media_retry.js';
 import { appendAgentLog } from './agent_runtime.js';
@@ -94,6 +96,108 @@ test('dashboard serves its favicon as an SVG image', async t => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type'), /^image\/svg\+xml/);
   assert.match(await response.text(), /<svg\b/);
+});
+
+test('PC dashboard securely proxies authenticated API requests to the phone server', async t => {
+  const bridgeToken = 'test-dashboard-bridge-token-that-is-at-least-32-characters';
+  assert.throws(() => createAuthenticatedDashboardServer({
+    remoteDashboardUrl: 'http://192.168.1.50:3002',
+    remoteDashboardToken: bridgeToken
+  }), /HTTPS when connecting to another device/);
+  let logoutCookie = null;
+  const phoneAuthManager = {
+    ...testAuthManager,
+    status: req => ({
+      setupRequired: false,
+      authenticated: req.headers.cookie === 'eshool_dashboard_session=phone-session'
+    }),
+    logout: req => { logoutCookie = req.headers.cookie; }
+  };
+  const phoneServer = createAuthenticatedDashboardServer({
+    authManager: phoneAuthManager,
+    bridgeToken
+  });
+  t.after(() => new Promise(resolve => phoneServer.close(resolve)));
+  await new Promise(resolve => phoneServer.listen(0, '127.0.0.1', resolve));
+
+  const pcServer = createAuthenticatedDashboardServer({
+    authManager: testAuthManager,
+    remoteDashboardUrl: `http://127.0.0.1:${phoneServer.address().port}`,
+    remoteDashboardToken: bridgeToken
+  });
+  t.after(() => new Promise(resolve => pcServer.close(resolve)));
+  await new Promise(resolve => pcServer.listen(0, '127.0.0.1', resolve));
+
+  const phoneOrigin = `http://127.0.0.1:${phoneServer.address().port}`;
+  const pcOrigin = `http://127.0.0.1:${pcServer.address().port}`;
+  const directResponse = await fetch(`${phoneOrigin}/api/admin/auth/status`);
+  assert.equal(directResponse.status, 401);
+
+  const statusResponse = await fetch(`${pcOrigin}/api/admin/auth/status`, {
+    headers: { Cookie: 'eshool_dashboard_session=phone-session' }
+  });
+  assert.deepEqual(await statusResponse.json(), {
+    setupRequired: false,
+    authenticated: true
+  });
+
+  const logoutResponse = await fetch(`${pcOrigin}/api/admin/auth/logout`, {
+    method: 'POST',
+    headers: {
+      Cookie: 'eshool_dashboard_session=phone-session',
+      Origin: pcOrigin,
+      'Content-Type': 'application/json'
+    },
+    body: '{}'
+  });
+  assert.equal(logoutResponse.status, 200);
+  assert.equal(logoutCookie, 'eshool_dashboard_session=phone-session');
+
+  const crossOriginResponse = await fetch(`${pcOrigin}/api/admin/auth/logout`, {
+    method: 'POST',
+    headers: { Origin: 'https://untrusted.example', 'Content-Type': 'application/json' },
+    body: '{}'
+  });
+  assert.equal(crossOriginResponse.status, 403);
+});
+
+test('dashboard compresses HTML using client-supported encodings', async t => {
+  const server = createAdminDashboardServer();
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+  const getPage = acceptEncoding => new Promise((resolve, reject) => {
+    const request = http.get({
+      hostname: '127.0.0.1',
+      port: server.address().port,
+      path: '/',
+      headers: acceptEncoding ? { 'Accept-Encoding': acceptEncoding } : {}
+    }, response => {
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('end', () => resolve({
+        headers: response.headers,
+        body: Buffer.concat(chunks)
+      }));
+    });
+    request.on('error', reject);
+  });
+  const originalHtml = fs.readFileSync(new URL('./public/admin.html', import.meta.url));
+
+  const brotliResponse = await getPage('br, gzip');
+  assert.equal(brotliResponse.headers['content-encoding'], 'br');
+  assert.equal(brotliResponse.headers.vary, 'Accept-Encoding');
+  assert.ok(brotliResponse.body.length < originalHtml.length * 0.22);
+  assert.deepEqual(brotliDecompressSync(brotliResponse.body), originalHtml);
+
+  const gzipResponse = await getPage('gzip;q=1, br;q=0');
+  assert.equal(gzipResponse.headers['content-encoding'], 'gzip');
+  assert.ok(gzipResponse.body.length < originalHtml.length * 0.22);
+  assert.deepEqual(gunzipSync(gzipResponse.body), originalHtml);
+
+  const identityResponse = await getPage('gzip;q=0, br;q=0');
+  assert.equal(identityResponse.headers['content-encoding'], undefined);
+  assert.deepEqual(identityResponse.body, originalHtml);
 });
 
 test('Telegram dashboard summary and progress endpoints do not load WhatsApp dashboard data', async t => {
@@ -325,11 +429,14 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   assert.equal(stats.onlineGroupMembers, 7);
   assert.equal(stats.onlineGroupMembersStatus, 'available');
   assert.equal(stats.onlineGroupMembersUpdatedAt, presenceSyncedAt);
+  assert.equal(stats.onlineGroupMembersLastCheckedAt, presenceSyncedAt);
   assert.equal(stats.trackedLearners, 1);
   assert.equal(stats.joinsToday, 1);
   assert.equal(stats.dailyStats.length, 30);
   assert.equal(stats.dailyStats.at(-1).joins, 1);
   assert.equal(stats.dailyStats.at(-1).activeLearners, 1);
+  assert.equal(stats.joinWeekdayHours.reduce((total, day) =>
+    total + day.hours.reduce((dayTotal, count) => dayTotal + count, 0), 0), 1);
   assert.deepEqual(stats.groupMemberHistory, [
     { date: '2026-11-11', members: 240 },
     { date: '2026-11-12', members: 245 }
@@ -343,6 +450,8 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
   assert.equal(historicalStats.periodEnd, '2020-01-30');
   assert.equal(historicalStats.dailyStats.length, 30);
   assert.equal(historicalStats.dailyStats.at(-1).joins, 0);
+  assert.equal(historicalStats.joinWeekdayHours.reduce((total, day) =>
+    total + day.hours.reduce((dayTotal, count) => dayTotal + count, 0), 0), 0);
   assert.deepEqual(historicalStats.groupMemberHistory, [
     { date: '2026-11-11', members: 240 },
     { date: '2026-11-12', members: 245 }
@@ -351,8 +460,42 @@ test('Telegram dashboard summary and progress endpoints do not load WhatsApp das
     `${origin}/telegram-stats?timeZone=UTC&endDate=2020-02-31`
   );
   assert.equal(invalidStatsDateResponse.status, 400);
+  const sevenDayStatsResponse = await fetch(
+    `${origin}/telegram-stats?timeZone=UTC&endDate=2020-01-30&days=7`
+  );
+  assert.equal(sevenDayStatsResponse.status, 200);
+  const sevenDayStats = await sevenDayStatsResponse.json();
+  assert.equal(sevenDayStats.periodStart, '2020-01-24');
+  assert.equal(sevenDayStats.dailyStats.length, 7);
+  const ninetyDayStatsResponse = await fetch(
+    `${origin}/telegram-stats?timeZone=UTC&endDate=2020-03-30&days=90`
+  );
+  assert.equal(ninetyDayStatsResponse.status, 200);
+  const ninetyDayStats = await ninetyDayStatsResponse.json();
+  assert.equal(ninetyDayStats.periodStart, '2020-01-01');
+  assert.equal(ninetyDayStats.dailyStats.length, 90);
+  const invalidStatsPeriodResponse = await fetch(
+    `${origin}/telegram-stats?timeZone=UTC&days=14`
+  );
+  assert.equal(invalidStatsPeriodResponse.status, 400);
   await fetch(`${origin}/telegram-stats?timeZone=UTC`);
   assert.equal(memberCountCalls, 1);
+  const syncResponse = await fetch(`${origin}/telegram-presence-sync`, {
+    method: 'POST',
+    headers: { Origin: `http://127.0.0.1:${server.address().port}` }
+  });
+  assert.equal(syncResponse.status, 202);
+  const syncRequest = await syncResponse.json();
+  assert.equal(syncRequest.status, 'queued');
+  assert.match(syncRequest.note, /sender must be running/);
+  const queuedState = JSON.parse(fs.readFileSync(telegramAccountStateFile, 'utf8'));
+  assert.ok(queuedState.groupRosterSyncRequestId);
+  assert.equal(queuedState.groupRosterSyncRequestedAt, syncRequest.requestedAt);
+  const rejectedSyncResponse = await fetch(`${origin}/telegram-presence-sync`, {
+    method: 'POST',
+    headers: { Origin: 'https://example.com' }
+  });
+  assert.equal(rejectedSyncResponse.status, 403);
 
   const stalePresence = new Date(Date.now() - 3 * 60 * 1000).toISOString();
   fs.writeFileSync(telegramAccountStateFile, JSON.stringify({
@@ -473,6 +616,12 @@ test('Telegram overview reports class-specific statistics and deduplicates all-c
       lessonsCompleted: 1,
       lessonCompletionCounts: { lesson_1: 1 },
       lessonCompletionTimestamps: [recent(45 * 60 * 1000)]
+    },
+    'telegram:-1003:57': {
+      name: 'Unassigned legacy student',
+      telegramChatId: '-1003',
+      telegramUserId: 57,
+      status: 'awaiting_content'
     }
   }));
   fs.writeFileSync(lessonsFile, JSON.stringify({
@@ -504,9 +653,10 @@ test('Telegram overview reports class-specific statistics and deduplicates all-c
   );
   assert.equal(response.status, 200);
   const overview = await response.json();
-  assert.equal(overview.telegramStudents, 2);
-  assert.equal(overview.telegramLessonsCompleted, 4);
-  assert.equal(overview.awaitingTask, 1);
+  assert.equal(overview.telegramStudents, 3);
+  assert.equal(overview.telegramJoinedLast7Days, 2);
+  assert.equal(overview.telegramLessonsCompleted, 3);
+  assert.equal(overview.awaitingTask, 0);
   assert.equal(overview.awaitingReattempt, 1);
   assert.equal(overview.completed, 1);
   assert.deepEqual(overview.telegramClasses.map(classStats => ({
@@ -529,15 +679,44 @@ test('Telegram overview reports class-specific statistics and deduplicates all-c
     },
     {
       grade: 'grade_3_secondary',
-      students: 2,
-      lessonsCompleted: 2,
-      awaitingTask: 1,
+      students: 1,
+      lessonsCompleted: 1,
+      awaitingTask: 0,
       awaitingReattempt: 0,
       completed: 1,
       groupIds: [primaryGroupId]
+    },
+    {
+      grade: 'unassigned',
+      students: 1,
+      lessonsCompleted: 0,
+      awaitingTask: 0,
+      awaitingReattempt: 0,
+      completed: 0,
+      groupIds: ['-1003']
     }
   ]);
   assert.ok(overview.telegramClasses.every(classStats => classStats.dailyStats.length === 30));
+  assert.equal(
+    overview.telegramClasses.reduce((total, classStats) =>
+      total + classStats.joinedLast7Days, 0),
+    overview.telegramJoinedLast7Days
+  );
+  assert.equal(
+    overview.telegramClasses.reduce((total, classStats) =>
+      total + classStats.students, 0),
+    overview.telegramStudents
+  );
+  const groupStatsResponse = await fetch(
+    `http://127.0.0.1:${server.address().port}/api/admin/telegram-stats?timeZone=UTC&days=7`
+  );
+  assert.equal(groupStatsResponse.status, 200);
+  const groupStats = await groupStatsResponse.json();
+  assert.equal(groupStats.joinsLast7Days, overview.telegramJoinedLast7Days);
+  assert.equal(
+    groupStats.dailyStats.reduce((total, day) => total + day.joins, 0),
+    overview.telegramJoinedLast7Days
+  );
 
   const historicalResponse = await fetch(
     `http://127.0.0.1:${server.address().port}/api/admin/telegram-overview?timeZone=UTC&endDate=2020-01-30`
@@ -1932,6 +2111,40 @@ test('student progress insights show calendar-day engagement and stale lesson fo
   assert.equal(historical.insights.engagementTrend.at(-1).date, '2026-10-05');
   assert.equal(historical.insights.telegramEnrollment.dailyJoins[0].date, '2026-09-29');
   assert.equal(historical.insights.telegramEnrollment.dailyJoins.at(-1).date, '2026-10-05');
+});
+
+test('student progress deduplicates Telegram records by learner account', () => {
+  const now = Date.UTC(2026, 9, 16, 12);
+  const telegramProgress = {
+    'telegram:-1001:10': {
+      telegramChatId: '-1001',
+      telegramUserId: '10',
+      name: 'Learner',
+      grade: 'grade_3_secondary',
+      status: 'awaiting_task',
+      groupJoinedAt: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      lastActivityAt: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString()
+    },
+    'telegram:-1002:10': {
+      telegramChatId: '-1002',
+      telegramUserId: '10',
+      name: 'Learner',
+      grade: 'grade_2_secondary',
+      status: 'awaiting_task',
+      groupJoinedAt: new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(),
+      lastActivityAt: new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString()
+    }
+  };
+  const result = listDashboardStudentProgress({
+    ...sampleData,
+    telegramProgress
+  }, now, 'UTC');
+  const telegramStudents = result.students.filter(student =>
+    student.platform === 'Telegram');
+
+  assert.equal(telegramStudents.length, 1);
+  assert.equal(result.insights.telegramEnrollment.totalStudents, 1);
+  assert.equal(telegramStudents[0].jid, 'telegram:-1002:10');
 });
 
 test('chat list and conversation show the manually selected contact gender', () => {

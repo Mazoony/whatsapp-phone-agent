@@ -25,6 +25,8 @@ For Telegram, set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_GROUP_ID`. To route additio
 TELEGRAM_CLASS_GROUPS={"-1001234567890":"grade_2_secondary"}
 ```
 
+In a configured lessons group, `/lesson` privately sends the student the available course tracks. The student must start the bot in a private chat first, then choose `/grammar`, `/spine`, or `/literature` there. `/grammar` in the group still starts the grammar lesson directly.
+
 For sending Telegram announcements from a personal account, configure `TELEGRAM_CLIENT_API_ID` and `TELEGRAM_CLIENT_API_HASH`, then start the separate sender described below.
 
 ### Google Sheets Overview history (optional)
@@ -53,6 +55,24 @@ Run commands from the repository root:
 | `npm test` | Run the project tests |
 
 The WhatsApp agent uses a QR code to link its account on first startup. Keep the corresponding process running while that agent is in use. Telegram bot, Telegram personal-account sender, and dashboard are separate processes; start only the ones you need.
+
+### Show phone Telegram data on the PC dashboard
+
+The PC dashboard can use the Telegram agent's data and controls from a phone on the same Wi-Fi network. The dashboard stays open on the PC; run its API server on the phone alongside the Telegram bot so it can read and update the phone's local data.
+
+1. Assign the phone a fixed/reserved Wi-Fi IP address, for example `192.168.1.50`. On the phone, generate a random bridge token with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`.
+2. From the Termux home directory (outside the repository), create a self-signed TLS certificate whose subject alternative name is the phone's Wi-Fi IP. Replace the sample IP in this command:
+
+   ```sh
+   openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 365 -keyout admin-bridge.key -out admin-bridge.crt -subj "/CN=eShool-dashboard" -addext "subjectAltName=IP:192.168.1.50"
+   ```
+
+   Keep `admin-bridge.key` private. Copy only `admin-bridge.crt` to the PC, and store both files outside the repository.
+3. In the phone's `.env`, set `ADMIN_HOST=0.0.0.0`, `ADMIN_PORT=3002`, `ADMIN_BRIDGE_TOKEN` to the generated token, and `ADMIN_TLS_KEY_FILE` / `ADMIN_TLS_CERT_FILE` to the phone's key/certificate paths. Start the dashboard server on the phone with `npm run admin` and leave it running alongside the Telegram bot.
+4. In the PC's `.env`, set `ADMIN_REMOTE_URL=https://192.168.1.50:3002`, `ADMIN_REMOTE_TOKEN` to the same token, and `ADMIN_REMOTE_CA_FILE` to the copied `admin-bridge.crt` path. Start the dashboard on the PC with `npm run admin`, then open `http://127.0.0.1:3001/`.
+5. Set up or enter the dashboard password in the PC browser. The password and dashboard data remain on the phone; the bridge token is used only by the PC server and is not sent to the browser.
+
+The phone API requires both the bridge token and dashboard password. Keep the token and private key secret, use a trusted private Wi-Fi network, and do not forward port 3002 from your router or expose it to the internet. If the phone's Wi-Fi IP changes, update the certificate and both device configurations. With no bridge settings, the dashboard remains loopback-only as before.
 
 ### Private read-only dashboard access
 

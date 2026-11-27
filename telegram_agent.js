@@ -86,6 +86,7 @@ const TELEGRAM_PAYMENT_REMINDER_LESSONS = 5;
 const TELEGRAM_MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 const EXERCISE_SCORING_POLICY = 'first_attempt';
 const TELEGRAM_LESSON_REQUEST_COOLDOWN_MS = 2 * 60 * 1000;
+const TELEGRAM_COURSE_MENU_COOLDOWN_MS = 15 * 1000;
 const TELEGRAM_TRACK_SELECTION_SETTLE_MS = 1000;
 const TELEGRAM_UPDATE_CONCURRENCY = 5;
 const TELEGRAM_CHAT_HISTORY_LIMIT = 200;
@@ -155,6 +156,10 @@ function isRepeatLessonCommand(text) {
 
 function isExplicitGrammarLessonCommand(text) {
   return /^\/(?:lesson|grammar)(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
+}
+
+function isLessonMenuCommand(text) {
+  return /^\/lesson(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text.trim());
 }
 
 function getTelegramTrackCommand(text) {
@@ -336,8 +341,8 @@ function getNewStudentInstructions(users) {
   });
   const plural = mentions.length > 1;
   text += ` 👋\n\nعشان تبدأ${plural ? 'وا' : ''} الدروس:
-١. ${plural ? 'افتحوا' : 'أفتح'} المحادثة الخاصة مع @eSchoolsdBot واضغط${plural ? 'وا' : ''} Start.
-٢. بعد الضغط على Start، اختار${plural ? 'وا' : ''} المسار البتبدأ${plural ? 'وا' : ''} بيه في الخاص:
+١. زور${plural ? 'وا' : ''} المحادثة الخاصة مع @eSchoolsdBot واستخدم${plural ? 'وا' : ''} زر Start.
+٢. بعد تفعيل المحادثة، اكتب${plural ? 'وا' : ''} /lesson في قروب الدروس عشان توصلك${plural ? 'م' : ''} خيارات المسارات في الخاص. وتقدر${plural ? 'وا' : ''} تختاروا مباشرة في الخاص:
 • /spine لدروس SPINE.
 • /grammar لدروس القواعد.
 • /literature لفصول Treasure Island.
@@ -360,7 +365,8 @@ function getTelegramCourseSelectionMessage() {
 • /grammar لدروس القواعد.
 • /literature لفصول Treasure Island.
 
-لو عندك تقدم سابق، حتواصل من الدرس الجاي. وللقواعد تقدر تستخدم /lesson كاختصار.
+لو عندك تقدم سابق، حتواصل من الدرس الجاي.
+في قروب الدروس أرسل /lesson عشان أرسل ليك خيارات المسارات في الخاص. لإرسال درس القواعد مباشرة، أرسل /grammar هنا.
 لما تجاوب تمرين الحصة كامل وكل إجاباتك تكون صحيحة، حنحتفل بيك في القروب.
 
 للمساعدة رسل /help
@@ -374,7 +380,7 @@ function getTelegramStudentHelpMessage() {
 
 • أول مرة: افتح المحادثة الخاصة مع @eSchoolsdBot واضغط Start.
 
-• اختار المسار بإرسال الأمر في الخاص: /grammar للقواعد، /spine لدروس SPINE، أو /literature لفصول Treasure Island. /lesson اختصار للقواعد.
+• في قروب الدروس أرسل /lesson عشان توصلك خيارات المسارات في الخاص. اختار المسار بإرسال الأمر في الخاص: /grammar للقواعد، /spine لدروس SPINE، أو /literature لفصول Treasure Island.
 
 • أرسل إجابات التمرين كنص في الخاص. لو في إجابات محتاجة تصحيح، حأحدد أرقام الأسئلة البتحتاج تعيدها.
 
@@ -1030,6 +1036,64 @@ export class TelegramLessonAgent {
             message.message_id
           );
         }
+      });
+      return;
+    }
+
+    if (isLessonMenuCommand(text)) {
+      await this.runStudentOperation(studentKey, async () => {
+        this.recordStudentActivity(studentKey, chatId, message.from);
+        const currentState = this.progress[studentKey];
+        const privateChatId = currentState.telegramPrivateChatId;
+        if (!privateChatId) {
+          await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
+          return;
+        }
+
+        const lastMenuAt = Date.parse(currentState.lastTelegramCourseMenuAt || '');
+        if (Number.isFinite(lastMenuAt) &&
+            Date.now() - lastMenuAt < TELEGRAM_COURSE_MENU_COOLDOWN_MS) {
+          await this.bot.sendMessage(
+            chatId,
+            'خيارات المسارات اتبعت ليك في الخاص قبل شوية. راجع المحادثة هناك.',
+            message.message_id
+          );
+          return;
+        }
+
+        recordTelegramLessonAnnouncementOptIn(currentState);
+        this.saveProgress();
+        try {
+          reportProgress('Sending private course options');
+          await this.bot.sendMessage(
+            privateChatId,
+            getTelegramCourseSelectionMessage()
+          );
+        } catch (error) {
+          if (isPrivateChatUnavailable(error)) {
+            delete currentState.telegramPrivateChatId;
+            delete currentState.lastTelegramCourseMenuAt;
+            this.saveProgress();
+            await this.sendPrivateStartInstructions(chatId, studentKey, message, reportProgress);
+            return;
+          }
+          this.logger.error(
+            `[Telegram] Could not send private course options to ${studentKey}: ${error.message}`
+          );
+          await this.bot.sendMessage(
+            chatId,
+            'ما قدرت أرسل خيارات المسارات في الخاص هسي. جرّب /lesson بعد شوية.',
+            message.message_id
+          );
+          return;
+        }
+        currentState.lastTelegramCourseMenuAt = new Date().toISOString();
+        this.saveProgress();
+        await this.bot.sendMessage(
+          chatId,
+          'تمام، أرسلت ليك خيارات المسارات في الخاص. اختار المسار هناك.',
+          message.message_id
+        );
       });
       return;
     }
